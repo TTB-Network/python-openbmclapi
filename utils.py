@@ -194,6 +194,7 @@ async def get_file_hash(org: str, path: Path):
             if not data:
                 break
             hash.update(data)
+            await asyncio.sleep(0.001)
     return hash.hexdigest() == org
 
 byte_unit: tuple = ("", "K", "M", "G", "T", "E")

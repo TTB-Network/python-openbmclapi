@@ -51,7 +51,7 @@ class TokenManager:
                     Timer.delay(self.fetchToken, delay=float(content['ttl']) / 1000.0 - 600)
               
             except aiohttp.ClientError as e:  
-                print(f"Error fetching token: {e}")  
+                error(f"Error fetching token: {e}")  
     async def getToken(self) -> str:  
         if not self.token:  
             await self.fetchToken()
@@ -78,7 +78,6 @@ class FileStorage:
             if await get_file_hash(n.hash, Path(str(self.dir) + "/" + n.hash[:2] + "/" + n.hash)):
                 continue
             files.append(n)
-            print(n)
             await asyncio.sleep(0.001)
 
 class FileDownloader:
