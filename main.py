@@ -91,7 +91,7 @@ async def handle(client: Client):
                 break
             client.set_log_network(None)
     except:
-        traceback(True)
+        traceback(False)
     client.close()
 
 async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):

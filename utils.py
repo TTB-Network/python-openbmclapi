@@ -42,7 +42,7 @@ class Task:
         if not self.back:
             return
         try:
-            if inspect.iscoroutinefunction(self.target):
+            if inspect.iscoroutinefunction(self.back):
                 await self.back()
             else:
                 self.back()
@@ -326,7 +326,7 @@ console = Console(color_system='auto')
 Force = True
 log_dir = Path("web_logs")
 log_dir.mkdir(exist_ok=True)
-is_debug = True
+is_debug = False
 logs: queue.Queue = queue.Queue()
 
 def logger(*message, level: int = 0, force = False):

@@ -630,7 +630,7 @@ class Response:
         if isinstance(self.content, Path) and self.content.is_file():
             content_type = list(set([key for key in self.headers.keys() if key.lower() == "content-type"] or ["Content-Type"]))[0]
             self.headers[content_type] = filetype.guess_mime(self.content) or guess_type(self.content)[0] or 'text/plain' if isinstance(self.content, Path) and self.content.is_file() else 'text/plain'
-        if keepalive:
+        if keepalive and length >= Globals.BUFFER:
             range_str = request.headers.get('range', '')
             range_match = re.search(r'bytes=(\d+)-(\d+)', range_str, re.S) or re.search(r'bytes=(\d+)-', range_str, re.S)
             end_bytes = length - 1
@@ -668,8 +668,8 @@ class Response:
                     l += len(data)
                     client.write(data)
                     await asyncio.sleep(0.1)
-        if keepalive:
-            client.set_keepalive_connection(False)
+        if keepalive and length >= Globals.BUFFER:
+            client.set_keepalive_connection(True)
 class ErrorResponse:
     @staticmethod
     async def generate_error(path: str, description: str, status_code: int = 500, **kwargs) -> Response:
