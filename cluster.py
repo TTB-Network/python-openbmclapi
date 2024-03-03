@@ -328,7 +328,7 @@ async def _(request: web.Request, hash: str, s: str, e: str):
     if hash not in cache:
         cache[hash] = FileCache(file)
     data = await cache[hash]()
-    counter.bytes += data.tell()
+    counter.bytes += len(data.getbuffer())
     counter.hit += 1
     return data.getbuffer()
 
