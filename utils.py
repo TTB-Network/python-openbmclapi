@@ -17,7 +17,7 @@ import traceback as traceback_
 import Globals
 
 class Task:
-    def __init__(self, target, args, loop: bool = False, delay: float = 0, interval: float = 0) -> None:
+    def __init__(self, target, args, loop: bool = False, delay: float = 0, interval: float = 0, back = None) -> None:
         self.target = target
         self.args = args
         self.loop = loop
@@ -26,6 +26,7 @@ class Task:
         self.last = 0.0
         self.create_at = time.time()
         self.blocked = False
+        self.back = back
     async def call(self):
         if self.blocked:
             return
@@ -34,17 +35,28 @@ class Task:
                 await self.target(*self.args)
             else:
                 self.target(*self.args)
+            await self.callback()
+        except:
+            traceback()
+    async def callback(self):
+        if not self.back:
+            return
+        try:
+            if inspect.iscoroutinefunction(self.target):
+                await self.back()
+            else:
+                self.back()
         except:
             traceback()
     def block(self):
         self.blocked = True
 class TimerManager:
-    def delay(self, target, args = (), delay: float = 0):
-        task = Task(target=target, args=args, delay=delay)
+    def delay(self, target, args = (), delay: float = 0, callback = None):
+        task = Task(target=target, args=args, delay=delay, back=callback)
         asyncio.get_event_loop().call_later(task.delay, lambda: asyncio.run_coroutine_threadsafe(task.call(), asyncio.get_event_loop()))
         return task
-    def repeat(self, target, args = (), delay: float = 0, interval: float = 0):
-        task = Task(target=target, args=args, delay=delay, loop=True, interval=interval)
+    def repeat(self, target, args = (), delay: float = 0, interval: float = 0, callback = None):
+        task = Task(target=target, args=args, delay=delay, loop=True, interval=interval, back=callback)
         asyncio.get_event_loop().call_later(task.delay, lambda: self._repeat(task))
         return task
     def _repeat(self, task: Task):
@@ -313,16 +325,26 @@ console = Console(color_system='auto')
 Force = True
 log_dir = Path("web_logs")
 log_dir.mkdir(exist_ok=True)
-is_debug = False
+is_debug = True
+logs: queue.Queue = queue.Queue()
 
 def logger(*message, level: int = 0, force = False):
-    global Force
+    global Force, logs
     if Force or force:
         datetime: time.struct_time = time.localtime()
         msg: Text = formatColor(f"§{(getLevelColor(level)).value['code']}[{datetime.tm_year:04d}-{datetime.tm_mon:02d}-{datetime.tm_mday:02d} {datetime.tm_hour:02d}:{datetime.tm_min:02d}:{datetime.tm_sec:02d}] [{getLevel(level)}] " + ' '.join([str(msg) for msg in message]))
         console.print(msg)
-        with open(str(log_dir) + "/logs.log", "a") as w:
-            w.write(str(msg) + "\n")
+        logs.put(msg)
+
+def check_log():
+    global logs, log_dir
+    with open(str(log_dir) + "/logs.log", "a") as w:
+        while 1:
+            while not logs.empty():
+                w.write(str(logs.get()) + "\n")
+                w.flush()
+
+threading.Thread(target=check_log,).start()
 
 def warn(*message):
     return logger(*message, level = 1)

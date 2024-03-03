@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import os
 import web
 import hashlib
 import hmac
@@ -68,6 +69,7 @@ class FileStorage:
             if not file.exists():
                 files.append(n)
                 continue
+            await asyncio.sleep(0.001)
             task.append(n)
         asyncio.create_task(self.hash_file(files, task))
         return files
@@ -76,6 +78,7 @@ class FileStorage:
             if await get_file_hash(n.hash, Path(str(self.dir) + "/" + n.hash[:2] + "/" + n.hash)):
                 continue
             files.append(n)
+            print(n)
             await asyncio.sleep(0.001)
 
 class FileDownloader:
@@ -139,7 +142,7 @@ class Cluster:
     async def __call__(self) -> 'Cluster':
         self._port = config.publicPort
         self.publicPort = config.publicPort
-        self.ua = config.USER_AGENT + "/" + version
+        self.ua = config.USER_AGENT + "/" + version + " " + Globals.PY_USER_AGENT
         self.authorization = await token.getToken()
         self.sio = socketio.AsyncClient()
         self.aio = aiohttp.ClientSession(
@@ -202,6 +205,7 @@ class Cluster:
         if not (Path("./config/cert.pem").exists() and Path("./config/key.pem").exists()):
             await self.requestCert()
         self.cur_counter = Counters()
+        info("Connected")
     async def message(self, type, data):
         if type == "request-cert":
             cert = data[1]
@@ -257,22 +261,49 @@ class Cluster:
         info(f"Reuqested files! Total: {len(files)}, {b[0]} {b[1]}iB")
         self.syncing = True
         file = FileDownloader(self.authorization, files, self.storage)
-        await file.runTask()
-        self.syncing = False
-
+        Timer.delay(file.runTask, callback=lambda: self.set_sync(False))
+    def set_sync(self, sync):
+        self.syncing = sync
     async def serve(self):
         Timer.repeat(self.syncFile, (), 0, 600)
         await self.connect()
         
 
+class FileCache:
+    def __init__(self, file: Path) -> None:
+        self.buf = io.BytesIO()
+        self.size = 0
+        self.last_file = 0
+        self.last = 0
+        self.file = file
+        self.access = 0
+    async def __call__(self) -> io.BytesIO:
+        self.access = time.time()
+        if self.last < time.time():
+            stat = self.file.stat()
+            if self.size == stat.st_size and self.last_file == stat.st_mtime:
+                self.last = time.time() + 600
+                return self.buf
+            self.buf.seek(0, os.SEEK_SET)
+            async with aiofiles.open(self.file, "rb") as r:
+                while (data := await r.read(min(Globals.BUFFER, stat.st_size - self.buf.tell()))) and self.buf.tell() < stat.st_size:
+                    self.buf.write(data)
+                self.last = time.time() + 600
+                self.size = stat.st_size
+                self.last_file = stat.st_mtime
+            self.buf.seek(0, os.SEEK_SET)
+        return self.buf
+
 token = TokenManager()
 version = "1.9.7"
 app = web.app
-
+cache: dict[str, FileCache] = {}
+cluster = None
 async def init():
     global cluster
-    cluster = await Cluster()()
-    await (await Cluster()()).serve()
+    if not cluster:
+        cluster = await Cluster()()
+        await (await Cluster()()).serve()
 
 def check_sign(hash: str, secret: str, s: str, e: str):
     h = hmac.new(secret.encode("utf-8"), hash.encode("utf-8"), hashlib.sha1)
@@ -283,15 +314,31 @@ def check_sign(hash: str, secret: str, s: str, e: str):
 async def _(request: web.Request, size: int, s: str, e: str):
     if not config.SKIP_SIGN:
         check_sign(request.protocol + "://" + request.host + request.path, config.CLUSTER_SECRET, s, e)
-    return web.Response(b'\x00' * 1024 * 1024 * size)
+    async def iter(size):
+        for _ in range(size):
+            yield b'\x00' * 1024 * 1024
+    return web.Response(iter(size))
 
 @app.get("/download/{hash}")
 async def _(request: web.Request, hash: str, s: str, e: str):
     if not config.SKIP_SIGN:
         check_sign(request.protocol + "://" + request.host + request.path, config.CLUSTER_SECRET, s, e)
-    if cluster.syncing:
+    if not cluster:
         return web.Response(status_code=427)
     file = Path(str(cluster.storage.dir) + "/" + hash[:2] + "/" + hash)
-    counter.bytes += file.stat().st_size
+    if hash not in cache:
+        cache[hash] = FileCache(file)
+    data = await cache[hash]()
+    counter.bytes += data.tell()
     counter.hit += 1
-    return web.Response(file)
+    return data.getbuffer()
+
+async def clearCache():
+    global cache
+    data = cache.copy()
+    for k, v in data.items():
+        if v.access + 60 < time.time():
+            cache.pop(k)
+
+
+Timer.repeat(clearCache, (), 5, 10)

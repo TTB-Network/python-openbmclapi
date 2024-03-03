@@ -60,3 +60,6 @@ status_codes: dict[int, str] = {
     504: "Gateway Time-out",
     505: "HTTP Version not supported",
 }
+UTC = 8 * 60 * 60
+VERSION = "0.0.1"
+PY_USER_AGENT = f"(python-TTB Studio {VERSION})"

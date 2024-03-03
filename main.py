@@ -32,7 +32,7 @@ import random
 import time
 from typing import Any, Optional
 import cluster
-from utils import Client, info, traceback
+from utils import Client, Timer, info, traceback
 import utils
 import Globals
 import web
@@ -91,7 +91,7 @@ async def handle(client: Client):
                 break
             client.set_log_network(None)
     except:
-        traceback(False)
+        traceback(True)
     client.close()
 
 async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -157,8 +157,8 @@ async def start_():
     start = time.time_ns()
     for port in port_:
         await start_server(port)
-    [asyncio.create_task(startup()) for startup in protocol_startup.values() if startup]
     await cluster.init()
+    [asyncio.create_task(startup()) for startup in protocol_startup.values() if startup]
     info(f"Done! ({(time.time_ns() - start) / 1000000000.0:.2f}s)")
     await asyncio.wait([asyncio.create_task(restart_server(port)) for port in port_])
     Globals.running = 0

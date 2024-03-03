@@ -563,6 +563,8 @@ class Response:
             content = Path(f"./{str(Path(str(content)))}")
         elif isinstance(content, io.BytesIO):
             content = content
+        elif isinstance(content, (bytearray, bytes, memoryview)):
+            content = io.BytesIO(content)
         elif isinstance(content, typing.Iterator):
             content = iterate_in_threadpool(content)
         self.content = content
@@ -570,95 +572,58 @@ class Response:
         self.cookies = list(cookie)
         return self
 
+    async def _iter(self):
+        if isinstance(self.content, types.AsyncGeneratorType):
+            async for data in self.content:
+                yield data
+        elif isinstance(self.content, (list, dict, tuple, set)) or None:
+            try:
+                content_type = content_type = list(set([key for key in self.headers.keys() if key.lower() == "content-type"] or ["Content-Type"]))[0]
+                self.headers[content_type] = 'application/json'
+                def aaa(array_: tuple | list | set):
+                    array = list(array_)
+                    for i, _ in enumerate(array):
+                        if dataclasses.is_dataclass(_):
+                            array[i] = dataclasses.asdict(_)
+                    return array
+                yield json.dumps(aaa(self.content) if isinstance(self.content, (list, tuple, set)) else self.content).encode('utf-8')
+            except:
+                utils.traceback()
+                ...
+        elif isinstance(self.content, (str, bool, int, float)):
+            yield str(self.content).encode("utf-8")
+        elif isinstance(self.content, Response):
+            async for data in self.content._iter():
+                print("aaa")
+                yield data
+        else:
+            yield str(self.content).encode("utf-8")
+            
     async def __call__(self, request: Request, client: Client, log: bool = True) -> Any:
         if client.is_closed():
             return
-        async def iter():
-            if isinstance(self.content, types.AsyncGeneratorType):
-                async for data in self.content:
-                    yield data
-            elif isinstance(self.content, Path):
-                def format_size(bytes):
-                    """Take a size in bytes, and return a human-readable string."""
-                    units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
-                    index = 0
-                    while bytes >= 900 and index < len(units) - 1:
-                        bytes /= 1024
-                        index += 1
-                    return f"{bytes:.2f} {units[index]}"
-                def get_directory_size(path):
-                    total: int = 0
-                    try:
-                        with os.scandir(path) as it:
-                            for entry in it:
-                                if entry.is_file():
-                                    total += entry.stat().st_size
-                                elif entry.is_dir():
-                                    total += get_directory_size(entry.path)
-                    except:
-                        total = 0
-                    return total
-                if self.content.exists() and self.kwargs.get("mount", ("", "", False))[2]:
-                    if self.content.is_dir():
-                        content_type = list(set([key for key in self.headers.keys() if key.lower() == "content-type"] or ["Content-Type"]))[0]
-                        self.headers[content_type] = 'text/html; charset=utf-8'
-                        yield '<!DOCTYPE html>\n'
-                        yield '<html>'
-                        yield '\t<head>'
-                        yield '\t\t<meta charset="utf-8"/>'
-                        yield '\t<head/>'
-                        yield '\t<body>'
-                        for path in self.content.iterdir():
-                            url = self.kwargs.get("mount", ("", ""))[1] + str(path).replace("\\", "/").rstrip("/").replace(str(self.kwargs.get("mount", ("", ""))[0]).replace("\\", "/").rstrip("/"), "")
-                            yield f'\t\t<a href="{url}" title="{format_size(path.stat().st_size if path.is_file() else await asyncio.get_event_loop().run_in_executor(None, get_directory_size, path))}">{path.name}</a><br/>'.encode('utf-8')
-                        yield '\t<body/>'
-                        yield '<html/>'
-                    else:
-                        async with aiofiles.open(self.content, "rb") as r:
-                            while data := await r.read(BUFFER):
-                                yield data
-                else:
-                    self.status_code = 404
-                    yield (await ErrorResponse.not_found(request.raw_path)).content
-            elif isinstance(self.content, (list, dict, tuple, set)) or None:
-                try:
-                    content_type = content_type = list(set([key for key in self.headers.keys() if key.lower() == "content-type"] or ["Content-Type"]))[0]
-                    self.headers[content_type] = 'application/json'
-                    def aaa(array_: tuple | list | set):
-                        array = list(array_)
-                        for i, _ in enumerate(array):
-                            if dataclasses.is_dataclass(_):
-                                array[i] = dataclasses.asdict(_)
-                        return array
-                    yield json.dumps(aaa(self.content) if isinstance(self.content, (list, tuple, set)) else self.content).encode('utf-8')
-                except:
-                    utils.traceback()
-                    ...
-            elif isinstance(self.content, (str, bool, int, float)):
-                yield str(self.content).encode("utf-8")
-            elif isinstance(self.content, bytes):
-                yield self.content
-            yield b''
         content = io.BytesIO()
-        length: int = 0
-        keepalive: bool = False
-        if isinstance(self.content, Path):
-            if self.content.exists() and self.content.is_file():
-                length = self.content.stat().st_size
-                keepalive = True
-            elif not self.content.is_dir() or not self.content.exists():
-                self.status_code = 404
-                self.content = (await ErrorResponse.not_found(request.raw_path)).content
-        elif isinstance(self.content, io.BytesIO):
-            length = self.content.tell()
+        length = 0
+        keepalive = False
+        if isinstance(self.content, io.BytesIO):
+            content = self.content
+            length = len(self.content.getbuffer())
             keepalive = True
-        if not keepalive:
+        elif isinstance(self.content, Path) and self.content.is_file() and self.content.exists():
+            content = self.content
+            length = self.content.stat().st_size
+            keepalive = True
+        elif isinstance(self.content, Path) and not self.content.exists():
+            self.status_code = 404
+            self.content = await ErrorResponse.not_found(request.raw_path)
+        if not keepalive and isinstance(content, io.BytesIO):
             try:
-                async for data in iter():
-                    content.write(data if isinstance(data, bytes) else data.encode("utf-8"))
+                async for data in self._iter():
+                    content.write(data)
                 length = content.tell()
             except:
                 content = io.BytesIO()
+                traceback.print_exc()
         tmp_headers = {key.lower(): key for key in self.headers.keys()}
         self.headers[tmp_headers.get("connection", "Connection")] = self.headers.get(tmp_headers.get("connection", "connection"), "Closed")
         start_bytes, end_bytes = 0, 0
@@ -689,10 +654,12 @@ class Response:
         if log:
             info(request.method, self.status_code, request.address, request.raw_path, request.user_agent)
         client.write(f'HTTP/1.1 {self.status_code} {status_codes.get(self.status_code, status_codes.get(self.status_code // 100 * 100))}\r\n{tmp_header}\r\n{set_cookie}\r\n'.encode("utf-8"))
-        #waf.responseStatistics.add_resp(self.status_code)
-        await asyncio.sleep(0.1)
-        if isinstance(self.content, Path) and self.content.exists() and self.content.is_file():
-            async with aiofiles.open(self.content, "rb") as r:
+        
+        if isinstance(content, io.BytesIO):
+            content.seek(start_bytes, os.SEEK_SET)
+            client.write(content.getbuffer())
+        elif isinstance(content, Path):
+            async with aiofiles.open(content, "rb") as r:
                 await r.seek(start_bytes, os.SEEK_SET)
                 l = 0
                 while (data := await r.read(min(BUFFER, length - l))) and l < length:
@@ -701,12 +668,8 @@ class Response:
                     l += len(data)
                     client.write(data)
                     await asyncio.sleep(0.1)
-        else:
-            content = self.content if isinstance(self.content, io.BytesIO) else content
-            content.seek(start_bytes, os.SEEK_SET)
-            client.write(content.getbuffer())
         if keepalive:
-            client.set_keepalive_connection(True)
+            client.set_keepalive_connection(False)
 class ErrorResponse:
     @staticmethod
     async def generate_error(path: str, description: str, status_code: int = 500, **kwargs) -> Response:
