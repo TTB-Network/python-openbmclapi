@@ -14,7 +14,7 @@ import aiofiles
 from rich.console import Console
 from rich.text import Text
 import traceback as traceback_
-import Globals
+import globals
 
 class Task:
     def __init__(self, target, args, loop: bool = False, delay: float = 0, interval: float = 0, back = None) -> None:
@@ -100,28 +100,28 @@ class Client:
         self.read_data += len(data)
         self.read_time += end_time
         speed = self.read_data / max(1, end_time)
-        if speed < Globals.MIN_RATE and self.read_time > Globals.MIN_RATE_TIMESTAMP:
+        if speed < globals.MIN_RATE and self.read_time > globals.MIN_RATE_TIMESTAMP:
             raise TimeoutError("Data read speed is too low")
         return data
-    async def readline(self, timeout: Optional[float] = Globals.TIMEOUT):
+    async def readline(self, timeout: Optional[float] = globals.TIMEOUT):
         start_time = time.time()
         data = await asyncio.wait_for(self.reader.readline(), timeout=timeout)
         self.record_network(0, len(data))
         return self._record_after(start_time, data)
 
-    async def readuntil(self, separator: bytes | bytearray | memoryview = b"\n", timeout: Optional[float] = Globals.TIMEOUT):
+    async def readuntil(self, separator: bytes | bytearray | memoryview = b"\n", timeout: Optional[float] = globals.TIMEOUT):
         start_time = time.time()
         data = await asyncio.wait_for(self.reader.readuntil(separator=separator), timeout=timeout)
         self.record_network(0, len(data))
         return self._record_after(start_time, data)
 
-    async def read(self, n: int = -1, timeout: Optional[float] = Globals.TIMEOUT):
+    async def read(self, n: int = -1, timeout: Optional[float] = globals.TIMEOUT):
         start_time = time.time()
         data: bytes = await asyncio.wait_for(self.reader.read(n), timeout=timeout)
         self.record_network(0, len(data))
         return self._record_after(start_time, data)
 
-    async def readexactly(self, n: int, timeout: Optional[float] = Globals.TIMEOUT):
+    async def readexactly(self, n: int, timeout: Optional[float] = globals.TIMEOUT):
         start_time = time.time()
         data = await asyncio.wait_for(self.reader.readexactly(n), timeout=timeout)
         self.record_network(0, len(data))
@@ -190,7 +190,7 @@ def get_hash(org):
 async def get_file_hash(org: str, path: Path):
     hash = get_hash(org)
     async with aiofiles.open(path, "rb") as r:
-        while data := await r.read(Globals.BUFFER):
+        while data := await r.read(globals.BUFFER):
             if not data:
                 break
             hash.update(data)

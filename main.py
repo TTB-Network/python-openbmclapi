@@ -1,30 +1,5 @@
-
-import socket
 import ssl
-import subprocess
-import importlib
 import zlib
-
-def install_module(module_name, module = None):
-    module = module or module_name
-    try:
-        importlib.import_module(module_name)
-    except ImportError:
-        print(f"正在安装模块 '{module_name}'...")
-        subprocess.check_call(["pip", "install", module])
-        print(f"模块 '{module_name}' 安装成功")
-
-def init():
-    install_module('socketio')
-    install_module('rich')
-    install_module('aiohttp')
-    install_module("hmac")
-    install_module("pyzstd")
-    install_module("avro", "avro-python3")
-
-init()
-
-
 import asyncio
 from enum import Enum
 from pathlib import Path
@@ -32,12 +7,11 @@ import random
 import time
 from typing import Any, Optional
 import cluster
-from utils import Client, Timer, info, traceback
+from utils import Client, info, traceback
 import utils
-import Globals
+import globals
 import web
 import os
-
 
 os.environ['TMPDIR'] = str(Path(str(Path(__file__).absolute().parent) + "/cache"))
 os.environ['STARTUP'] = str(time.time())
@@ -99,7 +73,7 @@ async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     if cert:
         client.is_ssl = True
     try:
-        await asyncio.wait([asyncio.create_task(handle(client))], timeout=Globals.TIMEOUT)
+        await asyncio.wait([asyncio.create_task(handle(client))], timeout=globals.TIMEOUT)
     except TimeoutError:
         client.close()
 cert = None
@@ -121,7 +95,7 @@ async def start_server(port: int):
         else:
             ports[port] = await asyncio.start_server(_handle, port=port, host='0.0.0.0')
         for sock in ports[port].sockets:
-            sock._sock.settimeout(Globals.TIMEOUT)  # type: ignore
+            sock._sock.settimeout(globals.TIMEOUT)  # type: ignore
         info(f"Started service on {port}{' with ssl' if cert else ''}!")
     except:
         traceback()
@@ -161,7 +135,7 @@ async def start_():
     [asyncio.create_task(startup()) for startup in protocol_startup.values() if startup]
     info(f"Done! ({(time.time_ns() - start) / 1000000000.0:.2f}s)")
     await asyncio.wait([asyncio.create_task(restart_server(port)) for port in port_])
-    Globals.running = 0
+    globals.running = 0
     [asyncio.create_task(shutdown()) for shutdown in protocol_shutdown.values() if shutdown]
     async def waiting():
         while any([t for t in utils.threads if t.is_alive()]):

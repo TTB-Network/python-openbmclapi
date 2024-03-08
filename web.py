@@ -24,12 +24,12 @@ import typing
 import zlib
 
 import aiofiles
-from Globals import BUFFER, status_codes
+from globals import BUFFER, status_codes
 
 from utils import Client, error, fixedValue, get_data_content_type, info, parse_obj_as_type
 from urllib import parse as urlparse
 import utils
-import Globals
+import globals
 import filetype
 
 class Application:
@@ -533,7 +533,7 @@ class Cookie:
             maxAge: Optional[int] = None) -> None:
         self.key = key
         self.value = value
-        self.expiry = expiry + time.time() + Globals.UTC if expiry else None
+        self.expiry = expiry + time.time() + globals.UTC if expiry else None
         self.path = (path if path else "")
         self.path = self.path if self.path.startswith("/") else "/" + self.path
         self.max_age = maxAge
@@ -542,7 +542,7 @@ class Cookie:
         return self.key + '=' + self.value + "; Path=" + self.path + ('; Expires=' + datetime.datetime.utcfromtimestamp(self.expiry).strftime('%a, %d %b %Y %H:%M:%S GMT') if self.expiry else '') + ("; Max-Age" if self.max_age else '')
 class Response:
     def __init__(self, content: bytes | memoryview | str | None | Path | bool | typing.AsyncIterable | typing.Iterable | io.BytesIO | Any = b'', headers: dict[str, Any] = {}, status_code: int = 200, content_type: Optional[str] = None, cookie: list[Cookie] = [], **kwargs) -> None:
-        self.headers: dict[str, Any] = Globals.default_headers.copy()
+        self.headers: dict[str, Any] = globals.default_headers.copy()
         self.headers["Date"] = datetime.datetime.fromtimestamp(time.time()).strftime("%a, %d %b %Y %H:%M:%S GMT")
         self.set_header(headers)
         self.set_header({
@@ -630,7 +630,7 @@ class Response:
         if isinstance(self.content, Path) and self.content.is_file():
             content_type = list(set([key for key in self.headers.keys() if key.lower() == "content-type"] or ["Content-Type"]))[0]
             self.headers[content_type] = filetype.guess_mime(self.content) or guess_type(self.content)[0] or 'text/plain' if isinstance(self.content, Path) and self.content.is_file() else 'text/plain'
-        if keepalive and length >= Globals.BUFFER:
+        if keepalive and length >= globals.BUFFER:
             range_str = request.headers.get('range', '')
             range_match = re.search(r'bytes=(\d+)-(\d+)', range_str, re.S) or re.search(r'bytes=(\d+)-', range_str, re.S)
             end_bytes = length - 1
@@ -668,7 +668,7 @@ class Response:
                     l += len(data)
                     client.write(data)
                     await asyncio.sleep(0.1)
-        if keepalive and length >= Globals.BUFFER:
+        if keepalive and length >= globals.BUFFER:
             client.set_keepalive_connection(True)
 class ErrorResponse:
     @staticmethod

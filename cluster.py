@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 import aiofiles
 import aiohttp
 import socketio
-import Globals
+import globals
 from utils import BMCLAPIFile, Task, Timer, calc_bytes, calc_more_bytes, error, get_file_hash, get_hash, info, traceback, updateDict
 import pyzstd as zstd
 from avro import schema, io as avro_io  
@@ -101,7 +101,7 @@ class FileDownloader:
                         filepath = Path(str(self.storage.dir) + "/" + file.hash[:2] + "/" + file.hash)
                         filepath.parent.mkdir(exist_ok=True, parents=True)
                         async with aiofiles.open(filepath, "wb") as w:
-                            while data := await resp.content.read(Globals.BUFFER):
+                            while data := await resp.content.read(globals.BUFFER):
                                 if not data:
                                     break
                                 await w.write(data)
@@ -141,7 +141,7 @@ class Cluster:
     async def __call__(self) -> 'Cluster':
         self._port = config.publicPort
         self.publicPort = config.publicPort
-        self.ua = config.USER_AGENT + "/" + version + " " + Globals.PY_USER_AGENT
+        self.ua = config.USER_AGENT + "/" + version + " " + globals.PY_USER_AGENT
         self.authorization = await token.getToken()
         self.sio = socketio.AsyncClient()
         self.aio = aiohttp.ClientSession(
@@ -285,7 +285,7 @@ class FileCache:
                 return self.buf
             self.buf.seek(0, os.SEEK_SET)
             async with aiofiles.open(self.file, "rb") as r:
-                while (data := await r.read(min(Globals.BUFFER, stat.st_size - self.buf.tell()))) and self.buf.tell() < stat.st_size:
+                while (data := await r.read(min(globals.BUFFER, stat.st_size - self.buf.tell()))) and self.buf.tell() < stat.st_size:
                     self.buf.write(data)
                 self.last = time.time() + 600
                 self.size = stat.st_size
