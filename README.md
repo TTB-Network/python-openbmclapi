@@ -1,5 +1,5 @@
 
-<center>
+<div align="center">
 
 # OpenBMCLAPI for Python
 
@@ -16,7 +16,7 @@
 
 🎨 **跨系统**、**跨架构**和 **Docker** 支持。
 
-</center>
+</div>
 
 # 项目说明
 
