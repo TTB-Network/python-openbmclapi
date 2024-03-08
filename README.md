@@ -73,7 +73,6 @@ docker run -d \
 silianz/python-openbmclapi 
 ```
 
-> ![WARNING]
 > Docker 容器仍在实验中，还未发布。
 
 # 鸣谢
