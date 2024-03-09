@@ -46,7 +46,7 @@
 3. 运行一次主程序生成配置文件：
 
     ```sh
-    python main.py
+    python ./container/main.py
     ```
 
 4. 在 `config.properties` 中，填写你的 `cluster.id`（即 `CLUSTER_ID`）和 `cluster.secret`（即 `CLUSTER_SECRET`）。
@@ -65,13 +65,21 @@ docker pull silianz/python-openbmclapi:latest
 
 ```sh
 docker run -d \
--v /data/python-openbmclapi:/python-openbmclapi/cache \
--v /path/to/your/config:/python-openbmclapi/config/config.properties \
+-v ${/data/python-openbmclapi}:/python-openbmclapi/container/cache \
+-v ${/path/to/your/config}:/python-openbmclapi/config/config.properties \
 -p ${web.port}:${web.port} \
 --restart always \
 --name python-openbmclapi \
 silianz/python-openbmclapi 
 ```
+
+参数说明：
+
+`web.port` - 对外开放的端口。
+
+`/path/to/your/config` - 配置文件（你需要从此仓库中下载 `config/config.properties.example` 并重命名为 `config.properties` 来进行配置）的存放路径。
+
+`/data/python-openbmclapi` - `cache` 文件夹挂载的路径。
 
 > Docker 容器仍在实验中，还未发布。
 
