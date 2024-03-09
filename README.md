@@ -8,7 +8,6 @@
 ![GitHub License](https://img.shields.io/github/license/tianxiu2b2t/python-openbmclapi)
 ![GitHub Release](https://img.shields.io/github/v/release/tianxiu2b2t/python-openbmclapi)
 ![GitHub Tag](https://img.shields.io/github/v/tag/tianxiu2b2t/python-openbmclapi)
-![GitHub Downloads (all assets, latest release)](https://img.shields.io/github/downloads/tianxiu2b2t/python-openbmclapi/latest/total)
 ![GitHub Repo stars](https://img.shields.io/github/stars/tianxiu2b2t/python-openbmclapi)
 
 
