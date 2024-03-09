@@ -1,79 +1,15 @@
 import asyncio
-from dataclasses import dataclass
-from decimal import Decimal
-from enum import Enum
+from dataclasses import asdict, dataclass, is_dataclass
 import hashlib
 import inspect
 import io
 from pathlib import Path
-import queue
-import threading
 import time
-from typing import Any, Callable, Iterable, Optional, Type, Union, get_args
+from typing import Any, AsyncGenerator, AsyncIterator, Callable, Generator, Iterable, Iterator, Optional, Type, Union, get_args
+import typing
+
 import aiofiles
-from rich.console import Console
-from rich.text import Text
-import traceback as traceback_
-import globals
-
-class Task:
-    def __init__(self, target, args, loop: bool = False, delay: float = 0, interval: float = 0, back = None) -> None:
-        self.target = target
-        self.args = args
-        self.loop = loop
-        self.delay = delay
-        self.interval = interval
-        self.last = 0.0
-        self.create_at = time.time()
-        self.blocked = False
-        self.back = back
-    async def call(self):
-        if self.blocked:
-            return
-        try:
-            if inspect.iscoroutinefunction(self.target):
-                await self.target(*self.args)
-            else:
-                self.target(*self.args)
-            await self.callback()
-        except:
-            traceback()
-    async def callback(self):
-        if not self.back:
-            return
-        try:
-            if inspect.iscoroutinefunction(self.back):
-                await self.back()
-            else:
-                self.back()
-        except:
-            traceback()
-    def block(self):
-        self.blocked = True
-class TimerManager:
-    def delay(self, target, args = (), delay: float = 0, callback = None):
-        task = Task(target=target, args=args, delay=delay, back=callback)
-        asyncio.get_event_loop().call_later(task.delay, lambda: asyncio.run_coroutine_threadsafe(task.call(), asyncio.get_event_loop()))
-        return task
-    def repeat(self, target, args = (), delay: float = 0, interval: float = 0, callback = None):
-        task = Task(target=target, args=args, delay=delay, loop=True, interval=interval, back=callback)
-        asyncio.get_event_loop().call_later(task.delay, lambda: self._repeat(task))
-        return task
-    def _repeat(self, task: Task):
-        asyncio.get_event_loop().call_later(0, lambda: asyncio.run_coroutine_threadsafe(task.call(), asyncio.get_event_loop()))
-        asyncio.get_event_loop().call_later(task.interval, lambda: self._repeat(task))
-Timer: TimerManager = TimerManager()
-
-@dataclass
-class BMCLAPIFile:
-    size: int = 0
-    hash: str = ""
-    path: str = ""
-
-def updateDict(org: dict, new: dict):
-    n = org.copy()
-    n.update(new)
-    return n
+import config
 
 @dataclass
 class Client:
@@ -100,28 +36,28 @@ class Client:
         self.read_data += len(data)
         self.read_time += end_time
         speed = self.read_data / max(1, end_time)
-        if speed < globals.MIN_RATE and self.read_time > globals.MIN_RATE_TIMESTAMP:
+        if speed < config.MIN_RATE and self.read_time > config.MIN_RATE_TIMESTAMP:
             raise TimeoutError("Data read speed is too low")
         return data
-    async def readline(self, timeout: Optional[float] = globals.TIMEOUT):
+    async def readline(self, timeout: Optional[float] = config.TIMEOUT):
         start_time = time.time()
         data = await asyncio.wait_for(self.reader.readline(), timeout=timeout)
         self.record_network(0, len(data))
         return self._record_after(start_time, data)
 
-    async def readuntil(self, separator: bytes | bytearray | memoryview = b"\n", timeout: Optional[float] = globals.TIMEOUT):
+    async def readuntil(self, separator: bytes | bytearray | memoryview = b"\n", timeout: Optional[float] = config.TIMEOUT):
         start_time = time.time()
         data = await asyncio.wait_for(self.reader.readuntil(separator=separator), timeout=timeout)
         self.record_network(0, len(data))
         return self._record_after(start_time, data)
 
-    async def read(self, n: int = -1, timeout: Optional[float] = globals.TIMEOUT):
+    async def read(self, n: int = -1, timeout: Optional[float] = config.TIMEOUT):
         start_time = time.time()
         data: bytes = await asyncio.wait_for(self.reader.read(n), timeout=timeout)
         self.record_network(0, len(data))
         return self._record_after(start_time, data)
 
-    async def readexactly(self, n: int, timeout: Optional[float] = globals.TIMEOUT):
+    async def readexactly(self, n: int, timeout: Optional[float] = config.TIMEOUT):
         start_time = time.time()
         data = await asyncio.wait_for(self.reader.readexactly(n), timeout=timeout)
         self.record_network(0, len(data))
@@ -182,247 +118,6 @@ class Client:
             return
         self.log_network(self, sent, recv)
 
-
-def get_hash(org):
-    if len(org) == 32: return hashlib.md5()
-    else: return hashlib.sha1()
-
-async def get_file_hash(org: str, path: Path):
-    hash = get_hash(org)
-    async with aiofiles.open(path, "rb") as r:
-        while data := await r.read(globals.BUFFER):
-            if not data:
-                break
-            hash.update(data)
-            await asyncio.sleep(0.001)
-    return hash.hexdigest() == org
-
-byte_unit: tuple = ("", "K", "M", "G", "T", "E")
-
-def calc_bytes(byte):
-    cur = 0
-    while byte // 1024.0 >= 1 and cur < len(byte_unit) - 1:
-        cur += 1
-        byte /= 1024.0
-    return float(Decimal(byte).quantize(Decimal("0.01"), rounding = "ROUND_HALF_UP")), byte_unit[cur]
-
-def calc_more_bytes(*bytes):
-    cur = 0
-    byte = max(bytes)
-    while byte // 1024.0 >= 1 and cur < len(byte_unit) - 1:
-        cur += 1
-        byte /= 1024.0
-    return [float(Decimal(b / (1024.0 ** cur)).quantize(Decimal("0.01"), rounding = "ROUND_HALF_UP")) for b in bytes], byte_unit[cur]
-
-threads: list[threading.Thread] = []
-def append_thread(thread: threading.Thread):
-    global threads
-    threads.append(thread)
-    return thread
-
-class ChatColor(Enum):
-    BLACK = {
-        "code": "0",
-        "name": "black",
-        "color": 0
-    }
-    DARK_BLUE = {
-        "code": "1",
-        "name": "dark_blue",
-        "color": 170
-    }
-    DARK_GREEN = {
-        "code": "2",
-        "name": "dark_green",
-        "color": 43520
-    }
-    DARK_AQUA = {
-        "code": "3",
-        "name": "dark_aqua",
-        "color": 43690
-    }
-    DARK_RED = {
-        "code": "4",
-        "name": "dark_red",
-        "color": 11141120
-    }
-    DARK_PURPLE = {
-        "code": "5",
-        "name": "dark_purple",
-        "color": 11141290
-    }
-    GOLD = {
-        "code": "6",
-        "name": "gold",
-        "color": 16755200
-    }
-    GRAY = {
-        "code": "7",
-        "name": "gray",
-        "color": 11184810
-    }
-    DARK_GRAY = {
-        "code": "8",
-        "name": "dark_gray",
-        "color": 5592405
-    }
-    BLUE = {
-        "code": "9",
-        "name": "blue",
-        "color": 5592575
-    }
-    GREEN = {
-        "code": "a",
-        "name": "green",
-        "color": 5635925
-    }
-    AQUA = {
-        "code": "b",
-        "name": "aqua",
-        "color": 5636095
-    }
-    RED = {
-        "code": "c",
-        "name": "red",
-        "color": 16733525
-    }
-    LIGHT_PURPLE = {
-        "code": "d",
-        "name": "light_purple",
-        "color": 16733695
-    }
-    YELLOW = {
-        "code": "e",
-        "name": "gray",
-        "color": 16777045
-    }
-    WHITE = {
-        "code": "f",
-        "name": "white",
-        "color": 16777215
-    }
-    @staticmethod
-    def getAllowcateCodes():
-        code: str = ""
-        for value in list(ChatColor):
-            code += value.value["code"]
-        return code
-    @staticmethod
-    def getByChatToHex(code: str):
-        if len(code) != 1: return "000000"
-        for value in list(ChatColor):
-            if code == value.value["code"]:
-                return f"{value.value['color']:06X}"
-        return "000000"
-    @staticmethod
-    def getByChatToName(code: str):
-        if len(code) != 1: return "black"
-        for value in list(ChatColor):
-            if code == value.value["code"]:
-                return value.value["name"]
-        return "black"
-
-console = Console(color_system='auto')
-Force = True
-log_dir = Path("web_logs")
-log_dir.mkdir(exist_ok=True)
-is_debug = False
-logs: queue.Queue = queue.Queue()
-
-def logger(*message, level: int = 0, force = False):
-    global Force, logs
-    if Force or force:
-        datetime: time.struct_time = time.localtime()
-        msg: Text = formatColor(f"§{(getLevelColor(level)).value['code']}[{datetime.tm_year:04d}-{datetime.tm_mon:02d}-{datetime.tm_mday:02d} {datetime.tm_hour:02d}:{datetime.tm_min:02d}:{datetime.tm_sec:02d}] [{getLevel(level)}] " + ' '.join([str(msg) for msg in message]))
-        console.print(msg)
-        logs.put(msg)
-
-def check_log():
-    global logs, log_dir
-    with open(str(log_dir) + "/logs.log", "a") as w:
-        while 1:
-            while not logs.empty():
-                w.write(str(logs.get()) + "\n")
-                w.flush()
-
-threading.Thread(target=check_log,).start()
-
-def warn(*message):
-    return logger(*message, level = 1)
-
-def info(*message):
-    return logger(*message, level = 0)
-
-def error(*message):
-    return logger(*message, level = 2, force=True)
-
-def traceback(force: bool = True):
-    global is_debug
-    if is_debug or force:
-        return error(traceback_.format_exc())
-
-def debug(*message):
-    return logger(*message, level = 3)
-
-def formatColor(message: str) -> Text:
-    text: Text = Text("")
-    temp: str
-    start: int = 0
-    while (start := message.find("§", start)) != -1:
-        if (start + 1) > len(message): break
-        if message.find("§", start + 1) != -1:
-            temp = message[start + 2 : message.index("§", start + 1)]
-        else:
-            temp = message[start + 2:]
-        text.append(temp, style=f"{ChatColor.getByChatToName(message[start + 1 : start + 2])}")
-        start += 1
-    return text
-
-def getLevel(level: int = 0):
-    match (level):
-        case 0:
-            return "INFO"
-        case 1:
-            return "WARN"
-        case 2:
-            return "ERROR"
-        case 3:
-            return "DEBUG"
-        case _:
-            return "LOGGER"
-
-def getLevelColor(level: int = 0):
-    match (level):
-        case 0:
-            return ChatColor.GREEN
-        case 1:
-            return ChatColor.YELLOW
-        case 2:
-            return ChatColor.RED
-        case _:
-            return ChatColor.WHITE
-
-def fixedValue(data: dict[str, Any]):
-    for key, value in data.items():
-        if value.lower() == 'true':
-            data[key] = True
-        elif value.lower() == 'false':
-            data[key] = False
-        elif value.isdigit():
-            data[key] = int(value)
-        else:
-            try:
-                data[key] = float(value)
-            except ValueError:
-                pass
-    return data
-
-def get_data_content_type(obj: Any):
-    if isinstance(obj, (list, tuple, dict)):
-        return "application/json"
-    else:
-        return "text/plain"
-    
 def parse_obj_as_type(obj: Any, type_: Type[Any]) -> Any:
     if obj is None:
         return obj
@@ -475,7 +170,139 @@ def load_params(data: Any, type_: Any):
         return value
     else:
         return data
+
+def fixedValue(data: dict[str, Any]):
+    for key, value in data.items():
+        if value.lower() == 'true':
+            data[key] = True
+        elif value.lower() == 'false':
+            data[key] = False
+        elif value.isdigit():
+            data[key] = int(value)
+        else:
+            try:
+                data[key] = float(value)
+            except ValueError:
+                pass
+    return data
+
+def parseObject(data: Any):
+    if isinstance(data, dict):
+        for k, v in data.items():
+            data[k] = parseObject(v)
+    elif isinstance(data, (tuple, list)):
+        data = [parseObject(d) for d in data]
+    elif is_dataclass(data):
+        data = asdict(data)
+    return data
+CONTENT_ACCEPT = Union[io.BytesIO, memoryview, bytes, int, float, str, bool, dict, tuple, list, set, AsyncIterator, AsyncGenerator, Iterator, Generator, None]  
+class _StopIteration(Exception):
+    ...
+
+class Progress:
+    def __init__(self, max: int, total: Optional[int] = None) -> None:
+        self.cur = 0
+        self.cur_speed = 0
+        self.cur_speeds = []
+        self.cur_time = time.time()
+        self.max = max
+        self.total = total
+        self.start = time.time()
+    def add(self, cur = 1):
+        self.cur += cur
+        self.cur_speed += cur
+        self._reset()
+    def _reset(self):
+        if time.time() - self.cur_time >= 1:
+            self.cur_speeds = self.cur_speeds[len(self.cur_speeds) - self.max - 1:]
+            self.cur_speeds.append(self.cur_speed)
+            self.cur_time = time.time()
+            self.cur_speed = 0
+    def get_cur_speeds(self):
+        self._reset()
+        return self.cur_speeds
+    def get_cur(self):
+        return self.cur
+    def get_cur_speed(self):
+        self._reset()
+        return self.cur_speed
+    def get_eta(self):
+        return -1 if self.total == None or self.cur_speed == 0 else max(0, self.total - self.cur) / self.cur_speed
+    def get_total(self):
+        return time.time() - self.start
+
+def content_next(iterator: typing.Iterator):
+    try:
+        return next(iterator)
+    except StopIteration:
+        raise _StopIteration
     
+def calc_bytes(v):
+    unit = config.BYTES[0]
+    for units in config.BYTES:
+        if abs(v) >= 1024.0:
+            v /= 1024.0
+            unit = units
+    return f"{v:.2f} {unit}iB"
+
+def calc_more_bytes(*values):
+    v = min(*values)
+    unit = config.BYTES[0]
+    i = 0
+    for units in config.BYTES:
+        if abs(v) >= 1024.0:
+            v /= 1024.0
+            i += 1
+            unit = units
+    return [f"{(v / (1024.0 ** i)):.2f} {unit}iB" for v in values]
+def calc_bit(v):
+    unit = config.BYTES[0]
+    v *= 8
+    for units in config.BYTES:
+        if abs(v) >= 1024.0:
+            v /= 1024.0
+            unit = units
+    return f"{v:.2f} {unit}bps"
+
+def calc_more_bit(*values):
+    v = min(*values) * 8
+    unit = config.BYTES[0]
+    i = 0
+    for units in config.BYTES:
+        if abs(v) >= 1024.0:
+            v /= 1024
+            i += 1
+            unit = units
+    return [f"{(v * 8 / (1024.0 ** i)):.2f} {unit}bps" for v in values]
+
+def updateDict(dict: dict, new: dict):
+    org = dict.copy()
+    org.update(new)
+    return org
+
+def format_time(n):
+    if not n:
+        return "--:--:--"
+    n = int(n)
+    hour = int(n / 60 / 60)
+    minutes = int(n / 60 % 60)
+    second = int(n % 60)
+    return f"{hour:02d}:{minutes:02d}:{second:02d}"
+
+def get_hash(org):
+    if len(org) == 32: return hashlib.md5()
+    else: return hashlib.sha1()
+
+async def get_file_hash(org: str, path: Path):
+    hash = get_hash(org)
+    async with aiofiles.open(path, "rb") as r:
+        while data := await r.read(config.IO_BUFFER):
+            if not data:
+                break
+            hash.update(data)
+            await asyncio.sleep(0.001)
+    return hash.hexdigest() == org
+
 class MinecraftUtils:
     @staticmethod
     def getVarInt(data: int):
@@ -585,6 +412,3 @@ class FileDataOutputStream(DataOutputStream):
     def __init__(self, bw: io.BufferedWriter) -> None:
         super().__init__()
         self.io = bw
-
-
-

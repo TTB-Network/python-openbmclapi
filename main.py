@@ -1,166 +1,134 @@
-import ssl
-import zlib
-import asyncio
-from enum import Enum
+import importlib
+import io
+import json
 from pathlib import Path
-import random
+import queue
+import subprocess
+import threading
+from typing import Optional
+
+
+def install_module(module_name, module = None):
+    module = module or module_name
+    try:
+        importlib.import_module(module_name)
+    except ImportError:
+        print(f"正在安装模块 '{module_name}'...")
+        subprocess.check_call(["pip", "install", module])
+        print(f"模块 '{module_name}' 安装成功")
+
+def init():
+    install_module('watchdog')
+
+init()
+
+import sys
 import time
-from typing import Any, Optional
-import cluster
-from utils import Client, info, traceback
-import utils
-import globals
-import web
-import os
-
-os.environ['TMPDIR'] = str(Path(str(Path(__file__).absolute().parent) + "/cache"))
-os.environ['STARTUP'] = str(time.time())
-detect_key = random.randbytes(8)
-class ProtocolHeader(Enum):
-    HTTP = 'HTTP'
-    NONE = 'Unknown'
-    DETECTKEY = "Detect"
-    GZIP = "Gzip"
-    @staticmethod
-    def from_data(data: bytes):
-        if detect_key == data:
-            return ProtocolHeader.DETECTKEY
-        if b'HTTP/1.1\r\n' in data or b'HTTP/1.0\r\n' in data:
-            return ProtocolHeader.HTTP
-        
-        try:
-            zlib.decompress(data)
-            return ProtocolHeader.GZIP
-        except:
-            ...
-        return ProtocolHeader.NONE
-    def __str__(self) -> str:
-        return self.value
-    def __repr__(self) -> str:
-        return self.value
-ports: dict[int, asyncio.Server] = {}
-port_: list[int] = [8800]
-started_port: list[int] = []
-protocol_handler: dict[ProtocolHeader, Any] = {}
-protocol_startup: dict[ProtocolHeader, Any] = {}
-protocol_shutdown: dict[ProtocolHeader, Any] = {}
-
-async def handle(client: Client):
-    protocol: Optional[ProtocolHeader] = None
-    try:
-        while (data := await client.read(8192)) and not client.is_closed():
-            if not data:
-                break
-            if not protocol:
-                protocol = ProtocolHeader.from_data(data)
-            if protocol == ProtocolHeader.DETECTKEY:
-                client.write(data)
-                break
-            if protocol == ProtocolHeader.GZIP:
-                client.compressed = True
-                protocol = ProtocolHeader.from_data(data)
-            if protocol_handler.get(protocol) != None:
-                await protocol_handler[protocol](data, client)
-            if not client.keepalive_connection:
-                break
-            client.set_log_network(None)
-    except:
-        traceback(False)
-    client.close()
-
-async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    client = Client(reader, writer)
-    if cert:
-        client.is_ssl = True
-    try:
-        await asyncio.wait([asyncio.create_task(handle(client))], timeout=globals.TIMEOUT)
-    except TimeoutError:
-        client.close()
-cert = None
-def load_cert():
-    global cert
-    if Path("./config/cert.pem").exists() and Path("./config/key.pem").exists():
-        cert = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-        cert.check_hostname = False
-        cert.load_cert_chain("./config/cert.pem", "./config/key.pem")
-load_cert()
-def get_ports():
-    global port_
-    return port_
-async def start_server(port: int):
-    global ports
-    try:
-        if cert:
-            ports[port] = await asyncio.start_server(_handle, port=port, host='0.0.0.0', ssl=cert)
-        else:
-            ports[port] = await asyncio.start_server(_handle, port=port, host='0.0.0.0')
-        for sock in ports[port].sockets:
-            sock._sock.settimeout(globals.TIMEOUT)  # type: ignore
-        info(f"Started service on {port}{' with ssl' if cert else ''}!")
-    except:
-        traceback()
-
-async def detect_port(port: int):
-    try:
-        if cert:
-            ccert = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
-            ccert.check_hostname = False
-            ccert.load_verify_locations("./config/cert.pem")
-            r, w = await asyncio.open_connection('127.0.0.1', port=port, ssl=ccert)
-        else:
-            r, w = await asyncio.open_connection('127.0.0.1', port=port)
-        w.write(detect_key)
-        data = await asyncio.wait_for(r.read(), timeout=5)
-        w.close()
-        if data != detect_key:
-            return False
-        return True
-    except:
-        traceback()
-        return False
-
-async def restart_server(port: int):
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEvent, FileSystemEventHandler
+encoding = sys.getdefaultencoding()
+process: Optional[subprocess.Popen] = None
+stdout = None
+stderr = None
+output: queue.Queue[str] = queue.Queue()
+last_output_length: int = 0
+last_flush: bool = False
+def _():
+    global process, stdout, stderr, output
     while 1:
-        while await detect_port(port):
-            await asyncio.sleep(5)
-        ports[port].close()
-        await start_server(port)
-        await asyncio.sleep(5)
+        start_time = time.time()
+        process = subprocess.Popen([sys.executable, *sys.argv[2:]], cwd=sys.argv[1], stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding=encoding)
+        stdout, stderr = process.stdout, process.stderr
+        process.wait()
+        sleep = time.time() - start_time
+        if sleep < 5:
+            sleep = 5 - sleep
+            print(f"Application Error? Sleep {sleep:.2f}s")
+            time.sleep(sleep)
 
-async def start_():
-    start = time.time_ns()
-    for port in port_:
-        await start_server(port)
-    await cluster.init()
-    [asyncio.create_task(startup()) for startup in protocol_startup.values() if startup]
-    info(f"Done! ({(time.time_ns() - start) / 1000000000.0:.2f}s)")
-    await asyncio.wait([asyncio.create_task(restart_server(port)) for port in port_])
-    globals.running = 0
-    [asyncio.create_task(shutdown()) for shutdown in protocol_shutdown.values() if shutdown]
-    async def waiting():
-        while any([t for t in utils.threads if t.is_alive()]):
-            ...
-    info("Waiting 5s in shutdown server.")
-    await asyncio.wait_for(waiting(), timeout=5)
+def _out():
+    global process, stdout, output
+    while 1:
+        if process and stdout is not None:
+            line: str = stdout.readline()
+            if not line:
+                continue
+            if line.strip():
+                for l in line.split("\n"):
+                    if l:
+                        output.put(l)
+            else:
+                output.put(line)
 
-def start():
-    asyncio.run(start_())
+def _err():
+    global process, stderr, output
+    while 1:
+        if process and stderr is not None:
+            line: str = stderr.readline()
+            if not line:
+                continue
+            if line.strip():
+                for l in line.split("\n"):
+                    if l:
+                        output.put(l)
+            else:
+                output.put(line)
 
-def set_protocol_handler(protocol: ProtocolHeader, handler: Any):
-    global protocol_handler
-    protocol_handler[protocol] = handler
+def _parse(params):
+    kwargs = {}
+    if "flush" in params:
+        kwargs["flush"] = True
+    return kwargs
+def _print():
+    global output, last_output_length, last_flush
+    while 1:
+        msg = output.get().removesuffix("\n")
+        date = time.localtime()
+        date = f"[{date.tm_year:04d}-{date.tm_mon:02d}-{date.tm_mday:02d} {date.tm_hour:02d}:{date.tm_min:02d}:{date.tm_sec:02d}]"
+        kwargs: dict = {}
+        flush: bool = False
+        if msg.startswith("<<<") and ">>>" in msg:
+            kwargs = _parse(msg[3:msg.find(">>>")])
+            msg = msg[msg.find(">>>") + 3:]
+            flush = kwargs.get("flush", False)
+        text = f"{date} {msg}"
+        if flush:
+            sys.stdout.write('\r' + ' ' * (last_output_length + 16) + '\r')
+            sys.stdout.flush()
+            last_output_length = len(text)
+        print(text + ('\n' if not flush else ''), end='', flush=flush)
+        last_flush = flush
 
-def set_protocol_startup(protocol: ProtocolHeader, startup: Any):
-    global protocol_startup
-    protocol_startup[protocol] = startup
-
-def set_protocol_shutdown(protocol: ProtocolHeader, shutdown: Any):
-    global protocol_shutdown
-    protocol_shutdown[protocol] = shutdown
-
+class MyHandler(FileSystemEventHandler):
+    def on_any_event(self, event: FileSystemEvent) -> None:
+        global process
+        if not event.is_directory and event.src_path.endswith('.py'):
+            if process is None or process.poll() != None:
+                return
+            print(f"The container file have been changed! File: {event.src_path}")
+            process.kill()
+            process.terminate()
 if __name__ == "__main__":
-    set_protocol_handler(ProtocolHeader.HTTP, web.handle)
-    if web.application:
-        set_protocol_startup(ProtocolHeader.HTTP, web.application.start)
-        set_protocol_shutdown(ProtocolHeader.HTTP, web.application.stop)
-    start()
+    if len(sys.argv) == 1:
+        print("Not Container Path.")
+        exit(0)
+    if len(sys.argv) == 2:
+        print("Not Executable File.")
+        exit(0)
+    path = sys.argv[1]
+    if not Path(path).exists():
+        Path(path).mkdir(exist_ok=True, parents=True)
+    event_handler = MyHandler()
+    observer = Observer()
+    observer.schedule(event_handler, path, recursive=True)
+    observer.start()
+    threading.Thread(target=_).start()
+    threading.Thread(target=_err).start()
+    threading.Thread(target=_out).start()
+    threading.Thread(target=_print).start()
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        observer.stop()
+    observer.join()
