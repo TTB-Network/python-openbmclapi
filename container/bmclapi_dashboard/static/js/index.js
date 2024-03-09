@@ -140,7 +140,7 @@ const calc_more_bytes = (...values) => {
                     core_modules_locals["master"]["bytes"]      .setOption(core_modules_locals["master"]["options"])
                     core_modules_locals["master"]["req"]        .setOption(core_modules_locals["master"]["options"])
                     core_modules_locals["master"].refresh()
-                    setInterval(core_modules_locals["master"].refresh, 300000)
+                    core_modules_locals["master"]["timer"] = setInterval(core_modules_locals["master"].refresh, 300000)
                 }
             },
             "resize": () => {
@@ -149,6 +149,12 @@ const calc_more_bytes = (...values) => {
                 core_modules_locals["master"]["bytes"]      .resize()
                 core_modules_locals["master"]["req"]        .resize()
                 core_modules_locals["master"]["load"]       .resize()
+            },
+            "disconnect": () => {
+                if ("master" in core_modules_locals) {
+                    clearInterval(core_modules_locals["master"]["timer"])
+                    delete core_modules_locals["master"]
+                }
             },
             "page": () => {
                 return [
