@@ -1,5 +1,6 @@
 import asyncio
 from dataclasses import dataclass
+import glob
 import hashlib
 import hmac
 import io
@@ -126,13 +127,13 @@ class FileStorage:
         byte = 0
         miss = []
         for i, file in enumerate(filelist):
-            filepath = Path(str(self.dir) + f"/{file.hash[:2]}/{file.hash}")
-            if not filepath.exists() or filepath.stat().st_size != file.size:
+            filepath = str(self.dir) + f"/{file.hash[:2]}/{file.hash}"
+            if not os.path.exists(filepath) or os.path.getsize(filepath) != file.size:
                 miss.append(file)
                 ...
             await asyncio.sleep(0)
-            b = utils.calc_more_bytes(byte, filesize)
             byte += file.size
+            b = utils.calc_more_bytes(byte, filesize)
             print(f"<<<flush>>>Check file {i}/{total} ({b[0]}/{b[1]})")
         if not miss:
             print(f"<<<flush>>>Checked all files!")
@@ -161,6 +162,8 @@ class FileStorage:
             eta = self.download_bytes.get_eta()
             print(f"<<<flush>>>Downloading files... {self.download_files.get_cur()}/{total} {b[0]}/{b[1]}, eta: {utils.format_time(eta if eta != -1 else None)}, total: {utils.format_time(self.download_bytes.get_total())}, Min: {bit[0]}, Cur: {bit[2]}, Max: {bit[1]}, Files: {self.download_files.get_cur_speed()}/s")
             await asyncio.sleep(1)
+        for timer in timers:
+            del timer
         await self.start_service()
     async def start_service(self):
         tokens = await token.getToken()
@@ -264,13 +267,13 @@ class FileCache:
         if self.last < time.time():
             stat = self.file.stat()
             if self.size == stat.st_size and self.last_file == stat.st_mtime:
-                self.last = time.time() + 600
+                self.last = time.time() + 1440
                 return self.buf
             self.buf.seek(0, os.SEEK_SET)
             async with aiofiles.open(self.file, "rb") as r:
                 while (data := await r.read(min(config.IO_BUFFER, stat.st_size - self.buf.tell()))) and self.buf.tell() < stat.st_size:
                     self.buf.write(data)
-                self.last = time.time() + 600
+                self.last = time.time() + 1440
                 self.size = stat.st_size
                 self.last_file = stat.st_mtime
             self.buf.seek(0, os.SEEK_SET)
@@ -313,8 +316,11 @@ async def init():
         return Path("./bmclapi_dashboard/index.html")
     @router.get("/master")
     async def _(request: web.Request, url: str):
-        resp = await aiohttp.ClientSession(URL).get(url)
-        return resp.content.iter_chunked(config.REQUEST_BUFFER) # type: ignore
+        content = io.BytesIO()
+        async with aiohttp.ClientSession(URL) as session:
+            async with session.get(url) as resp:
+                content.write(await resp.read())
+        return content # type: ignore
     app.mount(router)
 
 async def clearCache():
@@ -322,7 +328,7 @@ async def clearCache():
     data = cache.copy()
     size = 0
     for k, v in data.items():
-        if v.access + 60 < time.time():
+        if v.access + 1440 < time.time():
             cache.pop(k)
         else:
             size += v.size
