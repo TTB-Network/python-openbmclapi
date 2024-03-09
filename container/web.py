@@ -1,4 +1,5 @@
 import asyncio
+import base64
 from dataclasses import dataclass
 import datetime
 import inspect
@@ -70,12 +71,15 @@ class Router:
         
 class Resource:
     def __init__(self, url: str, path: Path, show_dir: bool = False) -> None:
-        if not path.is_dir():
+        if not path.exists():
             raise RuntimeError(f"The path {path} is not dir.")
+        self.path = path
         self.dir = str(path.absolute()).replace("\\", "/").removesuffix("/")
         self.url = f"/" + url.lstrip("/")
         self.show_dir = show_dir
-    async def __call__(self, url: str, request: 'Request') -> Any:
+    async def __call__(self, request: 'Request') -> Any:
+        if self.path.is_file():
+            return self.dir
         path = (self.dir + request.path.removeprefix(self.url))
         filepath = Path(self.dir + request.path.removeprefix(self.url))
         if filepath.is_dir() and self.show_dir:
@@ -107,7 +111,7 @@ class Resource:
             return content
         elif filepath.is_file():
             return filepath
-        return "Not Found"
+        return Response("Not Found", status_code=404)
 
 class Application:
     def __init__(self) -> None:
@@ -180,7 +184,7 @@ class Application:
         else:
             for resource in self._resources:
                 if request.url.startswith(resource.url):
-                    result = await resource(request.url, request)
+                    result = await resource(request)
                     break
         if result == None:
             accept = await request.get_headers("Accept", ) or ""
@@ -504,15 +508,22 @@ from utils import Client
 import web
 server: Optional[asyncio.Server] = None
 cert = None
+cur_ssl = False
+def get_ssl():
+    global cur_ssl
+    return cur_ssl
 
 def load_cert():
-    global cert
+    global cert, cur_ssl
     if Path(".ssl/cert.pem").exists() and Path(".ssl/key.pem").exists():
         cert = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         cert.check_hostname = False
         cert.load_cert_chain(Path(".ssl/cert.pem"), Path(".ssl/key.pem"))
         if server:
             server.close()
+        cur_ssl = True
+    else:
+        cur_ssl = False
 
 async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     client = Client(reader, writer)
@@ -529,16 +540,21 @@ async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
 async def main():
     global cert, server
     load_cert()
+    import cluster
+    await cluster.init()
     while 1:
         try:
             server = await asyncio.start_server(_handle, host='0.0.0.0', port=config.PORT, ssl=cert)
             print(f"Server listen on {config.PORT}{' with ssl' if cert else ''}!")
-            import cluster
-            await cluster.init()
             await server.serve_forever()
         except:
             if server:
                 server.close()
             traceback.print_exc()
+
+@app.get("/favicon.ico")
+async def _():
+    return base64.b64decode("AAABAAIAEBAAAAEAIABoBAAAJgAAACAgAAABACAAKBEAAI4EAAAoAAAAEAAAACAAAAABACAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAHA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/wAAAP8AAAD/HA37/xwN+/8AAAD/AAAA/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8AAAD/AAAA/xwN+/8cDfv/AAAA/wAAAP8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAoAAAAIAAAAEAAAAABACAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAHA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/Gwz0/xsM9P8bDPT/Gwz0/xsM9P8bDPT/Gwz0/xsM9P8bDPT/Gwz0/xsM9P8bDPT/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xsM9P8BAQ7/AAAH/wAAB/8AAAf/AAAH/wAAB/8AAAf/AAAH/wAAB/8AAAf/AAAH/wEBDv8bDPT/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/Gwz0/wAAB/8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAH/xsM9P8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8bDPT/AAAH/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAf/Gwz0/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xsM9P8BAQ7/AAAH/wAAB/8AAAf/AAAH/wAAB/8AAAf/AAAH/wAAB/8AAAf/AAAH/wEBDv8bDPT/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xsM9P8bDPT/Gwz0/xsM9P8bDPT/Gwz0/xsM9P8bDPT/Gwz0/xsM9P8bDPT/Gwz0/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/Gwz0/xsM9P8bDPT/Gwz0/xwN+/8cDfv/HA37/xwN+/8bDPT/Gwz0/xsM9P8bDPT/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xsM9P8BAQ7/AAAH/wAAB/8BAQ7/Gwz0/xwN+/8cDfv/Gwz0/wEBDv8AAAf/AAAH/wEBDv8bDPT/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/Gwz0/wAAB/8AAAD/AAAA/wAAB/8bDPT/HA37/xwN+/8bDPT/AAAH/wAAAP8AAAD/AAAH/xsM9P8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8bDPT/AAAH/wAAAP8AAAD/AAAH/xsM9P8cDfv/HA37/xsM9P8AAAf/AAAA/wAAAP8AAAf/Gwz0/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xsM9P8BAQ7/AAAH/wAAB/8BAQ7/Gwz0/xwN+/8cDfv/Gwz0/wEBDv8AAAf/AAAH/wEBDv8bDPT/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xsM9P8bDPT/Gwz0/xsM9P8cDfv/HA37/xwN+/8cDfv/Gwz0/xsM9P8bDPT/Gwz0/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/xwN+/8cDfv/HA37/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+
 def init():
     asyncio.run(main())
