@@ -32,7 +32,7 @@
 
 ## 从源码运行
 
-1. 克隆仓库：
+1. 克隆仓库或从 [Releases](https://github.com/TTB-Network/python-openbmclapi/releases) 中下载代码：
 
     ```sh
     git clone https://github.com/tianxiu2b2t/python-openbmclapi.git
