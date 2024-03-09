@@ -17,6 +17,8 @@
 
 🎨 **跨系统**、**跨架构**和 **Docker** 支持。
 
+🎉 __*新增功能！*__基于 Echart 的 OpenBMCLAPI 仪表盘（Dashboard）。
+
 </div>
 
 # 简介
