@@ -5,6 +5,7 @@ import threading
 from typing import Optional
 import sys
 import time
+from container.logger import logger
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 encoding = sys.getdefaultencoding()

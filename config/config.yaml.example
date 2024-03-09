@@ -1,0 +1,8 @@
+byoc: ''
+cluster_id: ''
+cluster_secret: ''
+download_threads: 64
+timeout: 30
+web_host: ''
+web_port: 8800
+web_publicport: 8800

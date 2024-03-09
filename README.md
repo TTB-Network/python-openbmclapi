@@ -53,7 +53,7 @@
     python ./container/main.py
     ```
 
-4. 在 `config.properties` 中，填写你的 `cluster.id`（即 `CLUSTER_ID`）和 `cluster.secret`（即 `CLUSTER_SECRET`）。
+4. 在 `config.yaml` 中，填写你的 `cluster_id`（即 `CLUSTER_ID`）和 `cluster_secret`（即 `CLUSTER_SECRET`）。
 
 5. 重新启动程序。
 
@@ -69,8 +69,8 @@
 
     ```sh
     docker run -d \
-    -v ${/data/python-openbmclapi}:/python-openbmclapi/container/cache \
-    -v ${/path/to/your/config}:/python-openbmclapi/config/config.properties \
+    -v ${/data/python-openbmclapi}:/python-openbmclapi/bmclapi \
+    -v ${/path/to/your/config}:/python-openbmclapi/config/config.yaml \
     -p ${web.port}:${web.port} \
     --restart always \
     --name python-openbmclapi \
@@ -81,9 +81,9 @@
 
     `web.port` - 对外开放的端口。
 
-    `/path/to/your/config` - 配置文件（你需要从此仓库中下载 `config/config.properties.example` 并重命名为 `config.properties` 来进行配置）的存放路径。
+    `/path/to/your/config` - 配置文件（你需要从此仓库中下载 `config/config.yaml.example` 并重命名为 `config.yaml` 来进行配置）的存放路径。
 
-    `/data/python-openbmclapi` - `cache` 文件夹挂载的路径。
+    `/data/python-openbmclapi` - `bmclapi` 文件夹（即缓存 `cache` 文件夹）挂载的路径。
 
 # 鸣谢
 
