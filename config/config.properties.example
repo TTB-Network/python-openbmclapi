@@ -1,8 +1,0 @@
-cluster.id=
-cluster.secret=
-download.threads=64
-web.host=
-web.port=8800
-web.publicport=8800
-web.skipsign=True
-web.ssl=

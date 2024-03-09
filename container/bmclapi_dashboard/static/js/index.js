@@ -77,6 +77,7 @@ const calc_more_bytes = (...values) => {
         ".container .vcmp-status-bar:hover":"color: #8dcffc;",
         ".container .vcmp-status-online":"width: 12px;height: 12px;border-radius: 50%;background-color: #0FC6C2;margin: 8px;",
         ".container .vcmp-status-offline":"width: 12px;height: 12px;border-radius: 50%;background-color: rgba(0, 0, 0, 0.5);margin: 8px;margin-right: 0;",
+        "h1, h2, h3":"font-family: Microsoft Yahei UI"
     }
     set_styles(default_styles)
     Extendi18nSets("zh_cn", {
@@ -266,10 +267,7 @@ const calc_more_bytes = (...values) => {
             ExtendFlex().append(
                 ExtendFlex().css("domain", "extend-flex-auto").append(
                     ExtendElement("span").append(
-                        ExtendElement("h2").text("Python OpenBMCLAPI Dashboard").valueOf(),
-                        ExtendElement("span").text("Built by ").append(
-                            ExtendElement("a").text("TTB Network").setAttr("href", "https://github.com/TTB-Network/python-openbmclapi/").valueOf()
-                        ).id("dashboard-geo").valueOf()
+                        ExtendElement("h3").text("Python OpenBMCLAPI Dashboard").valueOf(),
                     ).valueOf(),
                 ).valueOf(),
             ).css("header-bar").valueOf(),

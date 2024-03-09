@@ -4,7 +4,11 @@ container/cache/
 container/config/
 container/__pycache__/
 .vscode/
-.lh/
-test/
 config/config.properties
 __pycache__
+.venv
+logs
+config/config.yaml
+bmclapi
+bmclapi_dashboard
+cache

@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import time
 import traceback
+from logger import logger
 
 
 class Task:
@@ -44,7 +45,7 @@ class Task:
         self.blocked = True
     async def callback_error(self):
         if not self.error:
-            print(traceback.format_exc())
+            logger.debug(traceback.format_exc())
             return
         try:
             if inspect.iscoroutinefunction(self.error):
@@ -52,7 +53,7 @@ class Task:
             else:
                 self.error()
         except:
-            print(traceback.format_exc())
+            logger.debug(traceback.format_exc())
 class TimerManager:
     def delay(self, target, args = (), delay: float = 0, callback = None):
         task = Task(target=target, args=args, delay=delay, back=callback)
