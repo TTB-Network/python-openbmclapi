@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 container/.ssl/
 container/bmclapi/
 container/cache/
@@ -5,3 +6,8 @@ container/config/
 container/__pycache__/
 .vscode/
 .lh/
+=======
+config/config.properties
+__pycache__
+.venv
+>>>>>>> 1821e9a699e53437109088d3d8cf4bb4a1bf9a50
