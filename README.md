@@ -5,12 +5,13 @@
 
 # OpenBMCLAPI for Python
 
-![GitHub Issues or Pull Requests](https://img.shields.io/github/issues-pr/tianxiu2b2t/python-openbmclapi)
-![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/tianxiu2b2t/python-openbmclapi)
-![GitHub License](https://img.shields.io/github/license/tianxiu2b2t/python-openbmclapi)
-![GitHub Release](https://img.shields.io/github/v/release/tianxiu2b2t/python-openbmclapi)
-![GitHub Tag](https://img.shields.io/github/v/tag/tianxiu2b2t/python-openbmclapi)
-![GitHub Repo stars](https://img.shields.io/github/stars/tianxiu2b2t/python-openbmclapi)
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/TTB-Network/python-openbmclapi/total)
+![GitHub Issues or Pull Requests](https://img.shields.io/github/issues-pr/TTB-Network/python-openbmclapi)
+![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/TTB-Network/python-openbmclapi)
+![GitHub License](https://img.shields.io/github/license/TTB-Network/python-openbmclapi)
+![GitHub Release](https://img.shields.io/github/v/release/TTB-Network/python-openbmclapi)
+![GitHub Tag](https://img.shields.io/github/v/tag/TTB-Network/python-openbmclapi)
+![GitHub Repo stars](https://img.shields.io/github/stars/TTB-Network/python-openbmclapi)
 
 
 ✨ 基于 [OpenBMCLAPI](https://github.com/bangbang93/openbmclapi) 的 Python 实现。
