@@ -1,5 +1,6 @@
 from pathlib import Path
 import yaml
+from typing import Union
 
 class CFG:
     def __init__(self, path: str) -> None:
@@ -9,18 +10,18 @@ class CFG:
             self.load()    
 
     def load(self):
-        with open(self.file, 'r', encoding="utf-8") as f:
+        with open(self.file, "r", encoding="utf-8") as f:
             self.cfg = yaml.load(f.read(), Loader=yaml.FullLoader)
 
-    def get(self, key, default):
-        value = self.cfg.get(key, None)
+    def get(self, key, default_):
+        value = self.cfg.get(key, default_)
         if value is None:
-            self.write(key, default)
+            self.write(key, default_)
         return value
 
     def write(self, key, value):
         self.cfg[key] = value
-        with open(self.file, 'w', encoding="utf-8") as f:
+        with open(self.file, "w", encoding="utf-8") as f:
             yaml.dump(data=self.cfg, stream=f, allow_unicode=True)
 
 Config: CFG = CFG("./config/config.yaml")
