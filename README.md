@@ -1,9 +1,9 @@
 
 <div align="center">
 
-![](https://s21.ax1x.com/2024/03/09/pFsjWK1.png)
+![](https://s21.ax1x.com/2024/03/09/pFsjxVf.png)
 
-# OpenBMCLAPI for Python
+# **OpenBMCLAPI for Python**
 
 ![GitHub Issues or Pull Requests](https://img.shields.io/github/issues-pr/tianxiu2b2t/python-openbmclapi)
 ![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/tianxiu2b2t/python-openbmclapi)
@@ -19,7 +19,7 @@
 
 </div>
 
-# 项目说明
+# 简介
 
 本项目是 [OpenBMCLAPI](https://github.com/bangbang93/openbmclapi) 的 Python 版本，OpenBMCLAPI 是通过分布式集群帮助 [BMCLAPI](https://bmclapidoc.bangbang93.com/) 进行文件分发、加速中国大陆 Minecraft 下载的公益项目。
 
@@ -58,34 +58,34 @@
 
 1. 拉取镜像：
 
-```sh
-docker pull silianz/python-openbmclapi:latest
-```
+    ```sh
+    docker pull silianz/python-openbmclapi:latest
+    ```
 
 2. 创建容器：
 
-```sh
-docker run -d \
--v ${/data/python-openbmclapi}:/python-openbmclapi/container/cache \
--v ${/path/to/your/config}:/python-openbmclapi/config/config.properties \
--p ${web.port}:${web.port} \
---restart always \
---name python-openbmclapi \
-silianz/python-openbmclapi 
-```
+    ```sh
+    docker run -d \
+    -v ${/data/python-openbmclapi}:/python-openbmclapi/container/cache \
+    -v ${/path/to/your/config}:/python-openbmclapi/config/config.properties \
+    -p ${web.port}:${web.port} \
+    --restart always \
+    --name python-openbmclapi \
+    silianz/python-openbmclapi 
+    ```
 
-参数说明：
+    **参数说明：**
 
-`web.port` - 对外开放的端口。
+    `web.port` - 对外开放的端口。
 
-`/path/to/your/config` - 配置文件（你需要从此仓库中下载 `config/config.properties.example` 并重命名为 `config.properties` 来进行配置）的存放路径。
+    `/path/to/your/config` - 配置文件（你需要从此仓库中下载 `config/config.properties.example` 并重命名为 `config.properties` 来进行配置）的存放路径。
 
-`/data/python-openbmclapi` - `cache` 文件夹挂载的路径。
-
-> Docker 容器仍在实验中，还未发布。
+    `/data/python-openbmclapi` - `cache` 文件夹挂载的路径。
 
 # 鸣谢
 
-[LiterMC/go-openbmclapi](https://github.com/LiterMC/go-openbmclapi/)
+[LiterMC/go-openbmclapi](https://github.com/LiterMC/go-openbmclapi)
 
-[bangbang93/openbmclapi](https://github.com/bangbang93/openbmclapi/)
+[bangbang93/openbmclapi](https://github.com/bangbang93/openbmclapi)
+
+[SALTWOOD/CSharp-OpenBMCLAPI](https://github.com/SALTWOOD/CSharp-OpenBMCLAPI)
