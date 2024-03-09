@@ -1,4 +1,4 @@
-byoc: ''
+byoc: false
 cluster_id: ''
 cluster_secret: ''
 download_threads: 64

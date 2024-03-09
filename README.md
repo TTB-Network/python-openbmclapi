@@ -88,6 +88,20 @@
 
     `/data/python-openbmclapi` - `bmclapi` 文件夹（即缓存 `cache` 文件夹）挂载的路径。
 
+# 配置文件
+
+```yaml
+byoc: ''
+cluster_id: ''
+cluster_secret: ''
+download_threads: 64
+timeout: 30
+web_host: ''
+web_port: 8800
+web_publicport: 8800
+
+```
+
 # 鸣谢
 
 [LiterMC/go-openbmclapi](https://github.com/LiterMC/go-openbmclapi)

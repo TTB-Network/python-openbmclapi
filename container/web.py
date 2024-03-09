@@ -543,7 +543,7 @@ async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         traceback.print_exc()
 async def main():
     global cert, server
-    print(f"Loading...")
+    logger.info(f"Loading...")
     load_cert()
     import cluster
     await cluster.init()

@@ -25,14 +25,14 @@ class CFG:
 
 Config: CFG = CFG("./config/config.yaml")
 
-CLUSTER_ID = Config.get("cluster_id", "")
-CLUSTER_SECRET = Config.get("cluster_secret", "")
-MAX_DOWNLOAD = Config.get("download_threads", 64)
-PORT = Config.get("web_port", 8800)
-PUBLICPORT = Config.get("web_publicport", 8800)
-PUBLICHOST = Config.get("web_host", "")
-BYOC = Config.get("byoc", False)
-TIMEOUT = Config.get("timeout", 30)
+CLUSTER_ID: str = Config.get("cluster_id", "")
+CLUSTER_SECRET: str = Config.get("cluster_secret", "")
+MAX_DOWNLOAD: int = Config.get("download_threads", 64)
+PORT: int = Config.get("web_port", 8800)
+PUBLICPORT: int = Config.get("web_publicport", 8800)
+PUBLICHOST: int = Config.get("web_host", "")
+BYOC: bool = Config.get("byoc", False)
+TIMEOUT: int = Config.get("timeout", 30)
 MIN_RATE_TIMESTAMP = 1000
 MIN_RATE = 500
 REQUEST_BUFFER = 1024 * 8
