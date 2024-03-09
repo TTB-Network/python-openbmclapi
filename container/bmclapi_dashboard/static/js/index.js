@@ -261,7 +261,7 @@ const calc_more_bytes = (...values) => {
                 ExtendFlex().css("domain", "extend-flex-auto").append(
                     ExtendElement("span").append(
                         ExtendElement("h2").text("Python OpenBMCLAPI Dashboard").valueOf(),
-                        ExtendElement("span").text("Powered by ").append(
+                        ExtendElement("span").text("Built by ").append(
                             ExtendElement("a").text("TTB Network").setAttr("href", "https://github.com/TTB-Network/python-openbmclapi/").valueOf()
                         ).id("dashboard-geo").valueOf()
                     ).valueOf(),
