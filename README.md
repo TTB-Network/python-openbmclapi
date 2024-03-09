@@ -20,6 +20,9 @@
 
 🎉 __*新增功能！*__基于 Echart 的 OpenBMCLAPI 仪表盘（Dashboard）。
 
+🎉 __*新增功能！*__基于 loguru 的**日志器**。
+
+
 </div>
 
 # 简介
