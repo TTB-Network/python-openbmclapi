@@ -27,6 +27,8 @@ class Client:
     is_ssl: bool = False
     def get_server_port(self):
         return self.server_port
+    def invaild_ip(self):
+        return self.writer.get_extra_info("peername") == None
     def _record_after(self, start_time: float, data) -> bytes:
         if self.unchecked:
             return data

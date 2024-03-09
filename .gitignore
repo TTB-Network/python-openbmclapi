@@ -6,6 +6,7 @@ container/config/
 container/__pycache__/
 .vscode/
 .lh/
+test/
 =======
 config/config.properties
 __pycache__
