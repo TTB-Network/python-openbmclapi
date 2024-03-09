@@ -13,4 +13,4 @@ RUN pip install -r requirements.txt --no-deps
 VOLUME /python-openbmclapi/cache
 ENV web_port=8080
 EXPOSE $web_port
-CMD ["python", "./main.py"]
+CMD ["python", "./container/main.py"]
