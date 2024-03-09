@@ -1,0 +1,4 @@
+config/config.properties
+.github
+__pycache__
+.venv
