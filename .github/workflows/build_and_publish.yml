@@ -2,9 +2,9 @@
 name: Create tagged release
 
 on:
-  push:
+  push: 
     tags:
-      - 'v*'
+      - v*
 
 jobs:
   release:
