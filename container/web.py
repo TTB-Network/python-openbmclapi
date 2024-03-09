@@ -129,7 +129,7 @@ class Application:
         return self.route(path, 'GET')
     def post(self, path):
         return self.route(path, 'POST')
-    async def handle(self, request: 'Request', client: Client):
+    async def handle(self, request: 'Request'):
         cur_route = None
         method = await request.get_method()
         url = request.get_url()
@@ -191,9 +191,9 @@ class Application:
             accept = await request.get_headers("Accept", ) or ""
             if "text/html" in accept:
                 result = ClientErrorResonse.not_found(request)
-        await Response(content=result or '', headers=Header({ # type: ignore
+        yield Response(content=result or '', headers=Header({ # type: ignore
             "Server": "TTB-Network"
-        }))(request, client)
+        }))
     def mount(self, router: Router):
         self._routes.append(router)
         logger.info(f"Serve router at: {router.prefix}")
@@ -490,7 +490,8 @@ app: Application = Application()
 async def handle(data, client: Client):
     try:
         request: Request = Request(data, client)
-        await app.handle(request, client)
+        async for resp in app.handle(request):
+            await resp(request, client)
         await request.skip()
         logger.info(request.method.ljust(6), request.get_status_code(), "|", request.get_ip().ljust(16), "|", request.url, request.get_user_agent())
     except TimeoutError:
@@ -531,6 +532,8 @@ async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     timeout = config.TIMEOUT
     try:
         while (type := await client.readuntil(b"\r\n", timeout=timeout)):
+            if client.invaild_ip():
+                break
             if b'HTTP/1.1' in type:
                 await web.handle(type, client)
             timeout = 10
@@ -540,6 +543,7 @@ async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         traceback.print_exc()
 async def main():
     global cert, server
+    print(f"Loading...")
     load_cert()
     import cluster
     await cluster.init()

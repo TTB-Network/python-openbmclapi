@@ -4,7 +4,6 @@ container/cache/
 container/config/
 container/__pycache__/
 .vscode/
-.lh/
 config/config.properties
 __pycache__
 .venv

@@ -1,5 +1,6 @@
 import asyncio
 from dataclasses import dataclass
+import glob
 import hashlib
 import hmac
 import io
@@ -131,12 +132,11 @@ class FileStorage:
         pbar = tqdm(total=total, unit=' file(s)', unit_scale=True)
         pbar.set_description("Checking files")
         for i, file in enumerate(filelist):
-            filepath = Path(str(self.dir) + f"/{file.hash[:2]}/{file.hash}")
-            if not filepath.exists() or filepath.stat().st_size != file.size:
+            filepath = str(self.dir) + f"/{file.hash[:2]}/{file.hash}"
+            if not os.path.exists(filepath) or os.path.getsize(filepath) != file.size:
                 miss.append(file)
                 ...
             await asyncio.sleep(0)
-            b = utils.calc_more_bytes(byte, filesize)
             byte += file.size
             pbar.update(1)
         if not miss:
@@ -272,13 +272,13 @@ class FileCache:
         if self.last < time.time():
             stat = self.file.stat()
             if self.size == stat.st_size and self.last_file == stat.st_mtime:
-                self.last = time.time() + 600
+                self.last = time.time() + 1440
                 return self.buf
             self.buf.seek(0, os.SEEK_SET)
             async with aiofiles.open(self.file, "rb") as r:
                 while (data := await r.read(min(config.IO_BUFFER, stat.st_size - self.buf.tell()))) and self.buf.tell() < stat.st_size:
                     self.buf.write(data)
-                self.last = time.time() + 600
+                self.last = time.time() + 1440
                 self.size = stat.st_size
                 self.last_file = stat.st_mtime
             self.buf.seek(0, os.SEEK_SET)
@@ -321,8 +321,11 @@ async def init():
         return Path("./bmclapi_dashboard/index.html")
     @router.get("/master")
     async def _(request: web.Request, url: str):
-        resp = await aiohttp.ClientSession(URL).get(url)
-        return resp.content.iter_chunked(config.REQUEST_BUFFER) # type: ignore
+        content = io.BytesIO()
+        async with aiohttp.ClientSession(URL) as session:
+            async with session.get(url) as resp:
+                content.write(await resp.read())
+        return content # type: ignore
     app.mount(router)
 
 async def clearCache():
@@ -330,7 +333,7 @@ async def clearCache():
     data = cache.copy()
     size = 0
     for k, v in data.items():
-        if v.access + 60 < time.time():
+        if v.access + 1440 < time.time():
             cache.pop(k)
         else:
             size += v.size
