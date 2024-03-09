@@ -18,9 +18,9 @@
 
 🎨 **跨系统**、**跨架构**和 **Docker** 支持。
 
-🎉 __*新增功能！*__基于 Echart 的 OpenBMCLAPI 仪表盘（Dashboard）。
+🎉 __*新增功能！*__ 基于 Echart 的 OpenBMCLAPI 仪表盘（Dashboard）。
 
-🎉 __*新增功能！*__基于 loguru 的**日志器**。
+🎉 __*新增功能！*__ 基于 loguru 的**日志器**。
 
 
 </div>
@@ -88,10 +88,10 @@
 
     `/data/python-openbmclapi` - `bmclapi` 文件夹（即缓存 `cache` 文件夹）挂载的路径。
 
-# 配置文件
+## 配置文件
 
 ```yaml
-byoc: ''
+byoc: false
 cluster_id: ''
 cluster_secret: ''
 download_threads: 64
@@ -99,7 +99,6 @@ timeout: 30
 web_host: ''
 web_port: 8800
 web_publicport: 8800
-
 ```
 
 # 鸣谢
