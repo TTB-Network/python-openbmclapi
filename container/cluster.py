@@ -279,7 +279,7 @@ token = TokenManager()
 storage: FileStorage = FileStorage(Path("bmclapi"))
 async def init():
     global storage
-    #Timer.delay(storage.check_file)
+    Timer.delay(storage.check_file)
     app = web.app
     @app.get("/measure/{size}")
     async def _(request: web.Request, size: int, s: str, e: str):

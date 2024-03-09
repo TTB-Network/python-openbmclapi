@@ -114,8 +114,13 @@ class MyHandler(FileSystemEventHandler):
             if process is None or process.poll() != None:
                 return
             print(f"The container file have been changed! File: {event.src_path}")
-            process.kill()
-            process.terminate()
+            _kill()
+def _kill():
+    global process
+    if process is None or process.poll() != None:
+        return
+    process.kill()
+    process.terminate()
 if __name__ == "__main__":
     if len(sys.argv) == 1:
         print("Not Container Path.")
@@ -140,3 +145,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         observer.stop()
     observer.join()
+    _kill()
