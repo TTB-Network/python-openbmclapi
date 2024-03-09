@@ -1,9 +1,9 @@
 
 <div align="center">
 
-![](https://s21.ax1x.com/2024/03/09/pFsjxVf.png)
+![](https://s21.ax1x.com/2024/03/09/pFyV90g.png)
 
-# **OpenBMCLAPI for Python**
+# OpenBMCLAPI for Python
 
 ![GitHub Issues or Pull Requests](https://img.shields.io/github/issues-pr/tianxiu2b2t/python-openbmclapi)
 ![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/tianxiu2b2t/python-openbmclapi)
@@ -16,6 +16,8 @@
 ✨ 基于 [OpenBMCLAPI](https://github.com/bangbang93/openbmclapi) 的 Python 实现。
 
 🎨 **跨系统**、**跨架构**和 **Docker** 支持。
+
+🎉 __*新增功能！*__基于 Echart 的 OpenBMCLAPI 仪表盘（Dashboard）。
 
 </div>
 

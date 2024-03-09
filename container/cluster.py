@@ -129,7 +129,8 @@ class FileStorage:
             filepath = Path(str(self.dir) + f"/{file.hash[:2]}/{file.hash}")
             if not filepath.exists() or filepath.stat().st_size != file.size:
                 miss.append(file)
-                await asyncio.sleep(0)
+                ...
+            await asyncio.sleep(0)
             b = utils.calc_more_bytes(byte, filesize)
             byte += file.size
             print(f"<<<flush>>>Check file {i}/{total} ({b[0]}/{b[1]})")
@@ -178,7 +179,7 @@ class FileStorage:
             "byoc": config.BYOC,
             "noFastEnable": False
         })
-        if not (Path(".ssl/cert.pem").exists() and Path(".ssl/key.pem").exists()):
+        if not web.get_ssl() and not (Path(".ssl/cert.pem").exists() and Path(".ssl/key.pem").exists()):
             await self.emit("request-cert")
         self.cur_counter = stats.Counters()
         print("Connected Main Server.")
@@ -304,9 +305,16 @@ async def init():
         COUNTER.hit += 1
         return data.getbuffer()
     router: web.Router = web.Router("/bmcl")
+    dir = Path("./bmclapi_dashboard/")
+    dir.mkdir(exist_ok=True, parents=True)
+    app.mount_resource(web.Resource("/bmcl", dir, show_dir=True))
     @router.get("/")
     async def _(request: web.Request):
-        print(request.get_ip())
+        return Path("./bmclapi_dashboard/index.html")
+    @router.get("/master")
+    async def _(request: web.Request, url: str):
+        resp = await aiohttp.ClientSession(URL).get(url)
+        return resp.content.iter_chunked(config.REQUEST_BUFFER) # type: ignore
     app.mount(router)
 
 async def clearCache():
