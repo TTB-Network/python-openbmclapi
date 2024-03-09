@@ -19,6 +19,7 @@ from utils import CONTENT_ACCEPT, Client, calc_bytes, content_next, parse_obj_as
 import config
 import filetype
 import urllib.parse as urlparse
+from logger import logger
 
 
 class Route:
@@ -195,7 +196,7 @@ class Application:
         }))
     def mount(self, router: Router):
         self._routes.append(router)
-        print(f"Serve router at: {router.prefix}")
+        logger.info(f"Serve router at: {router.prefix}")
     def mount_resource(self, resource: Resource):
         self._resources.append(resource)
 
@@ -492,7 +493,7 @@ async def handle(data, client: Client):
         async for resp in app.handle(request):
             await resp(request, client)
         await request.skip()
-        print(request.get_request_time(), "|", request.method.ljust(6), request.get_status_code(), "|", request.get_ip().ljust(16), "|", request.url, request.get_user_agent())
+        logger.info(request.get_request_time(), "|", request.method.ljust(6), request.get_status_code(), "|", request.get_ip().ljust(16), "|", request.url, request.get_user_agent())
     except TimeoutError:
         ...
     except:
@@ -542,19 +543,19 @@ async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         traceback.print_exc()
 async def main():
     global cert, server
-    print(f"Loading...")
+    logger.info(f"Loading...")
     load_cert()
     import cluster
     await cluster.init()
-    while 1:
+    while True:
         try:
             server = await asyncio.start_server(_handle, host='0.0.0.0', port=config.PORT, ssl=cert)
-            print(f"Server listen on {config.PORT}{' with ssl' if cert else ''}!")
+            logger.info(f"Server listening on {config.PORT}{' with ssl' if cert else ''}!")
             await server.serve_forever()
         except:
             if server:
                 server.close()
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
 
 @app.get("/favicon.ico")
 async def _():

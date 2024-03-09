@@ -1,6 +1,5 @@
 import asyncio
 from dataclasses import dataclass
-import glob
 import hashlib
 import hmac
 import io
@@ -18,6 +17,8 @@ from avro import schema, io as avro_io
 import utils
 import stats
 import web
+from logger import logger
+from tqdm import tqdm
 
 PY_VERSION = "1.0.0"
 VERSION = "1.9.7"
@@ -60,7 +61,7 @@ class TokenManager:
                     Timer.delay(self.fetchToken, delay=float(content['ttl']) / 1000.0 - 600)
               
             except aiohttp.ClientError as e:  
-                print(f"Error fetching token: {e}")  
+                logger.error(f"Error fetching token: {e}.")  
     async def getToken(self) -> str:  
         if not self.token:  
             await self.fetchToken()
@@ -120,12 +121,14 @@ class FileStorage:
                 self.download_bytes.add(-size)
                 await self.files.put(file)
     async def check_file(self):
-        print("Requesting files...")
+        logger.info("Requesting filelist...")
         filelist = await self.get_file_list()
         filesize = sum((file.size for file in filelist))
         total = len(filelist)
         byte = 0
         miss = []
+        pbar = tqdm(total=total, unit=' file(s)', unit_scale=True)
+        pbar.set_description("Checking files")
         for i, file in enumerate(filelist):
             filepath = str(self.dir) + f"/{file.hash[:2]}/{file.hash}"
             if not os.path.exists(filepath) or os.path.getsize(filepath) != file.size:
@@ -133,16 +136,15 @@ class FileStorage:
                 ...
             await asyncio.sleep(0)
             byte += file.size
-            b = utils.calc_more_bytes(byte, filesize)
-            print(f"<<<flush>>>Check file {i}/{total} ({b[0]}/{b[1]})")
+            pbar.update(1)
         if not miss:
-            print(f"<<<flush>>>Checked all files!")
+            logger.info("Checked all files!")
             await self.start_service()
             return
         filelist = miss
         filesize = sum((file.size for file in filelist))
         total = len(filelist)
-        print(f"<<<flush>>>Missing files: {total}({utils.calc_bytes(filesize)})")
+        logger.info(f"Missing files: {total}({utils.calc_bytes(filesize)}).")
         for file in filelist:
             await self.files.put(file)
         self.download_bytes = utils.Progress(5, filesize)
@@ -154,16 +156,17 @@ class FileStorage:
                     "User-Agent": UA,
                     "Authorization": f"Bearer {await token.getToken()}"
                 }), )))
+        pbar = tqdm(total=total, unit=' file(s)', unit_scale=True)
+        pre = 0
         while any([not timer.called for timer in timers]):
             b = utils.calc_more_bytes(self.download_bytes.get_cur(), filesize)
             bits = self.download_bytes.get_cur_speeds() or [0]
             minbit = min(bits)
             bit = utils.calc_more_bit(minbit, bits[-1], max(bits))
-            eta = self.download_bytes.get_eta()
-            print(f"<<<flush>>>Downloading files... {self.download_files.get_cur()}/{total} {b[0]}/{b[1]}, eta: {utils.format_time(eta if eta != -1 else None)}, total: {utils.format_time(self.download_bytes.get_total())}, Min: {bit[0]}, Cur: {bit[2]}, Max: {bit[1]}, Files: {self.download_files.get_cur_speed()}/s")
+            pbar.set_description(f"Downloading files | Curent speed: {bit[2]}")
             await asyncio.sleep(1)
-        for timer in timers:
-            del timer
+            pbar.update(self.download_files.get_cur() - pre)
+            pre = self.download_files.get_cur()
         await self.start_service()
     async def start_service(self):
         tokens = await token.getToken()
@@ -185,11 +188,11 @@ class FileStorage:
         if not web.get_ssl() and not (Path(".ssl/cert.pem").exists() and Path(".ssl/key.pem").exists()):
             await self.emit("request-cert")
         self.cur_counter = stats.Counters()
-        print("Connected Main Server.")
+        logger.info("Connected to the Main Server.")
     async def message(self, type, data):
         if type == "request-cert":
             cert = data[1]
-            print("Requested cert!")
+            logger.info("Requested cert!")
             cert_file = Path(".ssl/cert.pem")
             key_file = Path(".ssl/key.pem")
             for file in (cert_file, key_file):
@@ -206,9 +209,9 @@ class FileStorage:
                 self.keepalive.block()
             self.keepalive = Timer.delay(self.keepaliveTimer, (), 5)
             if len(data) == 2 and data[1] == True:
-                print("Checked! Can service")
+                logger.info("Checked! Starting the service")
                 return
-            print("Error:" + data[0]['message'])
+            logger.error("Error:" + data[0]['message'])
             Timer.delay(self.enable)
         elif type == "keep-alive":
             COUNTER.hit -= self.cur_counter.hit
@@ -234,7 +237,7 @@ class FileStorage:
                 "cache": ""
             }) as req:  
                 req.raise_for_status()  
-                print("Requested files")
+                logger.info("Requested filelist.")
         
                 parser = avro_io.DatumReader(schema.parse(
 '''  
