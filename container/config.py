@@ -23,7 +23,7 @@ class CFG:
         with open(self.file, 'w', encoding="utf-8") as f:
             yaml.dump(data=self.cfg, stream=f, allow_unicode=True)
 
-Config = CFG("./config/config.yaml")
+Config: CFG = CFG("./config/config.yaml")
 
 CLUSTER_ID = Config.get("cluster_id", "")
 CLUSTER_SECRET = Config.get("cluster_secret", "")

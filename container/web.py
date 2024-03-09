@@ -493,7 +493,7 @@ async def handle(data, client: Client):
         async for resp in app.handle(request):
             await resp(request, client)
         await request.skip()
-        logger.info(request.method.ljust(6), request.get_status_code(), "|", request.get_ip().ljust(16), "|", request.url, request.get_user_agent())
+        logger.info(request.get_request_time(), "|", request.method.ljust(6), request.get_status_code(), "|", request.get_ip().ljust(16), "|", request.url, request.get_user_agent())
     except TimeoutError:
         ...
     except:
