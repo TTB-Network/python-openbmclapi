@@ -1,0 +1,285 @@
+body {
+    background-color: rgb(247, 248, 250);
+}
+.container .button {  
+    display: inline-flex;
+    -webkit-box-align: center;
+    align-items: center;
+    -webkit-box-pack: center;
+    justify-content: center;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    background-color: transparent;
+    outline: 0px;
+    border: 0px;
+    margin: 0px;
+    border-radius: 5px;
+    cursor: pointer;
+    user-select: none;
+    vertical-align: middle;
+    appearance: none;
+    text-decoration: none;
+    font-family: inherit;
+    font-weight: 500;
+    line-height: 1.25;
+    text-transform: uppercase;
+    max-width: 360px;
+    position: relative;
+    flex-shrink: 0;
+    overflow: hidden;
+    white-space: normal;
+    text-align: center;
+    flex-direction: column;
+    color: rgba(0, 0, 0, 0.7);
+    z-index: 1;
+    padding: 4px 12px;
+    min-height: 0px;
+    min-width: 0px;
+    font-size: 12px;
+    transition: background-color 0.3s ease, color 0.3s ease;
+}  
+  
+.container .button.selected {  
+    background-color: rgb(15, 198, 194);  
+    color: white;  
+}  
+  
+.container .button.force:hover {  
+    background-color: #ADD8E6;  
+    color: white;  
+}  
+  
+.container .button.force:active {  
+    background-color: rgb(15, 198, 194);  
+}
+.container {
+    display: flex;
+}
+.container .right {
+    margin: 8px;
+    min-width: calc(100vw - 232px);
+    margin-left: 216px;
+    margin-top: 56px;
+    padding-top: 16px;
+}
+.container .left {
+    position: fixed;
+    min-width: 200px;
+    max-width: 200px;
+    min-height: 100vh;
+    box-shadow: rgba(145, 158, 171, 0.2) 0px 4px 10px;
+    backdrop-filter: blur(5px);
+    z-index: 2;
+    margin-top: 56px;
+    padding-top: 16px;
+}
+.container .left .list {
+    overflow-y: auto;
+    min-height: 80px;
+}
+.header-bar {
+    background-color: rgb(247, 248, 250);
+    box-shadow: 0px 4px 10px rgba(145, 158, 171, 0.2);
+    z-index: 5;
+    position: fixed;
+    min-width: 100vw;
+    max-height: 56px;
+    min-height: 40px;
+    padding: 8px;
+    padding-left: 16px;
+    padding-right: 16px;
+    align-items: center;
+}
+.container .left .domain {
+    text-align: center;
+    padding-top: 8px;
+    padding-bottom: 8px;
+}
+.container .left button {
+    margin: 0;
+    margin-left: 10px;
+    margin-top: 4px;
+    margin-bottom: 4px;
+    transition: color 200ms linear 0s, color 200ms linear 0s;
+    border-radius: 8px;
+    border: 0;
+    background-color: transparent;
+    list-style-type: none;
+    text-align: left;
+    cursor: pointer;
+    width: 176px;
+    height: 100%;
+    font-size: medium;
+    padding: 8px;
+}
+.container .left .sidebutton {
+    color: rgba(0, 0, 0, 0.5);
+    width: 150px;
+    margin-left: 16px;
+    display: flex;
+    align-items: center;
+
+}
+.container .left .sidebutton:hover {
+    color: #8dcffc;
+}
+.container .left .sidebutton:hover .cycle {
+    background-color: #8dcffc;
+    transition: background-color 200ms linear 0s;
+}
+.container .left .sidebutton.selected {
+    background-color: transparent;
+    color: black;
+    font-weight: bold;
+    box-shadow: none;
+}
+.container .left .sidebutton.selected .cycle {
+    width: 8px;
+    height: 8px;
+    background-color: #0FC6C2;
+    transition: background-color 200ms linear 0s;
+    margin-left: 0px;
+    margin-right: 0px;
+}
+.container .left button:hover {
+    color: #0FC6C2;
+    transition: color 200ms linear 0s;
+    text-decoration: none;
+    
+}
+.container .left button.selected {
+    background-color: #0FC6C2;
+    color: #fff;
+    box-shadow: rgba(15, 198, 194, 0.2) 0px 10px 25px 0px;
+}
+.container .left .sidebutton .cycle {
+    width: 4px;
+    height: 4px;
+    background-color: rgba(0, 0, 0, 0.4);
+    transition: background-color 200ms linear 0s;
+    border-radius: 50%;
+    margin-left: 2px;
+    margin-right: 2px;
+}
+.container .left .sidebutton span {
+    margin-left: 8px;
+}
+.container .right .panel {
+    background-color: rgb(255, 255, 255);
+    color: rgb(0, 0, 0);
+    transition: box-shadow 300ms cubic-bezier(0.4, 0, 0.2, 1) 0ms;
+    border-radius: 4px;
+    background-image: none;
+    padding: 24px;
+    box-shadow: rgba(145, 158, 171, 0.2) 0px 4px 10px;
+    margin: 16px;
+}
+.container .title {
+    margin: 0px 0px 6px;
+    font-family: inherit;
+    font-weight: 400;
+    line-height: 1.5;
+    color: rgba(0, 0, 0, 0.5);
+    font-size: 14px;
+}
+.container .value {
+    margin: 0px;
+    font-family: inherit;
+    font-weight: 400;
+    line-height: 1.5;
+    color: rgba(0, 0, 0, 0.7);
+    font-size: 24px;
+}
+.container .value.warn {
+    color: rgb(255, 191, 0);
+}
+.container .geo-change {
+    overflow: hidden;
+    display: flex;
+    padding: 5px;
+    border: 1px solid rgb(227, 232, 239);
+    min-height: 24px;
+    height: 24px;
+    background-color: rgb(255, 255, 255);
+    border-radius: 4px;
+}
+.container .qsaw {
+    display: flex;
+    flex-flow: wrap;
+    flex-basis: 75%;
+}
+.container .qsar {
+    flex-basis: 25%;
+}
+.container .qsari {
+    width: 100%;
+    margin-top: 16px;
+}
+.container .qsari .text p {
+    margin: 0px;
+    font-family: inherit;
+    font-weight: 400;
+    line-height: 1.5;
+    color: rgba(0, 0, 0, 0.7);
+    font-size: 14px;
+}
+.container .qsari .text {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+}
+.container .qsari .rank {
+    width: 50%;
+    background-color: rgb(15, 198, 194);
+    border-radius: 2px;
+    height: 4px;
+}
+.container .qsari .rank_unfull {
+    width: 100%;
+    margin-top: 8px;
+    background-color: rgb(227, 232, 239);
+    border-radius: 2px;
+    height: 4px;
+}
+.container-center {
+    display: flex;
+    justify-content: center;
+    flex-wrap: nowrap;
+    flex-direction: column;
+    align-items: center;
+}
+.container .vcmp-status-bar {
+    border-radius: 8px;
+    background-color: rgba(0, 0, 0, 0.075);
+    width: 128px;
+    height: 32px;
+    margin: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: color 200ms linear 0s, color 200ms linear 0s;
+    border: 0;
+    cursor: pointer;
+}
+.container .vcmp-status-bar p {
+    font-size: medium;
+    margin-left: 10px;
+}
+.container .vcmp-status-bar:hover {
+    color: #8dcffc;
+}
+.container .vcmp-status-online {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: #0FC6C2;
+    margin: 8px;
+}
+.container .vcmp-status-offline {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: rgba(0, 0, 0, 0.5);
+    margin: 8px;
+    margin-right: 0;
+}
