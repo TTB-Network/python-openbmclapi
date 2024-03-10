@@ -494,6 +494,7 @@ async def handle(data, client: Client):
             await resp(request, client)
         await request.skip()
         logger.info(request.get_request_time(), "|", request.method.ljust(6), request.get_status_code(), "|", request.get_ip().ljust(16), "|", request.url, request.get_user_agent())
+        request.client.set_log_network(None)
     except TimeoutError:
         ...
     except:

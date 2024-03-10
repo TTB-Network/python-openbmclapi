@@ -1,5 +1,5 @@
 const UNIT_BYTES = [
-    "", "K", "M", "G", "T", "E"
+   "K", "M", "G", "T", "E"
 ];
 const calc_bits = (v) => {
     v *= 8
@@ -112,10 +112,9 @@ const calc_more_bytes = (...values) => {
                             axios.get("master?url=/openbmclapi/metric/dashboard").then(response => {
                                 if (response.status != 200) return
                                 data = response.data
-                                console.log(data)
                                 document.getElementById("t-clusters-nodes").innerText = data.currentNodes
                                 document.getElementById("t-clusters-bandwidth").innerText = data.currentBandwidth.toFixed(2) + " M"
-                                document.getElementById("t-clusters-bytes").innerText = calc_bytes(data.bytes * 1024.0)
+                                document.getElementById("t-clusters-bytes").innerText = calc_bytes(data.bytes)
                                 document.getElementById("t-clusters-req").innerText = (data.hits / 10000).toFixed(2)
                                 nodes = []
                                 bytes = []
@@ -203,6 +202,100 @@ const calc_more_bytes = (...values) => {
                     ).childWidth("33.33%", "33.33%", "33.33%").valueOf()
                 ]
             }
+        },
+        "dashboard": {
+            "connect": () => {
+                if (!("dashboard" in core_modules_locals)) {
+                    core_modules_locals["dashboard"] = {
+                        "refresh": () => {
+                            axios.get("/dashboard").then(resp => {
+                                if (resp.status != 200) return
+                                data = resp.data
+                                req =       Array.from({ length: 24 }, (_, __) => null)
+                                hits =      Array.from({ length: 24 }, (_, __) => null)
+                                bandwidth = Array.from({ length: 24 }, (_, __) => null)
+                                bytes = Array.from({ length: 24 }, (_, __) => null)
+                                days = data.days[0]
+                                for (day of data.days) {
+                                    if (days._day < day._day)
+                                        days = day
+                                }
+                                for (hourly of data.hourly) {
+                                    const hour = hourly._hour
+                                    req[hour] = (hourly.qps / 10000).toFixed(2)
+                                    hits[hour] = (hourly.hits / 10000).toFixed(2)
+                                    bandwidth[hour] = (hourly.bandwidth * 8 / 1024.0 / 1024.0).toFixed(2)
+                                    bytes[hour] = (hourly.bytes / 1024.0 / 1024.0 / 1024.0).toFixed(2)
+                                }
+                                core_modules_locals["dashboard"]["req"]        .setOption({title: {text: "每小时请求分布（万）"}, tooltip:{formatter: e => e[0].data == null ? '' : '<div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:#0fc6c2;"></span><span style="font-size:14px;color:#666;font-weight:400;margin-left:2px">请求:  </span><span style="float:right;margin-left:20px;font-size:14px;color:#666;font-weight:900">'+e[0].data+'万</span><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div>'},series: [{data: req}]})
+                                core_modules_locals["dashboard"]["bytes"]      .setOption({title: {text: "每小时流量分布（GiB）"}, tooltip:{formatter: e => e[0].data == null ? '' : '<div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:#0fc6c2;"></span><span style="font-size:14px;color:#666;font-weight:400;margin-left:2px">流量:           </span><span style="float:right;margin-left:20px;font-size:14px;color:#666;font-weight:900">'+e[0].data+'GiB</span><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div>'},series: [{data: bytes}]})
+                                core_modules_locals["dashboard"]["hit"]        .setOption({title: {text: "每小时请求文件数（万）"}, tooltip:{formatter: e => e[0].data == null ? '' : '<div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:#0fc6c2;"></span><span style="font-size:14px;color:#666;font-weight:400;margin-left:2px">请求文件：      </span><span style="float:right;margin-left:20px;font-size:14px;color:#666;font-weight:900">'+e[0].data+'万</span><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div>'},series: [{data: hits}]})
+                                core_modules_locals["dashboard"]["bandwidth"]  .setOption({title: {text: "每小时峰值出网带宽（Mbps）"}, tooltip:{formatter: e => e[0].data == null ? '' : '<div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:#0fc6c2;"></span><span style="font-size:14px;color:#666;font-weight:400;margin-left:2px">带宽：      </span><span style="float:right;margin-left:20px;font-size:14px;color:#666;font-weight:900">'+e[0].data+'Mbps</span><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div>'},series: [{data: bandwidth}]})
+                                document.getElementById("t-d-req").innerText = (days.qps / 10000).toFixed(2)
+                                document.getElementById("t-d-bytes").innerText = calc_bytes(days.bytes)
+                                document.getElementById("t-d-hit").innerText = (days.hit / 10000).toFixed(2)
+                                document.getElementById("t-d-bandwidth").innerText = (days.bandwidth * 8 / 1024.0 / 1024.0).toFixed(2) + " M"
+                            })
+                        },
+                        "bandwidth":    echarts.init(document.getElementById("e-d-bandwidth")),
+                        "bytes":        echarts.init(document.getElementById("e-d-bytes")),
+                        "req":          echarts.init(document.getElementById("e-d-req")),
+                        "hit":          echarts.init(document.getElementById("e-d-hit")),
+                        "load":         echarts.init(document.getElementById("e-d-cpu")),
+                        "options": {tooltip:{trigger:"axis",axisPointer:{type:"cross",label:{backgroundColor:"#0FC6C2"}}},grid:{left:"3%",right:"4%",bottom:"3%",containLabel:!0},xAxis:{type:"category",boundaryGap:!1,data:time_hours},yAxis:{type:"value",axisLabel:{formatter:"{value}"}},series:[{name:"",type:"line",stack:"",areaStyle:{},color:"#0FC6C2",symbol:"circle",symbolSize:4,data:[],smooth:!0,animationEasing:"cubicOut",animationDelay:function(t){return 10*t}}]},
+                    }
+                    core_modules_locals["dashboard"]["bandwidth"].setOption(core_modules_locals["dashboard"]["options"])
+                    core_modules_locals["dashboard"]["bytes"]    .setOption(core_modules_locals["dashboard"]["options"])
+                    core_modules_locals["dashboard"]["req"]      .setOption(core_modules_locals["dashboard"]["options"])
+                    core_modules_locals["dashboard"]["hit"]      .setOption(core_modules_locals["dashboard"]["options"])         
+                }
+                core_modules_locals["dashboard"]["timer"] = setInterval(core_modules_locals["dashboard"].refresh, 30000)
+                core_modules_locals["dashboard"].refresh()
+            },
+            "page": () => [
+                ExtendFlex().append(
+                    ExtendElement("div").append(
+                        ExtendElement("div").css("panel").append(
+                            ExtendElement("h4").text("当日出网峰值带宽").valueOf(),
+                            ExtendElement("h2").append(
+                                ExtendElement("span").text("0 ").id("t-d-bandwidth").valueOf(),
+                                ExtendElement("span").text("bps").valueOf()
+                            ).valueOf(),
+                            ExtendElement("div").id("e-d-bandwidth").style("height: 216px; width: 100%").valueOf()
+                        ).valueOf(),
+                        ExtendElement("div").css("panel").append(
+                            ExtendElement("h4").text("当日请求文件数").valueOf(),
+                            ExtendElement("h2").append(
+                                ExtendElement("span").text("0 ").id("t-d-hit").valueOf(),
+                                ExtendElement("span").text("万").valueOf()
+                            ).valueOf(),
+                            ExtendElement("div").id("e-d-hit").style("height: 216px; width: 100%").valueOf()
+                        ).valueOf(),
+                    ),
+                    ExtendElement("div").append(
+                        ExtendElement("div").css("panel").append(
+                            ExtendElement("h4").text("当日总流量").valueOf(),
+                            ExtendElement("h2").append(
+                                ExtendElement("span").text("0 ").id("t-d-bytes").valueOf(),
+                                ExtendElement("span").text("iB").valueOf()
+                            ).valueOf(),
+                            ExtendElement("div").id("e-d-bytes").style("height: 216px; width: 100%").valueOf()
+                        ).valueOf(),
+                        ExtendElement("div").css("panel").append(
+                            ExtendElement("h4").text("当日请求数").valueOf(),
+                            ExtendElement("h2").append(
+                                ExtendElement("span").text("0 ").id("t-d-req").valueOf(),
+                                ExtendElement("span").text("万").valueOf()
+                            ).valueOf(),
+                            ExtendElement("div").id("e-d-req").style("height: 216px; width: 100%").valueOf()
+                        ).valueOf(),
+                    ),
+                    ExtendElement("div").css("panel").append(
+                        ExtendElement("h4").text("五分钟负载").valueOf(),
+                        ExtendElement("div").id("e-d-cpu").style("height: 98%; width: 100%").valueOf()
+                    ),
+                ).childWidth("33.33%", "33.33%", "33.33%").valueOf()
+            ]
         }
     }
     const handler = ((root, key, type) => {

@@ -113,6 +113,8 @@ def _err():
 def _parse(params: str):
     kwargs = {}
     for item in params.split(","):
+        if ':' not in item:
+            continue
         k, v = item.split(":", 1)
         if v == "True":
             v = True
