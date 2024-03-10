@@ -214,7 +214,7 @@ const calc_more_bytes = (...values) => {
                 if (!("dashboard" in core_modules_locals)) {
                     core_modules_locals["dashboard"] = { 
                         "refresh": () => {
-                            axios.get("/dashboard").then(resp => {
+                            axios.get("dashboard").then(resp => {
                                 if (resp.status != 200) return
                                 data = resp.data
                                 req =       Array.from({ length: 24 }, (_, __) => null)
