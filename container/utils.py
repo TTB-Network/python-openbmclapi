@@ -118,7 +118,7 @@ class Client:
     def record_network(self, sent: int, recv: int):
         if not self.log_network:
             return
-        self.log_network(self, sent, recv)
+        self.log_network(sent, recv)
 
 def parse_obj_as_type(obj: Any, type_: Type[Any]) -> Any:
     if obj is None:
