@@ -19,7 +19,7 @@ from utils import CONTENT_ACCEPT, Client, calc_bytes, content_next, parse_obj_as
 import config
 import filetype
 import urllib.parse as urlparse
-from logger import logger
+import logger 
 
 
 class Route:
@@ -494,6 +494,7 @@ async def handle(data, client: Client):
             await resp(request, client)
         await request.skip()
         logger.info(request.get_request_time(), "|", request.method.ljust(6), request.get_status_code(), "|", request.get_ip().ljust(16), "|", request.url, request.get_user_agent())
+        request.client.set_log_network(None)
     except TimeoutError:
         ...
     except:
@@ -556,6 +557,7 @@ async def main():
             if server:
                 server.close()
             logger.error(traceback.format_exc())
+            await asyncio.sleep(2)
 
 @app.get("/favicon.ico")
 async def _():

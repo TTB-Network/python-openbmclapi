@@ -17,15 +17,15 @@ from avro import schema, io as avro_io
 import utils
 import stats
 import web
-from logger import logger
+import logger
 from tqdm import tqdm
 
 PY_VERSION = "1.0.0"
 VERSION = "1.9.7"
 UA = f"openbmclapi-cluster/{VERSION} Python/{PY_VERSION}"
 URL = 'https://openbmclapi.bangbang93.com/'
-COUNTER = stats.Counters()
-
+COUNTER = stats.counter
+LAST_COUNTER = stats.last_counter
 @dataclass
 class BMCLAPIFile:
     path: str
@@ -127,7 +127,7 @@ class FileStorage:
         total = len(filelist)
         byte = 0
         miss = []
-        pbar = tqdm(total=total, unit=' file(s)', unit_scale=True)
+        pbar = tqdm(file=logger.PRINTSTDOUT, total=total, unit=' file(s)', unit_scale=True)
         pbar.set_description("Checking files")
         for i, file in enumerate(filelist):
             filepath = str(self.dir) + f"/{file.hash[:2]}/{file.hash}"
@@ -214,12 +214,12 @@ class FileStorage:
             logger.error("Error:" + data[0]['message'])
             Timer.delay(self.enable)
         elif type == "keep-alive":
-            COUNTER.hit -= self.cur_counter.hit
-            COUNTER.bytes -= self.cur_counter.bytes
+            LAST_COUNTER.hit += self.cur_counter.hit
+            LAST_COUNTER.bytes += self.cur_counter.bytes
             self.keepalive = Timer.delay(self.keepaliveTimer, (), 5)
     async def keepaliveTimer(self):
-        self.cur_counter.hit = COUNTER.hit
-        self.cur_counter.bytes = COUNTER.bytes
+        self.cur_counter.hit = COUNTER.hit - LAST_COUNTER.hit
+        self.cur_counter.bytes = COUNTER.bytes - LAST_COUNTER.bytes
         await self.emit("keep-alive", {
             "time": time.time(),
             "hits": self.cur_counter.hit,
@@ -272,7 +272,7 @@ class FileCache:
             if self.size == stat.st_size and self.last_file == stat.st_mtime:
                 self.last = time.time() + 1440
                 return self.buf
-            self.buf.seek(0, os.SEEK_SET)
+            self.buf = io.BytesIO()
             async with aiofiles.open(self.file, "rb") as r:
                 while (data := await r.read(min(config.IO_BUFFER, stat.st_size - self.buf.tell()))) and self.buf.tell() < stat.st_size:
                     self.buf.write(data)
@@ -288,6 +288,8 @@ async def init():
     global storage
     Timer.delay(storage.check_file)
     app = web.app
+    def record_bandwidth(sent: int, recv: int):
+        COUNTER.bandwidth += sent
     @app.get("/measure/{size}")
     async def _(request: web.Request, size: int, s: str, e: str):
         #if not config.SKIP_SIGN:
@@ -302,12 +304,14 @@ async def init():
         #if not config.SKIP_SIGN:
         #    check_sign(request.protocol + "://" + request.host + request.path, config.CLUSTER_SECRET, s, e)
         file = Path(str(storage.dir) + "/" + hash[:2] + "/" + hash)
+        COUNTER.qps += 1
         if not file.exists():
             return web.Response(status_code=404)
         if hash not in cache:
             cache[hash] = FileCache(file)
         data = await cache[hash]()
-        COUNTER.bytes += len(data.getbuffer())
+        COUNTER.bytes += cache[hash].size
+        request.client.set_log_network(record_bandwidth)
         COUNTER.hit += 1
         return data.getbuffer()
     router: web.Router = web.Router("/bmcl")
@@ -324,6 +328,12 @@ async def init():
             async with session.get(url) as resp:
                 content.write(await resp.read())
         return content # type: ignore
+    @router.get("/dashboard")
+    async def _():
+        return {
+            "hourly": stats.hourly(),
+            "days": stats.days()
+        }
     app.mount(router)
 
 async def clearCache():

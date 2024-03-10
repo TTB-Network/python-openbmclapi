@@ -20,9 +20,6 @@
 
 🎉 __*新增功能！*__ 基于 Echart 的 OpenBMCLAPI 仪表盘（Dashboard）。
 
-🎉 __*新增功能！*__ 基于 loguru 的**日志器**。
-
-
 </div>
 
 # 简介
@@ -108,6 +105,10 @@ web_port: 8800
 # 实际开放的公网端口, 同 CLUSTER_PUBLIC_PORT
 web_publicport: 8800
 ```
+
+# 贡献
+
+如果你有能力，你可以向我们的团队[发送邮件](mailto://administrator@ttb-network.top)或团队所有者[发送邮件](mailto://silian_zheng@outlook.com)并申请加入开发者行列。
 
 # 鸣谢
 

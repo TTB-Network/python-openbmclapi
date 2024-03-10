@@ -1,12 +1,67 @@
+import os
 from pathlib import Path
 import queue
+import re
 import subprocess
 import threading
+import traceback
 from typing import Optional
 import sys
 import time
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
+
+class PrintColor:
+    def __init__(self) -> None:
+        self.ansi = (  
+            (sys.platform != 'Pocket PC') and  
+            (  
+                (sys.platform != 'win32') or  
+                ('ANSICON' in os.environ)  
+            ) and  
+            (  
+                sys.stdout.isatty() or  
+                (sys.platform == 'win32')  
+            ) and  
+            (  
+                'TERM' not in os.environ or  
+                (  
+                    os.environ['TERM'].lower() in ('xterm', 'linux', 'screen', 'vt100', 'cygwin', 'ansicon') and  
+                    os.environ['TERM'].lower() not in ('dumb', 'emacs', 'emacs-24', 'xterm-mono')  
+                )  
+            )  
+        )
+        self.colors = {  
+            'reset': '\033[0m',  
+            'red': '\033[31m',  
+            'green': '\033[32m',  
+            'yellow': '\033[33m',  
+            'blue': '\033[34m',  
+            'magenta': '\033[35m',  
+            'cyan': '\033[36m',  
+            'white': '\033[37m',  
+            'black': '\033[30m',  
+        }  
+        self.open_tag_pattern = r'<(\w+)>'  
+        self.close_tag_pattern = r'<(\w+)/>'  
+
+    def parse(self, text: str):  
+        current_color = self.colors['reset']  
+        open_tags = re.findall(self.open_tag_pattern, text)  
+        for tag in open_tags:  
+            if tag in self.colors:  
+                text = text.replace(f'<{tag}>', self.colors[tag], 1)  
+                current_color = self.colors[tag]  
+            else:  
+                text = text.replace(f'<{tag}>', '', 1)  
+        close_tags = re.findall(self.close_tag_pattern, text)  
+        for tag in close_tags:  
+            if tag == tag.lower() and self.colors.get(tag.lower(), '') == current_color:  
+                text = text.replace(f'<{tag}/>', self.colors['reset'], 1)  
+                current_color = self.colors['reset']  
+        return text  
+
+printColor = PrintColor()    
 encoding = sys.getdefaultencoding()
 process: Optional[subprocess.Popen] = None
 stdout = None
@@ -55,10 +110,25 @@ def _err():
             else:
                 output.put(line)
 
-def _parse(params):
+def _parse(params: str):
     kwargs = {}
-    if "flush" in params:
-        kwargs["flush"] = True
+    for item in params.split(","):
+        if ':' not in item:
+            continue
+        k, v = item.split(":", 1)
+        if v == "True":
+            v = True
+        elif v == "False":
+            v = False
+        else:
+            try:
+                v = float(v)
+            except:
+                try:
+                    v = int(v)
+                except:
+                    ...
+        kwargs[k] = v
     return kwargs
 def _print():
     global output, last_output_length, last_flush
@@ -71,22 +141,28 @@ def _print():
                 msg = msg.decode("gbk")
             except:
                 msg = repr(msg)
-        msg = msg.removesuffix("\n")
-        date = time.localtime()
-        date = f"[{date.tm_year:04d}-{date.tm_mon:02d}-{date.tm_mday:02d} {date.tm_hour:02d}:{date.tm_min:02d}:{date.tm_sec:02d}]"
-        kwargs: dict = {}
-        flush: bool = False
-        if msg.startswith("<<<") and ">>>" in msg:
-            kwargs = _parse(msg[3:msg.find(">>>")])
-            msg = msg[msg.find(">>>") + 3:]
-            flush = kwargs.get("flush", False)
-        text = f"{date} {msg}"
-        if flush:
-            sys.stdout.write('\r' + ' ' * (last_output_length + 16) + '\r')
-            sys.stdout.flush()
-            last_output_length = len(text)
-        print(text + ('\n' if not flush else ''), end='', flush=flush)
-        last_flush = flush
+        try:
+            msg = msg.removesuffix("\n")
+            date = time.localtime()
+            kwargs: dict = {}
+            flush: bool = False
+            if msg.startswith("<<<") and ">>>" in msg:
+                kwargs = _parse(msg[3:msg.find(">>>")])
+                msg = msg[msg.find(">>>") + 3:]
+                flush = kwargs.get("flush", False)
+                if 'time' in kwargs:
+                    date = time.localtime(kwargs["time"])
+            date = f"[{date.tm_year:04d}-{date.tm_mon:02d}-{date.tm_mday:02d} {date.tm_hour:02d}:{date.tm_min:02d}:{date.tm_sec:02d}]"
+            text = printColor.parse(f"<{kwargs.get('color', 'reset')}>{date} {msg}")
+            if flush:
+                sys.stdout.write('\r' + ' ' * (last_output_length + 16) + '\r')
+                sys.stdout.flush()
+                last_output_length = len(text)
+            print(text + ('\n' if not flush else ''), end='', flush=flush)
+            last_flush = flush
+        except:
+            traceback.print_exc()
+            ...
 
 class MyHandler(FileSystemEventHandler):
     def on_any_event(self, event: FileSystemEvent) -> None:
