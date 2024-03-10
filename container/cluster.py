@@ -17,7 +17,7 @@ from avro import schema, io as avro_io
 import utils
 import stats
 import web
-from logger import logger
+import logger
 from tqdm import tqdm
 
 PY_VERSION = "1.0.0"
@@ -127,7 +127,7 @@ class FileStorage:
         total = len(filelist)
         byte = 0
         miss = []
-        pbar = tqdm(total=total, unit=' file(s)', unit_scale=True)
+        pbar = tqdm(file=logger.PRINTSTDOUT, total=total, unit=' file(s)', unit_scale=True)
         pbar.set_description("Checking files")
         for i, file in enumerate(filelist):
             filepath = str(self.dir) + f"/{file.hash[:2]}/{file.hash}"
