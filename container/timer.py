@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import time
 import traceback
-from logger import logger
+import logger
 
 
 class Task:

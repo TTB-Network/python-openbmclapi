@@ -32,8 +32,7 @@ LevelColors: dict[Level, str] = {
 }
 
 def logger(*values, level: Level, flush: bool = False, stack: list[inspect.FrameInfo]):
-    stackname = stack[1].function + str(stack[1].lineno)
-    print(*(f"<<<flush:{flush},time:{time.time()},stack:{stackname},color:{LevelColors.get(level, 'reset')}>>>[{level.name.upper()}]", *values))
+    print(*(f"<<<flush:{flush},time:{time.time()},color:{LevelColors.get(level, 'reset')}>>>[{level.name.upper()}]", *values))
 
 def info(*values, flush: bool = False):
     return logger(*values, flush=flush, level=Level.INFO, stack=inspect.stack())
