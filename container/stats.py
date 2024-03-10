@@ -111,6 +111,13 @@ def write_database():
     executemany(("update `Stats` set `hits` = ?, `bytes` = ?, `qps` = ? where `Time` = ?", (hits, bytes, qps, t)),
                 ("update `Stats` set `bandwidth` = ? where `Time` = ? and `bandwidth` < ?", (bandwidth, t, bandwidth)))
     counter.bandwidth = 0
+    if last_time != t:
+        counter.hit = 0
+        counter.bytes = 0
+        counter.bandwidth = 0
+        counter.qps = 0
+        last_counter.hit = 0
+        last_counter.bytes = 0
     last_time = t
 
 def hourly():
