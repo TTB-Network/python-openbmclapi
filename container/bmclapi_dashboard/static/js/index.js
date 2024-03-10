@@ -212,7 +212,7 @@ const calc_more_bytes = (...values) => {
             },
             "connect": () => {
                 if (!("dashboard" in core_modules_locals)) {
-                    c = {
+                    core_modules_locals["dashboard"] = {
                         "refresh": () => {
                             axios.get("/dashboard").then(resp => {
                                 if (resp.status != 200) return
