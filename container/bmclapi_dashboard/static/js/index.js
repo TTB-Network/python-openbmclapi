@@ -303,10 +303,10 @@ const calc_more_bytes = (...values) => {
                 ).childWidth("33.33%", "33.33%", "33.33%").valueOf()
             ],
             "resize": () => {
-                core_modules_locals["master"]["hit"]        .resize()
-                core_modules_locals["master"]["bandwidth"]  .resize()
-                core_modules_locals["master"]["bytes"]      .resize()
-                core_modules_locals["master"]["req"]        .resize()
+                core_modules_locals["dashboard"]["hit"]        .resize()
+                core_modules_locals["dashboard"]["bandwidth"]  .resize()
+                core_modules_locals["dashboard"]["bytes"]      .resize()
+                core_modules_locals["dashboard"]["req"]        .resize()
             }
         }
     }
