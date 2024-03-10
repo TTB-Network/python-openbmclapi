@@ -218,8 +218,8 @@ class FileStorage:
             LAST_COUNTER.bytes += self.cur_counter.bytes
             self.keepalive = Timer.delay(self.keepaliveTimer, (), 5)
     async def keepaliveTimer(self):
-        self.cur_counter.hit = COUNTER.hit
-        self.cur_counter.bytes = COUNTER.bytes
+        self.cur_counter.hit = COUNTER.hit - LAST_COUNTER.hit
+        self.cur_counter.bytes = COUNTER.bytes - LAST_COUNTER.bytes
         await self.emit("keep-alive", {
             "time": time.time(),
             "hits": self.cur_counter.hit,
