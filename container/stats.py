@@ -6,7 +6,7 @@ import sqlite3
 import time
 from typing import Any
 
-from utils import FileDataInputStream, FileDataOutputStream
+from utils import FileDataInputStream, FileDataOutputStream, get_timestamp_from_day_tohour, get_timestamp_from_hour
 from timer import Timer # type: ignore
 
 
@@ -121,10 +121,12 @@ def write_database():
     last_time = t
 
 def hourly():
-    t = int(time.time() // 86400) * 24
+    t = get_timestamp_from_day_tohour(0)
+    print(t)
     data = []
     for r in queryAllData("select `Time`, `hits`, `bytes`, `qps`, `bandwidth` from `Stats` where `Time` >= ?", t):
-        hour = r[0] - t + int(os.environ["UTC"])
+        hour = r[0] - t
+        print(hour)
         data.append(
             {"_hour": hour,
              "hits": r[1],
@@ -136,12 +138,12 @@ def hourly():
     return data
 
 def days():
-    t = (int(time.time() // 86400) - 30) * 24
+    t = get_timestamp_from_day_tohour(30)
     r = queryAllData("select `Time`, `hits`, `bytes`, `qps`, `bandwidth` from `Stats` where `Time` >= ?", t)
     data = []
     days: dict[int, Counters] = {}
     for r in queryAllData("select `Time`, `hits`, `bytes`, `qps`, `bandwidth` from `Stats` where `Time` >= ?", t):
-        hour = (r[0] - t + int(os.environ["UTC"])) // 24
+        hour = (r[0] - t) // 24
         if hour not in days:
             days[hour] = Counters()
         days[hour].hit += r[1]
