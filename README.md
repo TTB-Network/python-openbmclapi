@@ -91,13 +91,21 @@
 ## 配置文件
 
 ```yaml
+# 是否不使用 BMCLAPI 分发的证书, 同 CLUSTER_BYOC
 byoc: false
+# OpenBMCLAPI 的 CLUSTER_ID
 cluster_id: ''
+# OpenBMCLAPI 的 CLUSTER_SECRET
 cluster_secret: ''
+# 同步文件时最多打开的连接数量
 download_threads: 64
+# 超时时间
 timeout: 30
+# 实际开放的公网主机名, 同 CLUSTER_IP
 web_host: ''
+# 要监听的本地端口, 同 CLUSTER_PORT
 web_port: 8800
+# 实际开放的公网端口, 同 CLUSTER_PUBLIC_PORT
 web_publicport: 8800
 ```
 
