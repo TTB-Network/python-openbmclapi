@@ -11,7 +11,7 @@ class CFG:
 
     def load(self):
         with open(self.file, "r", encoding="utf-8") as f:
-            self.cfg = yaml.load(f.read(), Loader=yaml.FullLoader)
+            self.cfg = yaml.load(f.read(), Loader=yaml.FullLoader) or {}
 
     def get(self, key, default_):
         value = self.cfg.get(key, default_)

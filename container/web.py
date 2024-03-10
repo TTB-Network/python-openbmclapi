@@ -19,7 +19,7 @@ from utils import CONTENT_ACCEPT, Client, calc_bytes, content_next, parse_obj_as
 import config
 import filetype
 import urllib.parse as urlparse
-from logger import logger
+import logger 
 
 
 class Route:
@@ -556,6 +556,7 @@ async def main():
             if server:
                 server.close()
             logger.error(traceback.format_exc())
+            await asyncio.sleep(2)
 
 @app.get("/favicon.ico")
 async def _():
