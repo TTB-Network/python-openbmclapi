@@ -106,6 +106,10 @@ web_port: 8800
 web_publicport: 8800
 ```
 
+# 贡献
+
+如果你有能力，你可以向我们的团队[发送邮件](mailto://administrator@ttb-network.top)或团队所有者[发送邮件](mailto://silian_zheng@outlook.com)并申请加入开发者行列。
+
 # 鸣谢
 
 [LiterMC/go-openbmclapi](https://github.com/LiterMC/go-openbmclapi)
