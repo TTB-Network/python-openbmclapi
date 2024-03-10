@@ -216,6 +216,8 @@ class FileStorage:
         elif type == "keep-alive":
             LAST_COUNTER.hit += self.cur_counter.hit
             LAST_COUNTER.bytes += self.cur_counter.bytes
+            if self.keepalive:
+                self.keepalive.block()
             self.keepalive = Timer.delay(self.keepaliveTimer, (), 5)
     async def keepaliveTimer(self):
         self.cur_counter.hit = COUNTER.hit - LAST_COUNTER.hit

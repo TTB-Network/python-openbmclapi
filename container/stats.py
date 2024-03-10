@@ -122,11 +122,9 @@ def write_database():
 
 def hourly():
     t = get_timestamp_from_day_tohour(0)
-    print(t)
     data = []
     for r in queryAllData("select `Time`, `hits`, `bytes`, `qps`, `bandwidth` from `Stats` where `Time` >= ?", t):
         hour = r[0] - t
-        print(hour)
         data.append(
             {"_hour": hour,
              "hits": r[1],
