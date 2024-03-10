@@ -147,7 +147,7 @@ def days():
         days[hour].hit += r[1]
         days[hour].bytes += r[2]
         days[hour].qps += r[3]
-        days[hour].bandwidth += r[4]
+        days[hour].bandwidth = max(days[hour].bandwidth, r[4])
     for day in sorted(days.keys()):
         data.append({
             "_day": day,
