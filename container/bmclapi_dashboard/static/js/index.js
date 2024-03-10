@@ -301,7 +301,13 @@ const calc_more_bytes = (...values) => {
                         ExtendElement("div").id("e-d-cpu").style("height: 98%; width: 100%").valueOf()
                     ),
                 ).childWidth("33.33%", "33.33%", "33.33%").valueOf()
-            ]
+            ],
+            "resize": () => {
+                core_modules_locals["master"]["hit"]        .resize()
+                core_modules_locals["master"]["bandwidth"]  .resize()
+                core_modules_locals["master"]["bytes"]      .resize()
+                core_modules_locals["master"]["req"]        .resize()
+            }
         }
     }
     const handler = ((root, key, type) => {
