@@ -98,7 +98,7 @@ async def addColumns(table, params, data, default=None):
             execute(f'UPDATE {table} SET {params}={default}')
 
 def write_database():
-    global last_time, counter, extend_counter
+    global last_time, counter
     hits = counter.hit
     bytes = counter.bytes
     qps = counter.qps
@@ -111,7 +111,7 @@ def write_database():
     executemany(("update `Stats` set `hits` = ?, `bytes` = ?, `qps` = ? where `Time` = ?", (hits, bytes, qps, t)),
                 ("update `Stats` set `bandwidth` = ? where `Time` = ? and `bandwidth` < ?", (bandwidth, t, bandwidth)))
     counter.bandwidth = 0
-    if last_time != t:
+    if last_time != 0 and last_time != t:
         counter.hit = 0
         counter.bytes = 0
         counter.bandwidth = 0
@@ -154,6 +154,6 @@ def days():
             **asdict(days[day])
         })
     return data
-read()
 Timer.repeat(write, (), 0.01, 0.1)
 Timer.repeat(write_database, (), 1, 1)
+read()
