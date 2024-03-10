@@ -18,7 +18,6 @@ const calc_bytes = (v) => {
         if (Math.abs(v) >= 1024.0) {
             v /= 1024.0
             unit = units
-            console.log(v)
         }
     }
     return `${v.toFixed(2)} ${unit}`
@@ -113,7 +112,6 @@ const calc_more_bytes = (...values) => {
                             axios.get("master?url=/openbmclapi/metric/dashboard").then(response => {
                                 if (response.status != 200) return
                                 data = response.data
-                                console.log(data)
                                 document.getElementById("t-clusters-nodes").innerText = data.currentNodes
                                 document.getElementById("t-clusters-bandwidth").innerText = data.currentBandwidth.toFixed(2) + " M"
                                 document.getElementById("t-clusters-bytes").innerText = calc_bytes(data.bytes)
@@ -213,7 +211,6 @@ const calc_more_bytes = (...values) => {
                             axios.get("/dashboard").then(resp => {
                                 if (resp.status != 200) return
                                 data = resp.data
-                                console.log(data)
                                 req =       Array.from({ length: 24 }, (_, __) => null)
                                 hits =      Array.from({ length: 24 }, (_, __) => null)
                                 bandwidth = Array.from({ length: 24 }, (_, __) => null)
