@@ -204,9 +204,15 @@ const calc_more_bytes = (...values) => {
             }
         },
         "dashboard": {
+            "disconnect": () => {
+                if ("dashboard" in core_modules_locals) {
+                    clearInterval(core_modules_locals["dashboard"]["timer"])
+                    delete core_modules_locals["dashboard"]
+                }
+            },
             "connect": () => {
                 if (!("dashboard" in core_modules_locals)) {
-                    core_modules_locals["dashboard"] = {
+                    c = {
                         "refresh": () => {
                             axios.get("/dashboard").then(resp => {
                                 if (resp.status != 200) return
