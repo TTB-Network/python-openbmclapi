@@ -225,7 +225,9 @@ class FileStorage:
             if data[0]:
                 logger.error("Error:" + data[0]['message'])
                 return
-            logger.info(f"keepalive serve: {self.last_hit - stats.get_counter(self.last_cur).sync_hit}({utils.calc_bytes(self.last_bytes - stats.get_counter(self.last_cur).sync_bytes)})")
+            hit = self.last_hit - stats.get_counter(self.last_cur).sync_hit
+            byte = utils.calc_bytes(self.last_bytes - stats.get_counter(self.last_cur).sync_bytes)
+            logger.info(f"keepalive serve: {hit}file{'s' if hit != 1 else ''}({byte})")
             stats.get_counter(self.last_cur).sync_hit = self.last_hit
             stats.get_counter(self.last_cur).sync_bytes = self.last_bytes
             self.keepalive = Timer.delay(self.keepaliveTimer, (), 5)
