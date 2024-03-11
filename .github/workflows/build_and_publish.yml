@@ -10,16 +10,16 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out
-        uses: actions/checkout@v3
-      - name: Create release
-        uses: ncipollo/release-action@v1
-        # env:
-        #   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag: ${{ github.ref }}
-          name: Release ${{ github.ref }}
-          generateReleaseNotes: true
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
   build:
     runs-on: ubuntu-latest
     steps:
