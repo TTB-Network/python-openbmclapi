@@ -24,8 +24,6 @@ PY_VERSION = "1.0.0"
 VERSION = "1.9.7"
 UA = f"openbmclapi-cluster/{VERSION} Python/{PY_VERSION}"
 URL = 'https://openbmclapi.bangbang93.com/'
-COUNTER = stats.counter
-LAST_COUNTER = stats.last_counter
 @dataclass
 class BMCLAPIFile:
     path: str
@@ -95,6 +93,10 @@ class FileStorage:
         self.download_files = utils.Progress(5)
         self.sio = socketio.AsyncClient()
         self.keepalive = None
+        self.timeout = None
+        self.last_hit = 0
+        self.last_bytes = 0
+        self.last_cur = 0
     async def download(self, session: aiohttp.ClientSession):
         while not self.files.empty():
             file = await self.files.get()
@@ -130,10 +132,9 @@ class FileStorage:
         pbar = tqdm(file=logger.PRINTSTDOUT, total=total, unit=' file(s)', unit_scale=True)
         pbar.set_description("Checking files")
         for i, file in enumerate(filelist):
-            filepath = str(self.dir) + f"/{file.hash[:2]}/{file.hash}"
-            if not os.path.exists(filepath) or os.path.getsize(filepath) != file.size:
-                miss.append(file)
-                ...
+            #filepath = str(self.dir) + f"/{file.hash[:2]}/{file.hash}"
+            #if not os.path.exists(filepath) or os.path.getsize(filepath) != file.size:
+            #    miss.append(file)
             await asyncio.sleep(0)
             byte += file.size
             pbar.update(1)
@@ -187,8 +188,8 @@ class FileStorage:
         })
         if not web.get_ssl() and not (Path(".ssl/cert.pem").exists() and Path(".ssl/key.pem").exists()):
             await self.emit("request-cert")
-        self.cur_counter = stats.Counters()
         logger.info("Connected to the Main Server.")
+        self.keepalive = Timer.delay(self.keepaliveTimer, (), 5)
     async def message(self, type, data):
         if type == "request-cert":
             cert = data[1]
@@ -208,23 +209,38 @@ class FileStorage:
             if self.keepalive:
                 self.keepalive.block()
             self.keepalive = Timer.delay(self.keepaliveTimer, (), 5)
-            if len(data) == 2 and data[1] == True:
+            if data[0]:
+                logger.error("Error:" + data[0]['message'])
+                return
+            if data[1] == True:
                 logger.info("Checked! Starting the service")
                 return
             logger.error("Error:" + data[0]['message'])
-            Timer.delay(self.enable)
+            Timer.delay(self.start_service, (), 5)
         elif type == "keep-alive":
-            LAST_COUNTER.hit += self.cur_counter.hit
-            LAST_COUNTER.bytes += self.cur_counter.bytes
+            if self.keepalive:
+                self.keepalive.block()
+            if self.timeout:
+                self.timeout.block()
+            if data[0]:
+                logger.error("Error:" + data[0]['message'])
+                return
+            stats.get_counter(self.last_cur).sync_hit = self.last_hit
+            stats.get_counter(self.last_cur).sync_bytes = self.last_bytes
             self.keepalive = Timer.delay(self.keepaliveTimer, (), 5)
     async def keepaliveTimer(self):
-        self.cur_counter.hit = COUNTER.hit - LAST_COUNTER.hit
-        self.cur_counter.bytes = COUNTER.bytes - LAST_COUNTER.bytes
+        counter = stats.get_counter()
+        self.last_hit = counter.hit
+        self.last_bytes = counter.bytes
+        self.last_cur = stats.get_hour(0)
         await self.emit("keep-alive", {
             "time": time.time(),
-            "hits": self.cur_counter.hit,
-            "bytes": self.cur_counter.bytes
+            "hits":     counter.hit - counter.sync_hit,
+            "bytes":    counter.bytes - counter.sync_bytes,
         })
+        self.timeout = Timer.delay(self.timeoutTimer, (), 30)
+    async def timeoutTimer(self):
+        Timer.delay(self.start_service, 0)
     async def emit(self, channel, data = None):
         await self.sio.emit(channel, data, callback=lambda x: Timer.delay(self.message, (channel, x)))
     async def get_file_list(self):
@@ -288,8 +304,6 @@ async def init():
     global storage
     Timer.delay(storage.check_file)
     app = web.app
-    def record_bandwidth(sent: int, recv: int):
-        COUNTER.bandwidth += sent
     @app.get("/measure/{size}")
     async def _(request: web.Request, size: int, s: str, e: str):
         #if not config.SKIP_SIGN:
@@ -304,15 +318,14 @@ async def init():
         #if not config.SKIP_SIGN:
         #    check_sign(request.protocol + "://" + request.host + request.path, config.CLUSTER_SECRET, s, e)
         file = Path(str(storage.dir) + "/" + hash[:2] + "/" + hash)
-        COUNTER.qps += 1
+        stats.get_counter().qps += 1
         if not file.exists():
             return web.Response(status_code=404)
         if hash not in cache:
             cache[hash] = FileCache(file)
         data = await cache[hash]()
-        COUNTER.bytes += cache[hash].size
-        request.client.set_log_network(record_bandwidth)
-        COUNTER.hit += 1
+        stats.get_counter().bytes += cache[hash].size
+        stats.get_counter().hit += 1
         return data.getbuffer()
     router: web.Router = web.Router("/bmcl")
     dir = Path("./bmclapi_dashboard/")

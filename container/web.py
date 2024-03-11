@@ -48,6 +48,8 @@ class Router:
             else:
                 self._routes[route.method].append(route)
     def get_route(self, method: str, url: str) -> Optional[Route]:
+        if not url.startswith(self.prefix):
+            return None
         url = url.removeprefix(self.prefix)
         for route in self._routes[method]:
             if  route.is_params() and route.regexp.match(url) or route._path == url:
