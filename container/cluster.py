@@ -132,9 +132,9 @@ class FileStorage:
         pbar = tqdm(file=logger.PRINTSTDOUT, total=total, unit=' file(s)', unit_scale=True)
         pbar.set_description("Checking files")
         for i, file in enumerate(filelist):
-            #filepath = str(self.dir) + f"/{file.hash[:2]}/{file.hash}"
-            #if not os.path.exists(filepath) or os.path.getsize(filepath) != file.size:
-            #    miss.append(file)
+            filepath = str(self.dir) + f"/{file.hash[:2]}/{file.hash}"
+            if not os.path.exists(filepath) or os.path.getsize(filepath) != file.size:
+                miss.append(file)
             await asyncio.sleep(0)
             byte += file.size
             pbar.update(1)
@@ -225,6 +225,9 @@ class FileStorage:
             if data[0]:
                 logger.error("Error:" + data[0]['message'])
                 return
+            hit = self.last_hit - stats.get_counter(self.last_cur).sync_hit
+            byte = utils.calc_bytes(self.last_bytes - stats.get_counter(self.last_cur).sync_bytes)
+            logger.info(f"keepalive serve: {hit}file{'s' if hit != 1 else ''}({byte})")
             stats.get_counter(self.last_cur).sync_hit = self.last_hit
             stats.get_counter(self.last_cur).sync_bytes = self.last_bytes
             self.keepalive = Timer.delay(self.keepaliveTimer, (), 5)
