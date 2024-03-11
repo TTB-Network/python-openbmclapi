@@ -230,7 +230,7 @@ const calc_more_bytes = (...values) => {
                                     const hour = hourly._hour
                                     req[hour] = (hourly.qps / 10000).toFixed(2)
                                     hits[hour] = (hourly.hits / 10000).toFixed(2)
-                                    file_bytes[hour] = (hourly.bytes / Math.min(hourly.hits, 1) / 1024.0 / 1024.0 / 1024.0).toFixed(2)
+                                    file_bytes[hour] = (hourly.bytes / Math.max(hourly.hits, 1) / 1024.0 / 1024.0 / 1024.0).toFixed(2)
                                     bytes[hour] = (hourly.bytes / 1024.0 / 1024.0 / 1024.0).toFixed(2)
                                 }
                                 core_modules_locals["dashboard"]["req"]        .setOption({title: {text: "每小时请求分布（万）"}, tooltip:{formatter: e => e[0].data == null ? '' : '<div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:#0fc6c2;"></span><span style="font-size:14px;color:#666;font-weight:400;margin-left:2px">请求:  </span><span style="float:right;margin-left:20px;font-size:14px;color:#666;font-weight:900">'+e[0].data+'万</span><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div>'},series: [{data: req}]})
@@ -240,7 +240,7 @@ const calc_more_bytes = (...values) => {
                                 document.getElementById("t-d-req").innerText = (days.qps / 10000).toFixed(2)
                                 document.getElementById("t-d-bytes").innerText = calc_bytes(days.bytes)
                                 document.getElementById("t-d-hit").innerText = (days.hit / 10000).toFixed(2)
-                                document.getElementById("t-d-file_bytes").innerText = ((days.bytes / Math.min(days.hit, 1)) / 1024.0 / 1024.0 / 1024.0).toFixed(2) + " G"
+                                document.getElementById("t-d-file_bytes").innerText = ((days.bytes / Math.max(days.hit, 1)) / 1024.0 / 1024.0 / 1024.0).toFixed(2) + " G"
                             })
                         },
                         "file_bytes":    echarts.init(document.getElementById("e-d-file_bytes")),
