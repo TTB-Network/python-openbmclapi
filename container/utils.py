@@ -246,9 +246,10 @@ def get_timestamp_from_day_tohour(day: int):
     t = int(time.time())
     return (t - (t - time.timezone) % 86400 - 86400 * day) / 3600
 
-def get_timestamp_from_hour(hour: int):
+def get_timestamp_from_hour_tohour(hour: int):
     t = int(time.time())
-    return t - (t - time.timezone) % 3600 - 3600 * hour
+    return (t - (t - time.timezone) % 3600 - 3600 * hour) / 3600
+    
 def calc_bytes(v):
     unit = config.BYTES[0]
     for units in config.BYTES:
