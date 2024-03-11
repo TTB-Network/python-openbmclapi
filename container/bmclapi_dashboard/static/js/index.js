@@ -304,7 +304,7 @@ const calc_more_bytes = (...values) => {
             ],
             "resize": () => {
                 core_modules_locals["dashboard"]["hit"]        .resize()
-                core_modules_locals["dashboard"]["bandwidth"]  .resize()
+                core_modules_locals["dashboard"]["file_bytes"] .resize()
                 core_modules_locals["dashboard"]["bytes"]      .resize()
                 core_modules_locals["dashboard"]["req"]        .resize()
             }
