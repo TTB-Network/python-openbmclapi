@@ -41,6 +41,7 @@ import ssl
 from config import Config
 from core.utils import Client
 
+
 class Route:
     def __init__(
         self, path: str, method: Optional[str], handler: Callable[..., Coroutine]
@@ -391,6 +392,7 @@ status_codes: dict[int, str] = {
 io_buffer = Config.get("io_buffer")
 request_time_units = ["ns", "ms", "s", "m", "h"]
 
+
 class Response:
     def __init__(
         self,
@@ -497,9 +499,7 @@ class Response:
             else:
                 async with aiofiles.open(content, "rb") as r:
                     cur_length: int = 0
-                    while data := await r.read(
-                        min(io_buffer, length - cur_length)
-                    ):
+                    while data := await r.read(min(io_buffer, length - cur_length)):
                         cur_length += len(data)
                         client.write(data)
         if (self._headers.get("Connection") or "Closed").lower() == "closed":
@@ -764,6 +764,7 @@ cur_ssl = False
 port = Config.get("port")
 
 import core.web as web
+
 
 def get_ssl():
     global cur_ssl

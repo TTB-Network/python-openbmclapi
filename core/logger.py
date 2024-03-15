@@ -4,6 +4,7 @@ import sys
 
 basic_logger_format = "<green>[{time:YYYY-MM-DD HH:mm:ss}]</green> <yellow>[{name}:{function}:{line}]</yellow> <level>[{level}]: {message}</level>"
 
+
 class LoggingLogger:
     def __init__(self):
         self.log = Logger
@@ -25,5 +26,6 @@ class LoggingLogger:
         self.debug = self.log.debug
         self.warn = self.log.warning
         self.exception = self.log.exception
+
 
 logger = LoggingLogger()

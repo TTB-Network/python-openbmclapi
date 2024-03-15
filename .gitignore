@@ -5,5 +5,4 @@ __pycache__
 logs
 config/config.yaml
 bmclapi
-bmclapi_dashboard
 cache

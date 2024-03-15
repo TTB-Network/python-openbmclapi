@@ -16,15 +16,16 @@ defaults = {
     "min_rate": 500,
     "request_buffer": 8192,
     "io_buffer": 16777216,
-    "server_name": "TTB-Network"
+    "server_name": "TTB-Network",
 }
+
 
 class CFG:
     def __init__(self, path: str) -> None:
         self.file = Path(path)
         self.cfg = {}
         if self.file.exists():
-            self.load()    
+            self.load()
 
     def load(self):
         with open(self.file, "r", encoding="utf-8") as f:
@@ -45,11 +46,5 @@ class CFG:
         with open(self.file, "w", encoding="utf-8") as f:
             yaml.dump(data=self.cfg, stream=f, allow_unicode=True)
 
+
 Config: CFG = CFG("./config/config.yaml")
-
-
-
-
-
-
-
