@@ -9,7 +9,9 @@ from typing import Any, AsyncGenerator, AsyncIterator, Callable, Generator, Iter
 import typing
 
 import aiofiles
-import config
+from config import Config
+
+bytes_unit = ["K", "M", "G", "T", "E"] 
 
 @dataclass
 class Client:
@@ -25,6 +27,10 @@ class Client:
     log_network: Optional[Callable] = None
     compressed: bool = False
     is_ssl: bool = False
+    min_rate: int = Config.get("min_rate")
+    min_rate_timestamp: int = Config.get("min_rate_timestamp")
+    timeout: int = Config.get("timeout")
+
     def get_server_port(self):
         return self.server_port
     def invaild_ip(self):
@@ -38,28 +44,28 @@ class Client:
         self.read_data += len(data)
         self.read_time += end_time
         speed = self.read_data / max(1, end_time)
-        if speed < config.MIN_RATE and self.read_time > config.MIN_RATE_TIMESTAMP:
+        if speed < self.min_rate and self.read_time > self.min_rate_timestamp:
             raise TimeoutError("Data read speed is too low")
         return data
-    async def readline(self, timeout: Optional[float] = config.TIMEOUT):
+    async def readline(self, timeout: Optional[float] = timeout):
         start_time = time.time()
         data = await asyncio.wait_for(self.reader.readline(), timeout=timeout)
         self.record_network(0, len(data))
         return self._record_after(start_time, data)
 
-    async def readuntil(self, separator: bytes | bytearray | memoryview = b"\n", timeout: Optional[float] = config.TIMEOUT):
+    async def readuntil(self, separator: bytes | bytearray | memoryview = b"\n", timeout: Optional[float] = timeout):
         start_time = time.time()
         data = await asyncio.wait_for(self.reader.readuntil(separator=separator), timeout=timeout)
         self.record_network(0, len(data))
         return self._record_after(start_time, data)
 
-    async def read(self, n: int = -1, timeout: Optional[float] = config.TIMEOUT):
+    async def read(self, n: int = -1, timeout: Optional[float] = timeout):
         start_time = time.time()
         data: bytes = await asyncio.wait_for(self.reader.read(n), timeout=timeout)
         self.record_network(0, len(data))
         return self._record_after(start_time, data)
 
-    async def readexactly(self, n: int, timeout: Optional[float] = config.TIMEOUT):
+    async def readexactly(self, n: int, timeout: Optional[float] = timeout):
         start_time = time.time()
         data = await asyncio.wait_for(self.reader.readexactly(n), timeout=timeout)
         self.record_network(0, len(data))
@@ -251,8 +257,8 @@ def get_timestamp_from_hour_tohour(hour: int):
     return (t - (t - time.timezone) % 3600 - 3600 * hour) / 3600
     
 def calc_bytes(v):
-    unit = config.BYTES[0]
-    for units in config.BYTES:
+    unit = bytes_unit[0]
+    for units in bytes_unit:
         if abs(v) >= 1024.0:
             v /= 1024.0
             unit = units
@@ -260,18 +266,18 @@ def calc_bytes(v):
 
 def calc_more_bytes(*values):
     v = min(*values)
-    unit = config.BYTES[0]
+    unit = bytes_unit[0]
     i = 0
-    for units in config.BYTES:
+    for units in bytes_unit:
         if abs(v) >= 1024.0:
             v /= 1024.0
             i += 1
             unit = units
     return [f"{(v / (1024.0 ** i)):.2f} {unit}iB" for v in values]
 def calc_bit(v):
-    unit = config.BYTES[0]
+    unit = bytes_unit[0]
     v *= 8
-    for units in config.BYTES:
+    for units in bytes_unit:
         if abs(v) >= 1024.0:
             v /= 1024.0
             unit = units
@@ -279,9 +285,9 @@ def calc_bit(v):
 
 def calc_more_bit(*values):
     v = min(*values) * 8
-    unit = config.BYTES[0]
+    unit = bytes_unit[0]
     i = 0
-    for units in config.BYTES:
+    for units in bytes_unit:
         if abs(v) >= 1024.0:
             v /= 1024
             i += 1
@@ -309,7 +315,7 @@ def get_hash(org):
 async def get_file_hash(org: str, path: Path):
     hash = get_hash(org)
     async with aiofiles.open(path, "rb") as r:
-        while data := await r.read(config.IO_BUFFER):
+        while data := await r.read(Config.get('io_buffer')):
             if not data:
                 break
             hash.update(data)

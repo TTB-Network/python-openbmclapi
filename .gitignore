@@ -1,8 +1,3 @@
-container/.ssl/
-container/bmclapi/
-container/cache/
-container/config/
-container/__pycache__/
 .vscode/
 config/config.properties
 __pycache__

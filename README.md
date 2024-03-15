@@ -5,13 +5,16 @@
 
 # OpenBMCLAPI for Python
 
-![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/TTB-Network/python-openbmclapi/total)
 ![GitHub Issues or Pull Requests](https://img.shields.io/github/issues-pr/TTB-Network/python-openbmclapi)
 ![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/TTB-Network/python-openbmclapi)
 ![GitHub License](https://img.shields.io/github/license/TTB-Network/python-openbmclapi)
 ![GitHub Release](https://img.shields.io/github/v/release/TTB-Network/python-openbmclapi)
 ![GitHub Tag](https://img.shields.io/github/v/tag/TTB-Network/python-openbmclapi)
 ![GitHub Repo stars](https://img.shields.io/github/stars/TTB-Network/python-openbmclapi)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/TTB-Network/python-openbmclapi/build_and_publish.yml?label=create%20tagged%20release)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/TTB-Network/python-openbmclapi/github-code-scanning%2Fcodeql?label=codeql)
+
+
 
 
 ✨ 基于 [OpenBMCLAPI](https://github.com/bangbang93/openbmclapi) 的 Python 实现。
@@ -19,6 +22,8 @@
 🎨 **跨系统**、**跨架构**和 **Docker** 支持。
 
 🎉 __*新增功能！*__ 基于 Echart 的 OpenBMCLAPI 仪表盘（Dashboard）。
+
+🎉 __*新增功能！*__ 基于 loguru 的日志器。
 
 </div>
 
@@ -53,7 +58,7 @@
     python ./container/main.py
     ```
 
-4. 在 `config.yaml` 中，填写你的 `cluster_id`（即 `CLUSTER_ID`）和 `cluster_secret`（即 `CLUSTER_SECRET`）。
+4. 在 `config/config.yaml` 中，填写你的 `cluster_id`（即 `CLUSTER_ID`）和 `cluster_secret`（即 `CLUSTER_SECRET`）。
 
 5. 重新启动程序。
 
@@ -70,8 +75,12 @@
     ```sh
     docker run -d \
     -v ${/data/python-openbmclapi}:/python-openbmclapi/bmclapi \
-    -v ${/path/to/your/config}:/python-openbmclapi/config/config.yaml \
-    -p ${web.port}:${web.port} \
+    -e cluster_id=${cluster_id} \
+    -e cluster_secret=${cluster_secret} \
+    -e public_port=${port} \
+    -e TZ=Asia/Shanghai \
+    -v /data/openbmclapi:/opt/openbmclapi/cache \
+    -p ${port}:8800 \
     --restart always \
     --name python-openbmclapi \
     silianz/python-openbmclapi 
@@ -79,9 +88,11 @@
 
     **参数说明：**
 
-    `web.port` - 对外开放的端口。
+    `port` - 对外开放的端口。
 
-    `/path/to/your/config` - 配置文件（你需要从此仓库中下载 `config/config.yaml.example` 并重命名为 `config.yaml` 来进行配置）的存放路径。
+    `cluster_id` - 即 `CLUSTER_ID`。
+
+    `cluster_secret` - 即 `CLUSTER_SECRET`。
 
     `/data/python-openbmclapi` - `bmclapi` 文件夹（即缓存 `cache` 文件夹）挂载的路径。
 
@@ -104,6 +115,14 @@ web_host: ''
 web_port: 8800
 # 实际开放的公网端口, 同 CLUSTER_PUBLIC_PORT
 web_publicport: 8800
+io_buffer: 16777216
+max_download: 64
+min_rate: 500
+min_rate_timestamp: 1000
+port: 8800
+public_host: ''
+public_port: null
+server_name: TTB-Network
 ```
 
 # 贡献
