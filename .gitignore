@@ -1,8 +1,3 @@
-container/.ssl/
-container/bmclapi/
-container/cache/
-container/config/
-container/__pycache__/
 .vscode/
 config/config.properties
 __pycache__
@@ -10,5 +5,4 @@ __pycache__
 logs
 config/config.yaml
 bmclapi
-bmclapi_dashboard
 cache
