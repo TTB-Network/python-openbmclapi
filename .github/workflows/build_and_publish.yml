@@ -33,13 +33,6 @@ jobs:
         with:
           username: ${{secrets.HUB_USERNAME}}
           password: ${{secrets.HUB_PASSWORD}}
-      - name: Alibaba Cloud Container Registry (ACR) Login
-        uses: aliyun/acr-login@v1
-        with:
-          username: ${{secrets.CLOUD_USERNAME}}
-          password: ${{secrets.CLOUD_PASSWORD}}
-          region-id: cn-hangzhou
-          login-server: registry.cn-hangzhou.aliyuncs.com
       - name: Build and push (Docker Hub)
         uses: docker/build-push-action@v5
         with:
@@ -49,6 +42,12 @@ jobs:
             silianz/python-openbmclapi:latest
             silianz/python-openbmclapi:${{env.RELEASE_VERSION}}
           platforms: linux/amd64, linux/arm64
+      - name: Alibaba Cloud Container Registry (ACR) Login
+        uses: aliyun/acr-login@v1
+        with:
+          username: ${{secrets.CLOUD_USERNAME}}
+          password: ${{secrets.CLOUD_PASSWORD}}
+          login-server: registry.cn-hangzhou.aliyuncs.com
       - name: Build and push (ACR)
         run: |
           docker buildx build --platform linux/arm64, linux/amd64 -t registry.cn-hangzhou.aliyuncs.com/silianz/python-openbmclapi:${{env.RELEASE_VERSION}} -t registry.cn-hangzhou.aliyuncs.com/silianz/python-openbmclapi:latest
