@@ -20,8 +20,8 @@ import core.web as web
 from core.logger import logger
 from tqdm import tqdm
 
-version = "1.9.8"
-api_version = "1.9.8"
+version = "1.9.7"
+api_version = "1.9.7"
 user_agent = f"openbmclapi-cluster/{api_version} python-openbmclapi/{version}"
 base_url = "https://openbmclapi.bangbang93.com/"
 cluster_id = Config.get("cluster_id")
