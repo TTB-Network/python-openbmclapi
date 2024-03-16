@@ -6,3 +6,4 @@ logs
 config/config.yaml
 bmclapi
 cache
+public

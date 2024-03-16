@@ -10,7 +10,7 @@ defaults = {
     "port": 80,
     "ssl_port": 443,
     "force_ssl": False,
-    "public_port": None,
+    "public_port": 80,
     "public_host": "",
     "byoc": False,
     "timeout": 30,

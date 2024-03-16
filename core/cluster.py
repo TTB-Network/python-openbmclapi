@@ -20,8 +20,8 @@ import core.web as web
 from core.logger import logger
 from tqdm import tqdm
 
-version = "1.9.7"
-api_version = "1.9.7"
+version = "1.9.8"
+api_version = "1.9.8"
 user_agent = f"openbmclapi-cluster/{api_version} python-openbmclapi/{version}"
 base_url = "https://openbmclapi.bangbang93.com/"
 cluster_id = Config.get("cluster_id")
@@ -252,12 +252,12 @@ class FileStorage:
                 self.keepalive.block()
             self.keepalive = Timer.delay(self.keepaliveTimer, (), 5)
             if data[0]:
-                logger.error("Error:" + data[0]["message"])
+                logger.error(data[0]["message"])
                 return
             if data[1] == True:
                 logger.info("Checked! Starting the service")
                 return
-            logger.error("Error:" + data[0]["message"])
+            logger.error(data[0]["message"])
             Timer.delay(self.start_service, (), 5)
         elif type == "keep-alive":
             if self.keepalive:
@@ -265,7 +265,7 @@ class FileStorage:
             if self.timeout:
                 self.timeout.block()
             if data[0]:
-                logger.error("Error:" + data[0]["message"])
+                logger.error(data[0]["message"])
                 return
             hit = self.last_hit - stats.get_counter(self.last_cur).sync_hit
             byte = utils.calc_bytes(

@@ -16,6 +16,7 @@ import tempfile
 import time
 import core.web as web
 import traceback
+import core.cluster as cluster
 import zlib
 from typing import (
     Any,
@@ -982,6 +983,7 @@ async def main():
     global cert, server, ssl_server
     logger.info(f"Loading...")
     load_cert()
+    await cluster.init()
     while True:
         try:
             server = await asyncio.start_server(_handle, host='0.0.0.0', port=port)
@@ -1012,8 +1014,12 @@ async def _(ws: WebSocket):
     await ws.send("a")
     ...
 
-app.mount_resource(Resource("/", Path("./public/")))
-app.mount_resource(Resource("/bmcl", Path("./bmclapi_dashboard/")))
+public: Path = Path("./public/")
+public.mkdir(exist_ok=True, parents=True)
+app.mount_resource(Resource("/", public))
+dashboard: Path = Path("./bmclapi_dashboard/")
+dashboard.mkdir(exist_ok=True, parents=True)
+app.mount_resource(Resource("/bmcl", dashboard))
 
 def init():
     asyncio.run(main())

@@ -11,6 +11,5 @@ os.environ["UTC"] = str(
 )
 
 if __name__ == "__main__":
-    import core.web as web
-
-    web.init()
+    from core.web import init
+    init()
