@@ -126,7 +126,7 @@ server_name: TTB-Network
 
 # 贡献
 
-如果你有能力，你可以向我们的团队[发送邮件](mailto://administrator@ttb-network.top)或团队所有者[发送邮件](mailto://silian_zheng@outlook.com)并申请加入开发者行列。
+如果你有能力，你可以向我们的[团队](mailto://administrator@ttb-network.top)或[团队所有者](mailto://silian_zheng@outlook.com)发送邮件并申请加入开发者行列。
 
 # 鸣谢
 
