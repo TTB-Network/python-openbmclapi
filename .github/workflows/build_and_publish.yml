@@ -50,7 +50,7 @@ jobs:
           login-server: registry.cn-hangzhou.aliyuncs.com
       - name: Build and push (ACR)
         run: |
-          docker buildx build --platform linux/arm64, linux/amd64 -t registry.cn-hangzhou.aliyuncs.com/silianz/python-openbmclapi:${{env.RELEASE_VERSION}} -t registry.cn-hangzhou.aliyuncs.com/silianz/python-openbmclapi:latest
+          docker buildx build --platform linux/arm64,linux/amd64 -t registry.cn-hangzhou.aliyuncs.com/silianz/python-openbmclapi:${{env.RELEASE_VERSION}} -t registry.cn-hangzhou.aliyuncs.com/silianz/python-openbmclapi:latest
           docker push registry.cn-hangzhou.aliyuncs.com/silianz/python-openbmclapi:latest
           docker push registry.cn-hangzhou.aliyuncs.com/silianz/python-openbmclapi:${{env.RELEASE_VERSION}}
           
