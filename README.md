@@ -78,7 +78,6 @@
     -e cluster_id=${cluster_id} \
     -e cluster_secret=${cluster_secret} \
     -e public_port=${port} \
-    -e TZ=Asia/Shanghai \
     -v /data/openbmclapi:/opt/openbmclapi/cache \
     -p ${port}:8800 \
     --restart always \
