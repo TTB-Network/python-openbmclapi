@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 import time
 import traceback
 from core.logger import logger
@@ -27,15 +26,13 @@ class Task:
         self.back = back
         self.error = error
         self.called = False
+        self.cur = None
 
     async def call(self):
         if self.blocked:
             return
         try:
-            if inspect.iscoroutinefunction(self.target):
-                await self.target(*self.args)
-            else:
-                self.target(*self.args)
+            self.cur = asyncio.create_task(self.target(*self.args))
             if not self.loop:
                 self.called = True
             await self.callback()
@@ -46,14 +43,13 @@ class Task:
         if not self.back:
             return
         try:
-            if inspect.iscoroutinefunction(self.back):
-                await self.back()
-            else:
-                self.back()
+            self.cur = asyncio.create_task(self.back)
         except:
             await self.callback_error()
 
     def block(self):
+        if self.cur:
+            self.cur.cancel()
         self.blocked = True
 
     async def callback_error(self):
@@ -61,17 +57,14 @@ class Task:
             logger.debug(traceback.format_exc())
             return
         try:
-            if inspect.iscoroutinefunction(self.error):
-                await self.error()
-            else:
-                self.error()
+            self.cur = asyncio.create_task(self.error)
         except:
             logger.debug(traceback.format_exc())
 
 
 class TimerManager:
-    def delay(self, target, args=(), delay: float = 0, callback=None):
-        task = Task(target=target, args=args, delay=delay, back=callback)
+    def delay(self, target, args=(), delay: float = 0, callback=None, error=None):
+        task = Task(target=target, args=args, delay=delay, back=callback, error=error)
         asyncio.get_event_loop().call_later(
             task.delay,
             lambda: asyncio.run_coroutine_threadsafe(
@@ -81,7 +74,13 @@ class TimerManager:
         return task
 
     def repeat(
-        self, target, args=(), delay: float = 0, interval: float = 0, callback=None
+        self,
+        target,
+        args=(),
+        delay: float = 0,
+        interval: float = 0,
+        callback=None,
+        error=None,
     ):
         task = Task(
             target=target,
@@ -90,6 +89,7 @@ class TimerManager:
             loop=True,
             interval=interval,
             back=callback,
+            error=error,
         )
         asyncio.get_event_loop().call_later(task.delay, lambda: self._repeat(task))
         return task

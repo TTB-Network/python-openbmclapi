@@ -7,6 +7,7 @@ from pathlib import Path
 import time
 from typing import (
     Any,
+    Coroutine,
     AsyncGenerator,
     AsyncIterator,
     Callable,
@@ -40,6 +41,8 @@ class Client:
     log_network: Optional[Callable] = None
     compressed: bool = False
     is_ssl: bool = False
+    peername: Optional[tuple[str, int]] = None
+    closed: bool = False
     min_rate: int = Config.get("min_rate")
     min_rate_timestamp: int = Config.get("min_rate_timestamp")
     timeout: int = Config.get("timeout")
@@ -74,6 +77,8 @@ class Client:
         separator: bytes | bytearray | memoryview = b"\n",
         timeout: Optional[float] = timeout,
     ):
+        if self.is_closed():
+            return b""
         start_time = time.time()
         data = await asyncio.wait_for(
             self.reader.readuntil(separator=separator), timeout=timeout
@@ -82,12 +87,16 @@ class Client:
         return self._record_after(start_time, data)
 
     async def read(self, n: int = -1, timeout: Optional[float] = timeout):
+        if self.is_closed():
+            return b""
         start_time = time.time()
         data: bytes = await asyncio.wait_for(self.reader.read(n), timeout=timeout)
         self.record_network(0, len(data))
         return self._record_after(start_time, data)
 
     async def readexactly(self, n: int, timeout: Optional[float] = timeout):
+        if self.is_closed():
+            return b""
         start_time = time.time()
         data = await asyncio.wait_for(self.reader.readexactly(n), timeout=timeout)
         self.record_network(0, len(data))
@@ -103,7 +112,7 @@ class Client:
         return val
 
     def get_address(self):
-        return self.writer.get_extra_info("peername")[:2]
+        return self.peername or self.writer.get_extra_info("peername")[:2]
 
     def get_ip(self):
         return self.get_address()[0]
@@ -139,10 +148,14 @@ class Client:
         self.keepalive_connection = value
 
     def close(self):
+        if self.closed or self.is_closed():
+            return
+        self.closed = True
+        self.writer.transport.abort()
         return self.writer.close()
 
     def is_closed(self):
-        return self.writer.is_closing()
+        return self.closed or self.writer.is_closing()
 
     def set_log_network(self, handler):
         self.log_network = handler
@@ -256,7 +269,23 @@ CONTENT_ACCEPT = Union[
     AsyncIterator,
     AsyncGenerator,
     Iterator,
+    Coroutine,
     Generator,
+    None,
+]
+WEBSOCKETCONTENT = Union[
+    str
+    | dict
+    | list
+    | tuple
+    | set
+    | bytes
+    | memoryview
+    | io.BytesIO
+    | AsyncGenerator
+    | AsyncIterator
+    | Iterator
+    | Generator,
     None,
 ]
 
