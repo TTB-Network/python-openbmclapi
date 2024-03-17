@@ -11,6 +11,6 @@ ADD . .
 
 RUN pip install -r requirements.txt --no-deps
 VOLUME /python-openbmclapi/bmclapi
-ENV port=8800
+ENV port=80
 EXPOSE $port
 CMD ["python", "./main.py"]
