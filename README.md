@@ -72,7 +72,7 @@
     你也可使用镜像源进行拉取：
 
    ```sh
-    docker pull registry.cn-hangzhou.aliyuncs.com/silianz/python-openbmclapi:latest
+   docker pull registry.cn-hangzhou.aliyuncs.com/silianz/python-openbmclapi:latest
    ```
 
 2. 创建容器：
