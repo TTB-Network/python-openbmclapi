@@ -84,7 +84,7 @@
     -e cluster_secret=${cluster_secret} \
     -e public_port=${port} \
     -v /data/openbmclapi:/opt/openbmclapi/cache \
-    -p ${port}:8800 \
+    -p ${port}:80 \
     --restart always \
     --name python-openbmclapi \
     silianz/python-openbmclapi 
