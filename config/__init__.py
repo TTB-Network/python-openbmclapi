@@ -8,7 +8,7 @@ defaults = {
     "cluster_secret": "",
     "max_download": 64,
     "port": 80,
-    "ssl_port": 443,
+    "ssl_port": 0,
     "force_ssl": False,
     "public_port": None,
     "public_host": "",
@@ -25,6 +25,7 @@ defaults = {
 class CFG:
     def __init__(self, path: str) -> None:
         self.file = Path(path)
+        logger.debug(f"Load config: {self.file.absolute()}")
         self.cfg = {}
         if self.file.exists():
             self.load()
@@ -41,7 +42,7 @@ class CFG:
                 return value
             logger.warn(f"{key} is not set! Does it exist?")
             self.write(key, defaults[key])
-        return value
+        return value or (defaults[key] if key in defaults else value)
 
     def write(self, key, value):
         self.cfg[key] = value
