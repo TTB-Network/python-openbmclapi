@@ -418,7 +418,7 @@ class Cluster:
                 await self._keepalive_timeout()
                 return
             self.connected = True
-            logger.info("Connected Main, Starting service.")
+            logger.info(f"Connected Main, Starting service. Host on {CLUSTER_ID}.openbmclapi.933.moe:{PUBLIC_PORT or PORT}")
             await self.start_keepalive()
             await set_status("正常工作" + ("" if self.trusted else "（节点信任度过低）"))
         elif type == "keep-alive":
