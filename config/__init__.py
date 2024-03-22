@@ -8,7 +8,7 @@ defaults = {
     "cluster_secret": "",
     "max_download": 64,
     "port": 80,
-    "ssl_port": 443,
+    "ssl_port": None,
     "force_ssl": False,
     "public_port": 80,
     "public_host": "",

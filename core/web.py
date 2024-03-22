@@ -956,7 +956,7 @@ async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
             if b"HTTP/1.1" in buffer:
                 await web.handle(buffer, client)
             elif ssl_server:
-                target = Client(*(await asyncio.open_connection("127.0.0.1", ssl_server.sockets[0].getsockname()[1] if config.SSL_PORT == config.PORT else config.SSL_PORT)), peername = client.get_ip()) # type: ignore
+                target = Client(*(await asyncio.open_connection("127.0.0.1", ssl_server.sockets[0].getsockname()[1] if ssl_port == port else ssl_port)), peername = client.get_ip()) # type: ignore
                 target.write(buffer)
                 Timer.delay(_proxy, (client, target),)
                 Timer.delay(_proxy, (target, client),)
