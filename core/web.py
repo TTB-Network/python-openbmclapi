@@ -50,7 +50,7 @@ from core.timer import Timer
 
 
 port = Config.get("port")
-timeout = Config.get("timeout")
+_timeout = Config.get("timeout")
 ssl_port = Config.get("ssl_port")
 file_redirect = [
     "index.html",
@@ -937,7 +937,7 @@ def load_cert():
 
 async def _proxy(client: Client, target: Client):
     try:
-        while (buffer := await client.read(io_buffer, timeout=timeout)) and not client.is_closed() and not target.is_closed():
+        while (buffer := await client.read(io_buffer, timeout=_timeout)) and not client.is_closed() and not target.is_closed():
             target.write(buffer)
             await target.writer.drain()
     except:
@@ -950,7 +950,7 @@ async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     client = Client(reader, writer, ssl)
     proxy = False
     try:
-        while (buffer := await client.read(Config.get("request_buffer"), timeout=timeout)):
+        while (buffer := await client.read(Config.get("request_buffer"), timeout=_timeout)):
             if client.invaild_ip():
                 break
             if b"HTTP/1.1" in buffer:
