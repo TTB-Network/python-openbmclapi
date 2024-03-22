@@ -40,6 +40,7 @@ class CFG:
             if value:
                 return value
             logger.warn(f"{key} is not set! Does it exist?")
+            value = defaults[key]
             self.write(key, defaults[key])
         return value
 
