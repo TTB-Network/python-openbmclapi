@@ -71,6 +71,12 @@ class Storage(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     async def check_missing_files(self, pbar: tqdm, files: list[BMCLAPIFile]) -> list[BMCLAPIFile]:
         raise NotImplementedError
+    @abc.abstractmethod
+    async def get_files(self, dir: str) -> list[str]:
+        raise NotImplementedError
+    @abc.abstractmethod
+    async def remove(self, hash: str) -> bool:
+        raise NotImplementedError
 
 """class FixTQDM(org_tqdm):  
     def __init__(self, 

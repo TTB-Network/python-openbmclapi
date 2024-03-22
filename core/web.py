@@ -64,7 +64,6 @@ RESPONSE_HEADERS = {
     "Server": Config.get("server_name"),
 }
 RESPONSE_DATE = "%a, %d %b %Y %H:%M:%S GMT"
-
 STATUS_CODES: dict[int, str] = {
     100: "Continue",
     101: "Switching Protocols",
@@ -198,7 +197,6 @@ class Router:
     
     def websocket(self, path):
         return self.route(path, 'WebSocket')
-    
 
 class Resource:
     def __init__(self, url: str, path: Path, show_dir: bool = False) -> None:
@@ -258,7 +256,6 @@ class ServerWebSocketError(WebSocketError):
 
 class ServerWebSocketUnknownDataError(ServerWebSocketError):
     ...
-
 
 class WebSocketOpcode(Enum):
     CONTINUATION = 0
@@ -435,8 +432,6 @@ class WebSocket:
         except:
             ...
 
-    
-
 class Application:
     def __init__(self) -> None:
         self._routes: list[Router] = [Router()]
@@ -583,7 +578,6 @@ class Header:
     def __len__(self) -> int:
         return self._headers.keys().__len__()
 
-
 class Response:
     def __init__(
         self,
@@ -700,11 +694,9 @@ class Response:
         if (self._headers.get("Connection") or "Closed").lower() == "closed":
             client.close()
 
-
 class RedirectResponse(Response):
     def __init__(self, location: str) -> None:
         super().__init__(headers=Header({"Location": location}), status_code=301)
-
 
 class Request:
     def __init__(self, data: bytes, client: Client):
@@ -863,7 +855,6 @@ class Form:
     files: dict[str, list[tempfile._TemporaryFileWrapper]]
     fields: dict[str, list[tempfile._TemporaryFileWrapper]]
 
-
 class FormParse:
     @staticmethod
     async def parse(boundary_: str, content_iter, length: int) -> 'Form':
@@ -916,14 +907,41 @@ class FormParse:
         if temp_file:
             temp_file.seek(0)  # type: ignore
         return Form(boundary_, files, fields)
+        
+class Statistics:
+    def __init__(self) -> None:
+        self.qps = {}
+        Timer.repeat(self._clear, (), 1, 1)
+    def _clear(self):
+        t = self.get_time()
+        pops = []
+        for k in self.qps.keys():
+            if t - k > 86400:
+                pops.append(k)
+        for pop in pops:
+            self.qps.pop(pop)
+    def add_qps(self):
+        t = self.get_time()
+        if t not in self.qps:
+            self.qps[t] = 0
+        self.qps[t] += 1
+    def get_time(self):
+        return int(time.time())
+    def get_cur_qps(self):
+        return self.qps.get(self.get_time(), 0)
+    def get_in_time_qps(self, t: float):
+        c = self.get_time()
+        return {k: v for k, v in self.qps.items() if k - t <= c}
+    def get_all_qps(self):
+        return self.qps.copy()
 
-
+statistics: Statistics = Statistics()
 app: Application = Application()
-
 
 async def handle(data, client: Client):
     try:
         request: Request = Request(data, client)
+        statistics.add_qps()
         log = False
         async for resp in app.handle(request):
             await resp(request, client)
@@ -937,152 +955,14 @@ async def handle(data, client: Client):
     except:
         traceback.print_exc()
 
-def get_ssl():
-    global cur_ssl
-    return cur_ssl
-
-
-def load_cert():
-    global cert, cur_ssl, load_ssl, client_cert
-    client_cert = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
-    client_cert.check_hostname = False
-    cert = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-    cert.check_hostname = False
-    if Path(".ssl/cert").exists() and Path(".ssl/key").exists():
-        cert.load_cert_chain(Path(".ssl/cert"), Path(".ssl/key"))
-        client_cert.load_verify_locations(Path(".ssl/cert"))
-        if not cur_ssl:
-            logger.info(f"Server listening on {PORT}{' with ssl' if cert else ''}!")
-        cur_ssl = True
-    else:
-        if cur_ssl:
-            logger.info(f"Server listening on {PORT}!")
-        cur_ssl = False
-    load_ssl = True
-    if ssl_server:
-        ssl_server.close()
-
-async def _handle_ssl(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    return await _handle_process(Client(reader, writer, is_ssl=True), True)
-async def _proxy(client: Client, target: Client):
-    try:
-        while (buffer := await client.read(IO_BUFFER, timeout=TIMEOUT)) and not client.is_closed() and not target.is_closed():
-            target.write(buffer)
-            await target.writer.drain()
-    except:
-        ...
-    if not client.is_closed():
-        client.close()
-
-async def _handle_process(client: Client, proxy: bool = False):
-    try:
-        while (buffer := await client.read(REQUEST_BUFFER, timeout=TIMEOUT)):
-            if client.invaild_ip():
-                break
-            if buffer == check_port_key:
-                client.write(buffer)
-                break
-            if b"HTTP/1.1" in buffer:
-                await web.handle(buffer, client)
-            elif not proxy and ssl_server and not client.is_proxy():
-                target = Client(*(await asyncio.open_connection("127.0.0.1", ssl_server.sockets[0].getsockname()[1])), peername = client.get_address()) # type: ignore
-                target.write(buffer)
-                Timer.delay(_proxy, (client, target),)
-                Timer.delay(_proxy, (target, client),)
-                break
-    except (
-        TimeoutError,
-        asyncio.exceptions.IncompleteReadError,
-        ConnectionResetError,
-    ) as e:
-        ...
-    except:
-        if client.is_proxy():
-            logger.error("[Proxy]", client.get_address(), traceback.format_exc())
-        else:
-            logger.error(client.get_address(), traceback.format_exc())
-    if not client.is_proxy() and not client.is_closed():
-        client.close()
-
-
-async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    return await _handle_process(Client(reader, writer))
-server: Optional[asyncio.Server] = None
-ssl_server: Optional[asyncio.Server] = None
-cert = None
-client_cert = None
-cur_ssl = False
-load_ssl = False
-check_port_key = os.urandom(8)
-
-async def check_ports():
-    global server, ssl_server, client_cert, check_port_key, load_ssl
-    while 1:
-        ports: list[tuple[asyncio.Server, ssl.SSLContext | None]] = []
-        for service in ((server, None), (ssl_server, client_cert)):
-            if not service[0]:
-                continue
-            ports.append((service[0], service[1]))
-        closed = False
-        for port in ports:
-            try:
-                client = Client(*(await asyncio.open_connection('127.0.0.1', port[0].sockets[0].getsockname()[1], ssl=port[1])))
-                client.write(check_port_key)
-                await client.writer.drain()
-                key = await client.read(len(check_port_key), 5)
-                if key != check_port_key:
-                    raise ValueError("Key are not same!")
-            except:
-                logger.warn(f"Port {port[0].sockets[0].getsockname()[1]} is shutdown now! Now restarting the port!")
-                logger.error(traceback.format_exc())
-                closed = True
-        if closed:
-            load_ssl = True
-            for port in ports:
-                port[0].close()
-        await asyncio.sleep(5)
-
-
-async def main():
-    global cert, cur_ssl, server, ssl_server, load_ssl
-    logger.info(f"Loading...")
-    load_cert()
-    cluster.stats.init()
-    await cluster.init()
-    Timer.delay(check_ports, (), 5)
-    while True:
-        try:
-            server = await asyncio.start_server(_handle, host='0.0.0.0', port=PORT)
-            ssl_server = await asyncio.start_server(_handle_ssl, host='0.0.0.0', port=0 if SSL_PORT == PORT else SSL_PORT, ssl=cert)
-            logger.info(f"Server listening on {PORT}{' with ssl' if cur_ssl else ''}!")
-            logger.debug(f"SSL Server listening on {ssl_server.sockets[0].getsockname()[1]}")
-            async with server, ssl_server:
-                await asyncio.gather(
-                    server.serve_forever(),
-                    ssl_server.serve_forever()
-                )
-        except asyncio.CancelledError:
-            if load_ssl:
-                if server:
-                    server.close()
-                load_ssl = False
-            else:
-                logger.info("Shutdown web service")
-                await cluster.close()
-                break
-        except:
-            if server:
-                server.close()
-            logger.error(traceback.format_exc())
-            await asyncio.sleep(2)
-
-
 @app.get("/favicon.ico")
 async def _():
     return zlib.decompress(b'x\x9cc``d`b\x10\x10`\x00\xd2\n\x0c\x19,\x0c\x0cj\x0c\x0c\x0c\n\n\x10\xbe\x86 \x03C\x1fPL\x03(&\x00\x12g\x80\x88\x83\x01\x0b\x03\x06\x90\xe1\xfd\xfd\x7f\x14\x0f\x1e\x0c\x8c\x12\xac\x98^\xfaG:F\x0f/r\xc3\x9f\\\xfd\x03\xe0_\x8a\x80\x06\xb4\x8cq@.g\x04F\xcb\x99Q<\x8aG\xf1(\x1e*X\x9a\xe7\x0bI\x98\xdav32\xf2\x01\xeb"v\xa20H-5\xdd\x002\x0bb6\xf6\xb6\x13&f\x1fv\xf6\x0fd\xf8\x0ft\xfa\x1b\xc5\xa3x\xa4cB\xf9\x8b\x9e\xe5?z\xf9BH\x9e\x1a\xf6\xa3\x96\xbf\xec\x18\xf6\xe3\x93\x1f\x0e\xf6\x0fd\xf8\x0ft\xfa\x1b\xc5\xb4\xc7\x94\x8e3\x0cu\x00\x00-\xd7@W')
 
-def init():
-    asyncio.run(main())
+async def init():
+    logger.info(f"Loading...")
+    cluster.stats.init()
+    await cluster.init()
     
 async def close():
     await cluster.close()
