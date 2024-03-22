@@ -20,5 +20,15 @@ def format_number(number):
         return f"{number}{_NUMBER_[0]}"
     i = min(int(math.floor(math.log(number, 1000))), len(_NUMBER_), 1)
     if i != 0:
-        number = round(number // (1024 ** i), 2)
+        number = round(number // (1000 ** i), 2)
     return f"{number}{_NUMBER_[i]}"
+
+def format_numbers(*numbers):
+    number = max(*numbers)
+    if number == 0:
+        return (f"{number}{_NUMBER_[0]}" for number in numbers)
+    i = min(int(math.floor(math.log(number, 1000))), len(_NUMBER_), 1)
+    if i != 0:
+        return (f"{round(number // (1000 ** i), 2)}{_NUMBER_[i]}" for number in numbers)
+    return (f"{number}{_NUMBER_[i]}" for number in numbers)
+

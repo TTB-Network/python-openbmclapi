@@ -271,16 +271,27 @@ class Cluster:
         self.sio = socketio.AsyncClient()
         self.storages: list[Storage] = []
         self.started = False
-        self.sio.on("message", lambda x: logger.info(f"[Remote] {x}"))
+        self.sio.on("message", self._message)
         self.cur_storage: Optional[stats.SyncStorage] = None
         self.keepaliveTimer: Optional[Task] = None
         self.keepaliveTimeoutTimer: Optional[Task] = None
         self.keepalive_lock = asyncio.Lock()
         self.connected = False
         self.check_files_timer: Optional[Task] = None
+        self.trusted = True
+    def _message(self, message):
+        logger.info(f"[Remote] {message}")
+        if "信任度过低" in message:
+            self.trusted = False
     def add_storage(self, storage):
         self.storages.append(storage)
     
+    async def _check_files_sync_status(self, text: str, pbar: tqdm):
+        if self.check_files_timer:
+            return
+        n, total = unit.format_numbers(pbar.n, pbar.total)
+        await set_status(f"{text} ({n}/{total})")
+
     async def check_files(self):
         downloader = FileDownloader()
         files = await downloader.get_files()
@@ -295,15 +306,19 @@ class Cluster:
                 total_missing_bytes += sum((file.size for file in missing_files_by_storage[storage]))"""
         with tqdm(total=len(files) * len(self.storages), unit=" file(s)", unit_scale=True) as pbar:
             pbar.set_description(f"[Storage] Checking files")
+            task = Timer.repeat(self._check_files_sync_status, ("检查文件完整性", pbar, ), 0, 1)
             miss_storage: list[list[BMCLAPIFile]] = await asyncio.gather(*[storage.check_missing_files(pbar, files) for storage in self.storages])  
+            task.block()
             missing_files_by_storage: dict[Storage, set[BMCLAPIFile]] = {}  
             total_missing_bytes = 0
 
             for storage, missing_files in zip(self.storages, miss_storage):  
                 missing_files_by_storage[storage] = set(missing_files)  
                 total_missing_bytes += sum((file.size for file in missing_files_by_storage[storage]))
+            await self._check_files_sync_status("检查文件完整性", pbar)
         if total_missing_bytes != 0 and len(miss_storage) >= 2:
             with tqdm(total=total_missing_bytes, desc="Copying local storage files", unit="bytes", unit_divisor=1024, unit_scale=True) as pbar:
+                task = Timer.repeat(self._check_files_sync_status, ("复制缺失文件中", pbar, ), 0, 1)
                 for storage, files in missing_files_by_storage.items():
                     for file in files:
                         for other_storage in self.storages:
@@ -316,6 +331,8 @@ class Cluster:
                                 else:
                                     missing_files_by_storage[storage].remove(file)
                                     pbar.update(size)
+                await self._check_files_sync_status("复制缺失文件中", pbar)
+                task.block()
         miss = set().union(*missing_files_by_storage.values())
         if not miss:
             logger.info("Checked all files")
@@ -347,13 +364,17 @@ class Cluster:
     async def start(self, ):
         if self.started:
             return
+        await set_status("启动节点中")
         try:
             await self.sio.connect(BASE_URL, auth={"token": await token.getToken()}, transports=["websocket"])
         except:
             logger.warn("Cannot connect the main service. Retry after 5s")
             Timer.delay(self.start, (), 5)
+        await set_status("请求证书")
         await self.cert()
+        await set_status("检查文件完整性")
         await self.check_files()
+        await set_status("启动服务")
         await self.enable()
     async def get(self, hash):
         return await self.storages[0].get(hash)
@@ -361,6 +382,7 @@ class Cluster:
         return await self.storages[0].exists(hash)
     async def enable(self) -> None:
         storages = {"file": 0, "webdav": 0}
+        self.trusted = True
         for storage in self.storages:
             if isinstance(storage, FileStorage):
                 storages["file"] += 1
@@ -377,6 +399,7 @@ class Cluster:
                 }
             }
         )
+        await set_status("巡检中")
     async def message(self, type, data: list[Any]):
         if len(data) == 1:
             data.append(None)
@@ -397,6 +420,7 @@ class Cluster:
             self.connected = True
             logger.info("Connected Main, Starting service.")
             await self.start_keepalive()
+            await set_status("正常工作" + ("" if self.trusted else "（节点信任度过低）"))
         elif type == "keep-alive":
             if err:
                 logger.error(f"Error: Unable to keep alive. Now reconnecting")
@@ -518,9 +542,22 @@ class DashboardData:
             c = web.statistics.get_time()
             c -= (5 - c % 5) + 600
             return {k: v for k, v in web.statistics.get_all_qps().items() if k > c}
+        if type == "status":
+            return last_status
 
 token = TokenManager()
 cluster: Optional[Cluster] = None
+last_status: str = "-"
+
+async def set_status(text: str):
+    global last_status
+    last_status = text
+    app = web.app
+    output = utils.DataOutputStream()
+    output.writeString("status")
+    output.write(DashboardData.serialize(text).io.getvalue())
+    for ws in app.get_websockets("/bmcl/"):
+        await ws.send(output.io.getvalue())
 
 async def init():
     global cluster

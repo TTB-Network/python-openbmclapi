@@ -436,6 +436,7 @@ class Application:
     def __init__(self) -> None:
         self._routes: list[Router] = [Router()]
         self._resources: list[Resource] = []
+        self._ws: dict[str, list[WebSocket]] = {}
     def route(self, path: str, method):
         def decorator(f):
             self._add_route(Route(path, method, f))
@@ -506,6 +507,9 @@ class Application:
                     "Sec-WebSocket-Accept": base64.b64encode(hashlib.sha1((await request.get_headers("Sec-WebSocket-Key", "")).encode('utf-8') + b'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest()).decode('utf-8')
                 }), status_code=101)
                 ws.start()
+                if request.get_url() not in self._ws:
+                    self._ws[request.get_url()] = []
+                self._ws[request.get_url()].append(ws)
             try:
                 if inspect.iscoroutinefunction(handler):
                     result = await handler(**params)
@@ -513,8 +517,10 @@ class Application:
                     result = handler(**params)
             except:
                 traceback.print_exc()
-            if method == "WebSocket" and not request.client.is_closed():
-                await ws.close("Server Closed.", 1001)
+            if method == "WebSocket":
+                self._ws[request.get_url()].remove(ws)
+                if not request.client.is_closed():
+                    await ws.close("Server Closed.", 1001)
         else:
             for resource in self._resources:
                 if request.url.startswith(resource.url):
@@ -531,6 +537,8 @@ class Application:
     def mount_resource(self, resource: Resource):
         self._resources.append(resource)
         self._resources.sort(key=lambda x: len(x.url), reverse=True)
+    def get_websockets(self, path) -> list[WebSocket]:
+        return self._ws.get(path, [])
 
 class Cookie:
     def __init__(self, key: str, value: str) -> None:

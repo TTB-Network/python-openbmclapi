@@ -98,7 +98,8 @@ async def _handle_process(client: Client, ssl: bool = False):
         while (header := await client.read(PROTOCOL_HEADER_BYTES, timeout=30)) and not client.is_closed():
             protocol = Protocol.get(header)
             if protocol == Protocol.DETECT:
-                client.write(header)
+                client.write(check_port_key)
+                await client.writer.drain()
                 break
             if protocol == Protocol.Unknown and not ssl and ssl_server:
                 target = Client(*(await asyncio.open_connection("127.0.0.1", ssl_server.sockets[0].getsockname()[1])))
@@ -118,10 +119,10 @@ async def _handle_process(client: Client, ssl: bool = False):
     if not proxying and not client.is_closed():
         client.close()
 async def check_ports():
-    global ssl_server, server, client_side_ssl, restart
+    global ssl_server, server, client_side_ssl, restart, check_port_key
     while 1:
         ports: list[tuple[asyncio.Server, ssl.SSLContext | None]] = []
-        for service in ((server, None), (ssl_server, client_side_ssl)):
+        for service in ((server, None), (ssl_server, client_side_ssl if get_loads() != 0 else None)):
             if not service[0]:
                 continue
             ports.append((service[0], service[1]))
@@ -132,8 +133,6 @@ async def check_ports():
                 client.write(check_port_key)
                 await client.writer.drain()
                 key = await client.read(len(check_port_key), 5)
-                if key != check_port_key:
-                    raise ValueError("Key are not same!")
             except:
                 logger.warn(f"Port {port[0].sockets[0].getsockname()[1]} is shutdown now! Now restarting the port!")
                 logger.error(traceback.format_exc())
