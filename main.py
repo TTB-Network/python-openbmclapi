@@ -9,7 +9,11 @@ os.environ["UTC"] = str(
         / 3600
     )
 )
+os.environ["STARTUP"] = str(
+    cur
+)
 
 if __name__ == "__main__":
-    from core.web import init
-    init()
+    import core
+
+    core.init()

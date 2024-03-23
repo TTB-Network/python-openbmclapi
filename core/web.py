@@ -11,10 +11,10 @@ from mimetypes import guess_type
 import os
 from pathlib import Path
 import re
+import signal
 import struct
 import tempfile
 import time
-import core.web as web
 import traceback
 import core.cluster as cluster
 import zlib
@@ -43,21 +43,80 @@ from core.utils import (
 import filetype
 import urllib.parse as urlparse
 from core.logger import logger
-import ssl
-from config import Config
+from core.config import Config
 from core.utils import Client
-from core.timer import Timer
+from core.timer import Timer 
+import core.cluster as cluster
 
 
-port = Config.get("port")
-_timeout = Config.get("timeout")
-ssl_port = Config.get("ssl_port")
-file_redirect = [
+TIMEOUT: int = Config.get("advanced.timeout")
+REQUEST_BUFFER: int = Config.get("advanced.request_buffer")
+FILE_REDIRECTS = [
     "index.html",
     "index.htm",
     "default.html",
     "default.htm"
 ]
+RESPONSE_HEADERS = {
+    "Server": Config.get("web.server_name"),
+}
+RESPONSE_DATE = "%a, %d %b %Y %H:%M:%S GMT"
+STATUS_CODES: dict[int, str] = {
+    100: "Continue",
+    101: "Switching Protocols",
+    200: "OK",
+    201: "Created",
+    202: "Accepted",
+    203: "Non-Authoritative Information",
+    204: "No Content",
+    205: "Reset Content",
+    206: "Partial Content",
+    300: "Multiple Choices",
+    301: "Moved Pemanently",
+    302: "Found",
+    303: "See Other",
+    304: "Not Modified",
+    305: "Use Proxy",
+    306: "Unused",
+    307: "Temporary Redirect",
+    400: "Bad Request",
+    401: "Unauthorized",
+    402: "Payment Required",
+    403: "Forbidden",
+    404: "Not Found",
+    405: "Method Not Allowed",
+    406: "Not Acceptable",
+    407: "Proxy Authentication Required",
+    408: "Request Time-out",
+    409: "Conflict",
+    410: "Gone",
+    411: "Length Required",
+    412: "Precondition Failed",
+    413: "Request Entity Too Large",
+    414: "Request-URI Too Large",
+    415: "Unsupported Media Type",
+    416: "Requested range not satisfiable",
+    417: "Expectation Failed",
+    418: "I'm a teapot",
+    421: "Misdirected Request",
+    422: "Unprocessable Entity",
+    423: "Locked",
+    424: "Failed Dependency",
+    425: "Too Early",
+    426: "Upgrade Required",
+    428: "Precondition Required",
+    429: "Too Many Requests",
+    431: "Request Header Fields Too Large",
+    451: "Unavailable For Legal Reasons",
+    500: "Internal Server Eror",
+    501: "Not Implemented",
+    502: "Bad Gateway",
+    503: "Service Unavailable",
+    504: "Gateway Time-out",
+    505: "HTTP Version not supported",
+}
+IO_BUFFER: int = Config.get("advanced.io_buffer")
+REQUEST_TIME_UNITS = ["ns", "ms", "s", "m", "h"]
 
 class Route:
     def __init__(
@@ -75,7 +134,14 @@ class Route:
 
     def is_params(self):
         return self._params
-
+    def __str__(self) -> str:
+        return 'Route(path="{}", method="{}", handler="{}")'.format(
+            self._path,
+            self.method,
+            self.handler
+        )
+    def __repr__(self) -> str:
+        return self.__str__()
 
 class Router:
     def __init__(self, prefix: str = "", *routes: Route) -> None:
@@ -125,7 +191,9 @@ class Router:
 
     def post(self, path):
         return self.route(path, "POST")
-
+    
+    def websocket(self, path):
+        return self.route(path, 'WebSocket')
 
 class Resource:
     def __init__(self, url: str, path: Path, show_dir: bool = False) -> None:
@@ -170,7 +238,7 @@ class Resource:
                     content += f'<script>addRow("{file}","{file}", 0, {size}, "{calc_bytes(size).removesuffix("iB") + "B"}", {int(m)}, "{md.year:04d}/{md.month:02d}/{md.day:02d} {md.hour:02d}:{md.minute:02d}:{md.second:02d}")</script>'
                 return content
             else:
-                for redirect in file_redirect:
+                for redirect in FILE_REDIRECTS:
                     if os.path.exists(os.path.join(filepath, redirect)):
                         return Path(os.path.join(filepath, redirect))
         elif filepath.is_file():
@@ -185,7 +253,6 @@ class ServerWebSocketError(WebSocketError):
 
 class ServerWebSocketUnknownDataError(ServerWebSocketError):
     ...
-
 
 class WebSocketOpcode(Enum):
     CONTINUATION = 0
@@ -220,8 +287,9 @@ class WebSocket:
     def __init__(self, conn: Client) -> None:
         self.conn = conn
         self.keepalive_checked = True
-        self.keepalive_thread = asyncio.create_task(self._keepalive())
         self.closed = False
+    def start(self):
+        self.keepalive_thread = asyncio.create_task(self._keepalive())
     async def _get_content(self, data):
         content: io.BytesIO = io.BytesIO()
         if isinstance(data, (Generator, Iterator, AsyncGenerator, AsyncIterator)):
@@ -238,6 +306,11 @@ class WebSocket:
         else:
             raise ServerWebSocketUnknownDataError("Type: " + str(type(data)))
         return content
+    def _get_opcode(self, data):
+        if isinstance(data, (Generator, Iterator, AsyncGenerator, AsyncIterator, list, dict, tuple, set, str)):
+            return WebSocketOpcode.TEXT
+        else:
+            return WebSocketOpcode.BINARY
     async def _iter(self, content):
         if isinstance(content, (AsyncGenerator, AsyncIterator)):
             async for data in content:
@@ -247,7 +320,7 @@ class WebSocket:
                 yield data
         else:
             yield content
-    def _build_frame(self, content: memoryview, opcode: WebSocketOpcode, status: int):  
+    def _build_frame(self, content: memoryview, opcode: WebSocketOpcode, status: int = 0):  
         data = io.BytesIO()  
         close = opcode == WebSocketOpcode.CLOSE  
         payload = len(content)  
@@ -280,10 +353,10 @@ class WebSocket:
             data.write(struct.pack("!H", status))  
             data.write(content)  
         return data
-    async def send(self, data: WEBSOCKETCONTENT, opcode: WebSocketOpcode = WebSocketOpcode.TEXT):
+    async def send(self, data: WEBSOCKETCONTENT, opcode: Optional[WebSocketOpcode] = None):
         if self.is_closed():
             return
-        self.conn.write(self._build_frame((await self._get_content(data)).getbuffer(), opcode, 0).getbuffer())
+        self.conn.write(self._build_frame((await self._get_content(data)).getbuffer(), opcode or self._get_opcode(data), 0).getbuffer())
         await self.conn.writer.drain()
     async def close(self, data: WEBSOCKETCONTENT = b'', status: int = 1000):
         if self.is_closed():
@@ -356,12 +429,11 @@ class WebSocket:
         except:
             ...
 
-    
-
 class Application:
     def __init__(self) -> None:
         self._routes: list[Router] = [Router()]
         self._resources: list[Resource] = []
+        self._ws: dict[str, list[WebSocket]] = {}
     def route(self, path: str, method):
         def decorator(f):
             self._add_route(Route(path, method, f))
@@ -431,6 +503,10 @@ class Application:
                     "Connection": "Upgrade",
                     "Sec-WebSocket-Accept": base64.b64encode(hashlib.sha1((await request.get_headers("Sec-WebSocket-Key", "")).encode('utf-8') + b'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest()).decode('utf-8')
                 }), status_code=101)
+                ws.start()
+                if request.get_url() not in self._ws:
+                    self._ws[request.get_url()] = []
+                self._ws[request.get_url()].append(ws)
             try:
                 if inspect.iscoroutinefunction(handler):
                     result = await handler(**params)
@@ -438,8 +514,10 @@ class Application:
                     result = handler(**params)
             except:
                 traceback.print_exc()
-            if method == "WebSocket" and not request.client.is_closed():
-                await ws.close("Server Closed.", 1001)
+            if method == "WebSocket":
+                self._ws[request.get_url()].remove(ws)
+                if not request.client.is_closed():
+                    await ws.close("Server Closed.", 1001)
         else:
             for resource in self._resources:
                 if request.url.startswith(resource.url):
@@ -447,7 +525,7 @@ class Application:
                     break
         if result == None and cur_route == None:
             result = ErrorResonse.not_found(request) if method != "WebSocket" else ErrorResonse.bad_request(request)
-        yield Response(content=result or '', headers=Header({ # type: ignore
+        yield Response(content=result or '', headers=Header({
             "Server": "TTB-Network"
         }))
     def mount(self, router: Router):
@@ -456,6 +534,8 @@ class Application:
     def mount_resource(self, resource: Resource):
         self._resources.append(resource)
         self._resources.sort(key=lambda x: len(x.url), reverse=True)
+    def get_websockets(self, path) -> list[WebSocket]:
+        return self._ws.get(path, [])
 
 class Cookie:
     def __init__(self, key: str, value: str) -> None:
@@ -503,70 +583,6 @@ class Header:
     def __len__(self) -> int:
         return self._headers.keys().__len__()
 
-
-response_headers = {
-    "Server": Config.get("server_name"),
-}
-response_date = "%a, %d %b %Y %H:%M:%S GMT"
-
-status_codes: dict[int, str] = {
-    100: "Continue",
-    101: "Switching Protocols",
-    200: "OK",
-    201: "Created",
-    202: "Accepted",
-    203: "Non-Authoritative Information",
-    204: "No Content",
-    205: "Reset Content",
-    206: "Partial Content",
-    300: "Multiple Choices",
-    301: "Moved Pemanently",
-    302: "Found",
-    303: "See Other",
-    304: "Not Modified",
-    305: "Use Proxy",
-    306: "Unused",
-    307: "Temporary Redirect",
-    400: "Bad Request",
-    401: "Unauthorized",
-    402: "Payment Required",
-    403: "Forbidden",
-    404: "Not Found",
-    405: "Method Not Allowed",
-    406: "Not Acceptable",
-    407: "Proxy Authentication Required",
-    408: "Request Time-out",
-    409: "Conflict",
-    410: "Gone",
-    411: "Length Required",
-    412: "Precondition Failed",
-    413: "Request Entity Too Large",
-    414: "Request-URI Too Large",
-    415: "Unsupported Media Type",
-    416: "Requested range not satisfiable",
-    417: "Expectation Failed",
-    418: "I'm a teapot",
-    421: "Misdirected Request",
-    422: "Unprocessable Entity",
-    423: "Locked",
-    424: "Failed Dependency",
-    425: "Too Early",
-    426: "Upgrade Required",
-    428: "Precondition Required",
-    429: "Too Many Requests",
-    431: "Request Header Fields Too Large",
-    451: "Unavailable For Legal Reasons",
-    500: "Internal Server Eror",
-    501: "Not Implemented",
-    502: "Bad Gateway",
-    503: "Service Unavailable",
-    504: "Gateway Time-out",
-    505: "HTTP Version not supported",
-}
-io_buffer = Config.get("io_buffer")
-request_time_units = ["ns", "ms", "s", "m", "h"]
-
-
 class Response:
     def __init__(
         self,
@@ -602,7 +618,7 @@ class Response:
         )
         content = content.lower()
         if content in ("text/plain", "application/javascript", "text/html"):
-            content += f"; utf-8"
+            content += f"; charset=utf-8"
         return content
 
     async def _iter(self):
@@ -612,7 +628,7 @@ class Response:
             self.content_type = "application/json"
             yield json.dumps(self.content).encode("utf-8")
         elif isinstance(self.content, (Iterator, Generator)):
-            async for data in content_next(self.content):  # type: ignore
+            async for data in content_next(self.content): 
                 yield data
         elif isinstance(self.content, (AsyncIterator, AsyncGenerator)):
             async for data in self.content:
@@ -648,9 +664,9 @@ class Response:
             length = len(content.getbuffer())
         self.set_headers(
             {
-                **response_headers,
+                **RESPONSE_HEADERS,
                 "Date": datetime.datetime.fromtimestamp(time.time()).strftime(
-                    response_date
+                    RESPONSE_DATE
                 ),
                 "Content-Length": length,
                 "Connection": (
@@ -665,27 +681,27 @@ class Response:
         if self._headers:
             headers = str(self._headers) + "\r\n"
         request._end_request_time(self.status_code)
-        header = f"{request.protocol} {self.status_code} {status_codes[self.status_code] if self.status_code in status_codes else status_codes[self.status_code // 100 * 100]}\r\n{headers}{cookie}\r\n".encode(
+        header = f"{request.protocol} {self.status_code} {STATUS_CODES[self.status_code] if self.status_code in STATUS_CODES else STATUS_CODES[self.status_code // 100 * 100]}\r\n{headers}{cookie}\r\n".encode(
             "utf-8"
         )
         client.write(header)
         if length != 0:
             if isinstance(content, io.BytesIO): 
                 client.write(content.getbuffer())
+                await client.writer.drain()
             else:
                 async with aiofiles.open(content, "rb") as r:
                     cur_length: int = 0
-                    while (data := await r.read(min(io_buffer, length - cur_length))):
+                    while (data := await r.read(min(IO_BUFFER, length - cur_length))):
                         cur_length += len(data)
                         client.write(data)
+                        await client.writer.drain()
         if (self._headers.get("Connection") or "Closed").lower() == "closed":
             client.close()
-
 
 class RedirectResponse(Response):
     def __init__(self, location: str) -> None:
         super().__init__(headers=Header({"Location": location}), status_code=301)
-
 
 class Request:
     def __init__(self, data: bytes, client: Client):
@@ -707,10 +723,12 @@ class Request:
         self._check_websocket = False
         self._json = None
         self._form = None
-
+    def is_ssl(self):
+        return self.client.is_ssl
     def get_url(self):
         return self.path
-
+    def get_url_params(self):
+        return self.params
     def get_ip(self):
         return self._ip
 
@@ -735,7 +753,7 @@ class Request:
     async def length(self):
         return int(await self.get_headers("content-length", "0") or "0")
 
-    async def content_iter(self, buffer: int = io_buffer):
+    async def content_iter(self, buffer: int = IO_BUFFER):
         if self._read_content:
             return
         self._length = int(await self.get_headers("content-length", "0") or "0")
@@ -764,8 +782,8 @@ class Request:
         if self._end is None:
             return "-".rjust(16, " ")
         v = self._end
-        units = request_time_units[0]
-        for unit in request_time_units:
+        units = REQUEST_TIME_UNITS[0]
+        for unit in REQUEST_TIME_UNITS:
             if v >= 1000:
                 v /= 1000
                 units = unit
@@ -842,7 +860,6 @@ class Form:
     files: dict[str, list[tempfile._TemporaryFileWrapper]]
     fields: dict[str, list[tempfile._TemporaryFileWrapper]]
 
-
 class FormParse:
     @staticmethod
     async def parse(boundary_: str, content_iter, length: int) -> 'Form':
@@ -856,7 +873,7 @@ class FormParse:
             yield b'\r\n'
             async for data in content_iter:
                 yield data
-        def process_part(boundary: bytes, files: dict[str, list[tempfile._TemporaryFileWrapper]], fields: dict[str, list[tempfile._TemporaryFileWrapper]], part: bytes, temp_file): # type: ignore
+        def process_part(boundary: bytes, files: dict[str, list[tempfile._TemporaryFileWrapper]], fields: dict[str, list[tempfile._TemporaryFileWrapper]], part: bytes, temp_file):
             if b'\r\n\r\n' not in part:
                 if temp_file:
                     temp_file.write(part.rstrip(boundary))
@@ -893,16 +910,43 @@ class FormParse:
             await asyncio.sleep(0.001)
         process_part(boundary, files, fields, b"".join(buffer), temp_file)
         if temp_file:
-            temp_file.seek(0)  # type: ignore
+            temp_file.seek(0) 
         return Form(boundary_, files, fields)
+        
+class Statistics:
+    def __init__(self) -> None:
+        self.qps = {}
+        Timer.repeat(self._clear, (), 1, 1)
+    def _clear(self):
+        t = self.get_time()
+        pops = []
+        for k in self.qps.keys():
+            if t - k > 86400:
+                pops.append(k)
+        for pop in pops:
+            self.qps.pop(pop)
+    def add_qps(self):
+        t = self.get_time()
+        if t not in self.qps:
+            self.qps[t] = 0
+        self.qps[t] += 1
+    def get_time(self):
+        return int(time.time())
+    def get_cur_qps(self):
+        return self.qps.get(self.get_time(), 0)
+    def get_in_time_qps(self, t: float):
+        c = self.get_time()
+        return {k: v for k, v in self.qps.items() if k - t <= c}
+    def get_all_qps(self):
+        return self.qps.copy()
 
-
+statistics: Statistics = Statistics()
 app: Application = Application()
-
 
 async def handle(data, client: Client):
     try:
         request: Request = Request(data, client)
+        statistics.add_qps()
         log = False
         async for resp in app.handle(request):
             await resp(request, client)
@@ -916,110 +960,29 @@ async def handle(data, client: Client):
     except:
         traceback.print_exc()
 
-def get_ssl():
-    global cur_ssl
-    return cur_ssl
-
-
-def load_cert():
-    global cert, cur_ssl
-    if Path(".ssl/cert").exists() and Path(".ssl/key").exists():
-        cert = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-        cert.check_hostname = False
-        cert.load_cert_chain(Path(".ssl/cert"), Path(".ssl/key"))
-        if not cur_ssl:
-            logger.info(f"Server listening on {port}{' with ssl' if cert else ''}!")
-        cur_ssl = True
-    else:
-        if cur_ssl:
-            logger.info(f"Server listening on {port}!")
-        cur_ssl = False
-
-async def _proxy(client: Client, target: Client):
-    try:
-        while (buffer := await client.read(io_buffer, timeout=_timeout)) and not client.is_closed() and not target.is_closed():
-            target.write(buffer)
-            await target.writer.drain()
-    except:
-        ...
-    if not client.is_closed():
-        client.close()
-
-async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    ssl = writer.get_extra_info("peercert") != None
-    client = Client(reader, writer, ssl)
-    proxy = False
-    try:
-        while (buffer := await client.read(Config.get("request_buffer"), timeout=_timeout)):
-            if client.invaild_ip():
-                break
-            if b"HTTP/1.1" in buffer:
-                await web.handle(buffer, client)
-            elif ssl_server:
-                target = Client(*(await asyncio.open_connection("127.0.0.1", ssl_server.sockets[0].getsockname()[1] if ssl_port == port else ssl_port)), peername = client.get_ip()) # type: ignore
-                target.write(buffer)
-                Timer.delay(_proxy, (client, target),)
-                Timer.delay(_proxy, (target, client),)
-                proxy = True
-                break
-            timeout = 10
-    except (
-        TimeoutError,
-        asyncio.exceptions.IncompleteReadError,
-        ConnectionResetError,
-    ) as e:
-        ...
-    except:
-        traceback.print_exc()
-    if not proxy and not client.is_closed():
-        client.close()
-
-server: Optional[asyncio.Server] = None
-ssl_server: Optional[asyncio.Server] = None
-cert = None
-cur_ssl = False
-
-async def main():
-    global cert, server, ssl_server
-    logger.info(f"Loading...")
-    load_cert()
-    await cluster.init()
-    while True:
-        try:
-            server = await asyncio.start_server(_handle, host='0.0.0.0', port=port)
-            ssl_server = await asyncio.start_server(_handle, host='0.0.0.0', port=0 if ssl_port == port else ssl_port, ssl=cert)
-            logger.info(f"Server listening on {port}{' with ssl' if cert else ''}!")
-            logger.debug(f"SSL Server listening on {ssl_server.sockets[0].getsockname()[1]}")
-            async with server, ssl_server:
-                await asyncio.gather(
-                    server.serve_forever(),
-                    ssl_server.serve_forever()
-                )
-        except:
-            if server:
-                server.close()
-            logger.error(traceback.format_exc())
-            await asyncio.sleep(2)
-
-
 @app.get("/favicon.ico")
 async def _():
     return zlib.decompress(b'x\x9cc``d`b\x10\x10`\x00\xd2\n\x0c\x19,\x0c\x0cj\x0c\x0c\x0c\n\n\x10\xbe\x86 \x03C\x1fPL\x03(&\x00\x12g\x80\x88\x83\x01\x0b\x03\x06\x90\xe1\xfd\xfd\x7f\x14\x0f\x1e\x0c\x8c\x12\xac\x98^\xfaG:F\x0f/r\xc3\x9f\\\xfd\x03\xe0_\x8a\x80\x06\xb4\x8cq@.g\x04F\xcb\x99Q<\x8aG\xf1(\x1e*X\x9a\xe7\x0bI\x98\xdav32\xf2\x01\xeb"v\xa20H-5\xdd\x002\x0bb6\xf6\xb6\x13&f\x1fv\xf6\x0fd\xf8\x0ft\xfa\x1b\xc5\xa3x\xa4cB\xf9\x8b\x9e\xe5?z\xf9BH\x9e\x1a\xf6\xa3\x96\xbf\xec\x18\xf6\xe3\x93\x1f\x0e\xf6\x0fd\xf8\x0ft\xfa\x1b\xc5\xb4\xc7\x94\x8e3\x0cu\x00\x00-\xd7@W')
 
-@app.websocket("/ws")
-async def _(ws: WebSocket):
-    await ws.send("aaa")
-    while 0:
-        await asyncio.sleep(2)
-    await ws.send("a")
-    ...
+async def init():
+    logger.info(f"Loading...")
+    cluster.stats.init()
+    await cluster.init()
+    
+async def close():
+    await cluster.close()
 
-public: Path = Path("./public/")
-public.mkdir(exist_ok=True, parents=True)
-app.mount_resource(Resource("/", public))
-dashboard: Path = Path("./bmclapi_dashboard/")
-dashboard.mkdir(exist_ok=True, parents=True)
-app.mount_resource(Resource("/bmcl", dashboard))
+def kill(_, __):
+    res = 0
+    try:
+        loop = asyncio.get_running_loop()
+        if not loop.is_closed():
+            res = loop.run_until_complete(asyncio.create_task(close()))
+        else:
+            res = asyncio.run(close())
+    except:
+        exit(res or 0)
+        ...
 
-def init():
-    asyncio.run(main())
+for sig in (signal.SIGILL, signal.SIGINT, signal.SIGTERM):
+    signal.signal(sig, kill)

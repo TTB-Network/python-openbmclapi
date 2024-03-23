@@ -1,10 +1,11 @@
 .vscode/
 config/config.properties
-__pycache__
+*/__pycache__
 .venv
 logs
-config/config.yaml
+config/config.yml
 bmclapi
 cache
 public
 .ssl
+.lh

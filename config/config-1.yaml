@@ -1,0 +1,13 @@
+byoc: false
+cluster_id: 65bf7e409976d7ccb10b130e
+cluster_secret: b7426fe04aa1a6d29df79652747e2fa1
+io_buffer: 16777216
+max_download: 64
+min_rate: 500
+min_rate_timestamp: 1000
+port: 8800
+public_host: ''
+public_port: 8800
+server_name: TTB-Network
+ssl_port: 443
+timeout: 30

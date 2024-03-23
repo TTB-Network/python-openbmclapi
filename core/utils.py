@@ -1,9 +1,9 @@
 import asyncio
+import base64
 from dataclasses import asdict, dataclass, is_dataclass
 import hashlib
 import inspect
 import io
-from pathlib import Path
 import time
 from typing import (
     Any,
@@ -21,8 +21,7 @@ from typing import (
 )
 import typing
 
-import aiofiles
-from config import Config
+from core.config import Config
 
 bytes_unit = ["K", "M", "G", "T", "E"]
 
@@ -43,10 +42,11 @@ class Client:
     is_ssl: bool = False
     peername: Optional[tuple[str, int]] = None
     closed: bool = False
-    min_rate: int = Config.get("min_rate")
-    min_rate_timestamp: int = Config.get("min_rate_timestamp")
-    timeout: int = Config.get("timeout")
-
+    min_rate: int = Config.get("advanced.min_rate")
+    min_rate_timestamp: int = Config.get("advanced.min_rate_timestamp")
+    timeout: int = Config.get("advanced.timeout")
+    def is_proxy(self):
+        return self.peername is not None
     def get_server_port(self):
         return self.server_port
 
@@ -292,51 +292,6 @@ WEBSOCKETCONTENT = Union[
 
 class _StopIteration(Exception): ...
 
-
-class Progress:
-    def __init__(self, max: int, total: Optional[int] = None) -> None:
-        self.cur = 0
-        self.cur_speed = 0
-        self.cur_speeds = []
-        self.cur_time = time.time()
-        self.max = max
-        self.total = total
-        self.start = time.time()
-
-    def add(self, cur=1):
-        self.cur += cur
-        self.cur_speed += cur
-        self._reset()
-
-    def _reset(self):
-        if time.time() - self.cur_time >= 1:
-            self.cur_speeds = self.cur_speeds[len(self.cur_speeds) - self.max - 1 :]
-            self.cur_speeds.append(self.cur_speed)
-            self.cur_time = time.time()
-            self.cur_speed = 0
-
-    def get_cur_speeds(self):
-        self._reset()
-        return self.cur_speeds
-
-    def get_cur(self):
-        return self.cur
-
-    def get_cur_speed(self):
-        self._reset()
-        return self.cur_speed
-
-    def get_eta(self):
-        return (
-            -1
-            if self.total == None or self.cur_speed == 0
-            else max(0, self.total - self.cur) / self.cur_speed
-        )
-
-    def get_total(self):
-        return time.time() - self.start
-
-
 def content_next(iterator: typing.Iterator):
     try:
         return next(iterator)
@@ -417,23 +372,16 @@ def format_time(n):
     second = int(n % 60)
     return f"{hour:02d}:{minutes:02d}:{second:02d}"
 
-
-def get_hash(org):
-    if len(org) == 32:
-        return hashlib.md5()
-    else:
-        return hashlib.sha1()
-
-
-async def get_file_hash(org: str, path: Path):
-    hash = get_hash(org)
-    async with aiofiles.open(path, "rb") as r:
-        while data := await r.read(Config.get("io_buffer")):
-            if not data:
-                break
-            hash.update(data)
-            await asyncio.sleep(0.001)
-    return hash.hexdigest() == org
+def check_sign(hash: str, secret: str, s: str, e: str) -> bool:
+    try:
+        t = int(e, 36)
+    except:
+        return False
+    sha1 = hashlib.sha1()
+    sha1.update(secret.encode("utf-8"))
+    sha1.update(hash.encode("utf-8"))
+    sha1.update(e.encode("utf-8"))
+    return base64.urlsafe_b64encode(sha1.digest()).decode().strip("=") == s and time.time() * 1000 <= t
 
 
 class MinecraftUtils:
@@ -462,7 +410,7 @@ class DataOutputStream:
         if isinstance(value, bytes):
             self.io.write(value)
         else:
-            self.io.write((value + 256 if value < 0 else value).to_bytes())  # type: ignore
+            self.io.write((value + 256 if value < 0 else value).to_bytes()) # type: ignore
 
     def writeBoolean(self, value: bool):
         self.write(value.to_bytes())
