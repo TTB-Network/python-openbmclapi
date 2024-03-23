@@ -20,6 +20,7 @@ import core.utils as utils
 import core.stats as stats
 import core.web as web
 from core.logger import logger
+import plugins
 
 from core.api import (
     File,
@@ -591,6 +592,10 @@ async def set_status(text: str):
 async def init():
     global cluster
     cluster = Cluster()
+    plugins.load_plugins()
+    for plugin in plugins.get_plugins():
+        await plugin.init()
+        await plugin.enable()
     cluster.add_storage(FileStorage(Path("bmclapi")))
     Timer.delay(cluster.start)
     app = web.app
@@ -644,24 +649,7 @@ async def init():
 
 async def close():
     global cluster
+    for plugin in plugins.get_enable_plugins():
+        await plugin.disable()
     if cluster:
         await cluster.disable()
-
-"""async def clearCache():
-    global cache
-    data = cache.copy()
-    size = 0
-    for k, v in data.items():
-        if v.access + 1440 < time.time():
-            cache.pop(k)
-        else:
-            size += v.size
-    if size > 1024 * 1024 * 512:
-        data = cache.copy()
-        for k, v in data.items():
-            if size > 1024 * 1024 * 512:
-                cache.pop(k)
-                size -= v.size
-            else:
-                break
-"""
