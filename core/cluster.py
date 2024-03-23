@@ -13,7 +13,7 @@ from typing import Any, Optional
 import socketio
 from tqdm import tqdm
 from core.config import Config
-from core import certificate, unit
+from core import certificate, system, unit
 from core.timer import Task, Timer
 import pyzstd as zstd
 import core.utils as utils
@@ -394,7 +394,6 @@ class Cluster:
                 if paths:
                     for path in paths:
                         os.remove(path)
-                        pbar.disable()
                         pbar.update(1)
                 if dir:
                     for d in dir:
@@ -593,6 +592,11 @@ class DashboardData:
             async with aiohttp.ClientSession(BASE_URL) as session:
                 async with session.get(data) as resp:
                     return resp.json()
+        if type == "system":
+            return {
+                "memory": system.get_used_memory(),
+                "connections": system.get_connections()
+            }
 
 token = TokenManager()
 cluster: Optional[Cluster] = None

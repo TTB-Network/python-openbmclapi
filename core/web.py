@@ -552,9 +552,9 @@ class Header:
     def __init__(self, header: dict[str, Any] | bytes | str | None = None) -> None:
         self._headers = {}
         if isinstance(header, bytes):
-            self._headers.update({v[0]: v[1] for v in (v.split(": ") for v in header.decode('utf-8').split("\r\n") if v.strip())})
+            self._headers.update({v[0]: v[1] for v in (v.split(": ", 1) for v in header.decode('utf-8').split("\r\n") if v.strip()) if len(v) == 2})
         elif isinstance(header, str):
-            self._headers.update({v[0]: v[1] for v in (v.split(": ") for v in header.split("\r\n") if v.strip())})
+            self._headers.update({v[0]: v[1] for v in (v.split(": ") for v in header.split("\r\n") if v.strip()) if len(v) == 2})
         elif isinstance(header, dict):
             self._headers.update(header)
     def get(self, key: str, def_ = None) -> Any:

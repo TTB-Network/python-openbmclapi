@@ -128,7 +128,7 @@ async def check_ports():
     global ssl_server, server, client_side_ssl, restart, check_port_key
     while 1:
         ports: list[tuple[asyncio.Server, ssl.SSLContext | None]] = []
-        for service in ((server, None), (ssl_server, client_side_ssl if get_loads() != 0 else None)):
+        for service in ((server, None), (ssl_server, client_side_ssl if get_loaded() else None)):
             if not service[0]:
                 continue
             ports.append((service[0], service[1]))
@@ -156,9 +156,9 @@ async def main():
     while 1:
         try:
             server = await asyncio.start_server(_handle, port=PORT)
-            ssl_server = await asyncio.start_server(_handle_ssl, port=0 if SSL_PORT == PORT else SSL_PORT, ssl=server_side_ssl if get_loads() != 0 else None)
+            ssl_server = await asyncio.start_server(_handle_ssl, port=0 if SSL_PORT == PORT else SSL_PORT, ssl=server_side_ssl if get_loaded() else None)
             logger.info(f"Listening server on {PORT}")
-            logger.info(f"Listening server on {ssl_server.sockets[0].getsockname()[1]} Loaded certificates: {get_loads()}")
+            logger.info(f"Listening server on {ssl_server.sockets[0].getsockname()[1]}")
             async with server, ssl_server:
                 await asyncio.gather(server.serve_forever(), ssl_server.serve_forever())
         except asyncio.CancelledError:
