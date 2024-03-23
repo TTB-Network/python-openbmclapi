@@ -2,10 +2,10 @@ from dataclasses import dataclass
 from enum import Enum
 import os
 import traceback
-from config import Config
-from core.timer import Timer
-from core.utils import Client
-from core.certificate import *
+from .config import Config
+from .timer import Timer
+from .utils import Client
+from .certificate import *
 from . import web
 from .logger import logger
 
@@ -78,12 +78,12 @@ server: Optional[asyncio.Server] = None
 proxy: Proxy = Proxy()
 restart = False
 check_port_key = os.urandom(8)
-PORT: int = Config.get("port") # type: ignore
-TIMEOUT: int = Config.get("timeout") # type: ignore
-SSL_PORT: int = Config.get("ssl_port") # type: ignore
-PROTOCOL_HEADER_BYTES = 4096
-TIMEOUT: int = Config.get("timeout") # type: ignore
-IO_BUFFER: int = Config.get("io_buffer") # type: ignore
+PORT: int = Config.get_integer("web.port") 
+TIMEOUT: int = Config.get_integer("advanced.timeout") 
+SSL_PORT: int = Config.get_integer("web.ssl_port")
+PROTOCOL_HEADER_BYTES = Config.get_integer("advanced.header_bytes", 4096)
+IO_BUFFER: int = Config.get_integer("advanced.io_buffer")
+DEBUG: bool = Config.get_boolean("advanced.debug")
 
 async def _handle_ssl(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     return await _handle_process(Client(reader, writer), True)
@@ -149,9 +149,9 @@ async def main():
     while 1:
         try:
             server = await asyncio.start_server(_handle, port=PORT)
-            ssl_server = await asyncio.start_server(_handle_ssl, port=0 if SSL_PORT == PORT else SSL_PORT, ssl=server_side_ssl)
+            ssl_server = await asyncio.start_server(_handle_ssl, port=0 if SSL_PORT == PORT else SSL_PORT, ssl=server_side_ssl if get_loads() != 0 else None)
             logger.info(f"Listening server on {PORT}")
-            logger.info(f"Listening server on {ssl_server.sockets[0].getsockname()[1]}")
+            logger.info(f"Listening server on {ssl_server.sockets[0].getsockname()[1]} Loaded certificates: {get_loads()}")
             async with server, ssl_server:
                 await asyncio.gather(server.serve_forever(), ssl_server.serve_forever())
         except asyncio.CancelledError:

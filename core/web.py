@@ -15,7 +15,6 @@ import signal
 import struct
 import tempfile
 import time
-import core.web as web
 import traceback
 import zlib
 from typing import (
@@ -43,17 +42,14 @@ from core.utils import (
 import filetype
 import urllib.parse as urlparse
 from core.logger import logger
-import ssl
-from config import Config
+from core.config import Config
 from core.utils import Client
 from core.timer import Timer 
 import core.cluster as cluster
 
 
-PORT: int = Config.get("port") # type: ignore
-TIMEOUT: int = Config.get("timeout") # type: ignore
-SSL_PORT: int = Config.get("ssl_port") # type: ignore
-REQUEST_BUFFER: int = Config.get("request_buffer") # type: ignore
+TIMEOUT: int = Config.get_integer("advanced.timeout")
+REQUEST_BUFFER: int = Config.get_integer("advanced.request_buffer")
 FILE_REDIRECTS = [
     "index.html",
     "index.htm",
@@ -61,7 +57,7 @@ FILE_REDIRECTS = [
     "default.htm"
 ]
 RESPONSE_HEADERS = {
-    "Server": Config.get("server_name"),
+    "Server": Config.get("web.server_name"),
 }
 RESPONSE_DATE = "%a, %d %b %Y %H:%M:%S GMT"
 STATUS_CODES: dict[int, str] = {
@@ -118,7 +114,7 @@ STATUS_CODES: dict[int, str] = {
     504: "Gateway Time-out",
     505: "HTTP Version not supported",
 }
-IO_BUFFER: int = Config.get("io_buffer") # type: ignore
+IO_BUFFER: int = Config.get_integer("advanced.io_buffer")
 REQUEST_TIME_UNITS = ["ns", "ms", "s", "m", "h"]
 
 class Route:
@@ -528,7 +524,7 @@ class Application:
                     break
         if result == None and cur_route == None:
             result = ErrorResonse.not_found(request) if method != "WebSocket" else ErrorResonse.bad_request(request)
-        yield Response(content=result or '', headers=Header({ # type: ignore
+        yield Response(content=result or '', headers=Header({
             "Server": "TTB-Network"
         }))
     def mount(self, router: Router):
@@ -631,7 +627,7 @@ class Response:
             self.content_type = "application/json"
             yield json.dumps(self.content).encode("utf-8")
         elif isinstance(self.content, (Iterator, Generator)):
-            async for data in content_next(self.content):  # type: ignore
+            async for data in content_next(self.content): 
                 yield data
         elif isinstance(self.content, (AsyncIterator, AsyncGenerator)):
             async for data in self.content:
@@ -876,7 +872,7 @@ class FormParse:
             yield b'\r\n'
             async for data in content_iter:
                 yield data
-        def process_part(boundary: bytes, files: dict[str, list[tempfile._TemporaryFileWrapper]], fields: dict[str, list[tempfile._TemporaryFileWrapper]], part: bytes, temp_file): # type: ignore
+        def process_part(boundary: bytes, files: dict[str, list[tempfile._TemporaryFileWrapper]], fields: dict[str, list[tempfile._TemporaryFileWrapper]], part: bytes, temp_file):
             if b'\r\n\r\n' not in part:
                 if temp_file:
                     temp_file.write(part.rstrip(boundary))
@@ -913,7 +909,7 @@ class FormParse:
             await asyncio.sleep(0.001)
         process_part(boundary, files, fields, b"".join(buffer), temp_file)
         if temp_file:
-            temp_file.seek(0)  # type: ignore
+            temp_file.seek(0) 
         return Form(boundary_, files, fields)
         
 class Statistics:

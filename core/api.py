@@ -4,13 +4,13 @@ from dataclasses import dataclass
 import hashlib
 import io
 from pathlib import Path
-import time
-from types import TracebackType
-from typing import Any, Iterable, Mapping, Optional
+from typing import Optional
 import zlib
 
 import aiofiles
 from tqdm import tqdm
+
+from core.config import Config
 
 
 @dataclass
@@ -75,87 +75,12 @@ class Storage(metaclass=abc.ABCMeta):
     async def get_files(self, dir: str) -> list[str]:
         raise NotImplementedError
     @abc.abstractmethod
-    async def remove(self, hash: str) -> bool:
+    async def get_files_size(self, dir: str) -> int:
         raise NotImplementedError
-
-"""class FixTQDM(org_tqdm):  
-    def __init__(self, 
-                 iterable: Optional[Iterable[Any]] = None, 
-                 desc: str | None = None, 
-                 total: float | None = None, 
-                 leave: bool | None = True, 
-                 file: str | None = None, 
-                 ncols: int | None = None, 
-                 mininterval: float = 0.1, 
-                 maxinterval: float = 10, 
-                 miniters: float | None = None, 
-                 ascii: bool | str | None = None, 
-                 unit: str = "it", 
-                 unit_scale: bool | float = False, 
-                 dynamic_ncols: bool = False, 
-                 smoothing: float = 0.3, 
-                 bar_format: str | None = None, 
-                 initial: float = 0, 
-                 position: int | None = None, 
-                 postfix: Mapping[str, object] | str | None = None, 
-                 unit_divisor: float = 1000, 
-                 write_bytes: bool = False, 
-                 lock_args: tuple[bool | None, float | None] | tuple[bool | None] | None = None, 
-                 nrows: int | None = None, 
-                 colour: str | None = None, 
-                 delay: float | None = 0, 
-                 gui: bool = False, 
-                 refresh_rate: float = 0,
-                 **kwargs: Any):
-        super().__init__(
-                 iterable = iterable, # type: ignore
-                 desc = desc,
-                 total = total,
-                 leave = leave,
-                 file = file, # type: ignore
-                 ncols = ncols,
-                 mininterval = mininterval,
-                 maxinterval = maxinterval,
-                 miniters = miniters,
-                 ascii = ascii,
-                 disable = False,
-                 unit = unit,
-                 unit_scale = unit_scale,
-                 dynamic_ncols = dynamic_ncols,
-                 smoothing = smoothing,
-                 bar_format = bar_format,
-                 initial = initial,
-                 position = position,
-                 postfix = postfix,
-                 unit_divisor = unit_divisor,
-                 write_bytes = write_bytes,
-                 lock_args = lock_args,
-                 nrows = nrows,
-                 colour = colour,
-                 delay = delay,
-                 gui = gui,
-                 **kwargs
-        )
-        self.value = 0
-        self.last_time = 0
-        self.interval = refresh_rate
-    def update(self, n=1):  
-        self.value += n or 0
-        self._update()
-    def _update(self):
-        if self.interval + self.last_time >= time.time():
-            return
-        super().update(self.value)
-        self.value = 0
-        self.last_time = time.time()
-    def close(self) -> None:
-        self._update()
-        return super().close()
-    def __exit__(self, exc_type: type[BaseException] | None, exc_value: BaseException | None, traceback: TracebackType | None) -> None:
-        self._update()
-        return super().__exit__(exc_type, exc_value, traceback)
-"""
-    
+    @abc.abstractmethod
+    async def removes(self, hashs: list[str]) -> int:
+        raise NotImplementedError
+ 
 
 def get_hash(org):
     if len(org) == 32:
@@ -167,7 +92,7 @@ def get_hash(org):
 async def get_file_hash(org: str, path: Path):
     hash = get_hash(org)
     async with aiofiles.open(path, "rb") as r:
-        while data := await r.read(Config.get("io_buffer")): # type: ignore
+        while data := await r.read(Config.get_integer("io_buffer")):
             if not data:
                 break
             hash.update(data)

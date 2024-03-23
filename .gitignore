@@ -3,7 +3,7 @@ config/config.properties
 */__pycache__
 .venv
 logs
-config/config.yaml
+config/config.yml
 bmclapi
 cache
 bmclapi_other

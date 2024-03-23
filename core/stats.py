@@ -15,7 +15,7 @@ from core.utils import (
 from core.api import (
     File
 )
-from core.timer import Timer  # type: ignore
+from core.timer import Timer
 class StorageStats:
     def __init__(self, name) -> None:
         self._name = name

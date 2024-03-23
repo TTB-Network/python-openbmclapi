@@ -4,7 +4,6 @@ from dataclasses import asdict, dataclass, is_dataclass
 import hashlib
 import inspect
 import io
-from pathlib import Path
 import time
 from typing import (
     Any,
@@ -21,10 +20,8 @@ from typing import (
     get_args,
 )
 import typing
-import zlib
 
-import aiofiles
-from config import Config
+from core.config import Config
 
 bytes_unit = ["K", "M", "G", "T", "E"]
 
@@ -45,9 +42,9 @@ class Client:
     is_ssl: bool = False
     peername: Optional[tuple[str, int]] = None
     closed: bool = False
-    min_rate: int = Config.get("min_rate") # type: ignore
-    min_rate_timestamp: int = Config.get("min_rate_timestamp") # type: ignore
-    timeout: int = Config.get("timeout") # type: ignore
+    min_rate: int = Config.get_integer("advnaced.min_rate")
+    min_rate_timestamp: int = Config.get_integer("advanced.min_rate_timestamp")
+    timeout: int = Config.get_integer("advanced.timeout")
     def is_proxy(self):
         return self.peername is not None
     def get_server_port(self):
@@ -413,7 +410,7 @@ class DataOutputStream:
         if isinstance(value, bytes):
             self.io.write(value)
         else:
-            self.io.write((value + 256 if value < 0 else value).to_bytes())  # type: ignore
+            self.io.write((value + 256 if value < 0 else value).to_bytes()) # type: ignore
 
     def writeBoolean(self, value: bool):
         self.write(value.to_bytes())

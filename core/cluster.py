@@ -1,11 +1,9 @@
 import asyncio
-from dataclasses import dataclass
 import hashlib
 import hmac
 import io
 import os
 from pathlib import Path
-import urllib.parse as urlparse
 import sys
 import time
 import traceback
@@ -14,9 +12,9 @@ import aiohttp
 from typing import Any, Optional
 import socketio
 from tqdm import tqdm
-from config import Config
+from core.config import Config
 from core import certificate, unit
-from core.timer import Task, Timer  # type: ignore
+from core.timer import Task, Timer
 import pyzstd as zstd
 import core.utils as utils
 import core.stats as stats
@@ -34,14 +32,14 @@ VERSION = "1.9.8"
 API_VERSION = "1.9.8"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
 BASE_URL = "https://openbmclapi.bangbang93.com/"
-CLUSTER_ID: str = Config.get("cluster_id") # type: ignore
-CLUSTER_SECERT: str = Config.get("cluster_secret") # type: ignore
-IO_BUFFER: int = Config.get("io_buffer") # type: ignore
-MAX_DOWNLOAD: int = max(1, Config.get("max_download")) # type: ignore
-BYOC: bool = Config.get("byoc") # type: ignore
-PUBLIC_HOST: str = Config.get("public_host") # type: ignore
-PUBLIC_PORT: int = Config.get("public_port") # type: ignore
-PORT: int = Config.get("port") # type: ignore
+CLUSTER_ID: str = Config.get("cluster.id")
+CLUSTER_SECERT: str = Config.get("cluster.secret")
+IO_BUFFER: int = Config.get("advanced.io_buffer")
+MAX_DOWNLOAD: int = max(1, Config.get("download.threads"))
+BYOC: bool = Config.get("cluster.byoc")
+PUBLIC_HOST: str = Config.get("cluster.public_host")
+PUBLIC_PORT: int = Config.get("cluster.public_port")
+PORT: int = Config.get("web.port")
 CACHE_BUFFER: int = 1024 * 1024 * 512
 CACHE_TIME: int = 1800
 CHECK_CACHE: int = 60
@@ -87,7 +85,9 @@ class TokenManager:
 
     async def getToken(self) -> str:
         if not self.token:
+            logger.info("Fetching token")
             await self.fetchToken()
+            logger.info("Fetched token")
         return self.token or ""
 
 class ParseFileList:
@@ -112,7 +112,7 @@ class FileDownloader:
         self.files = []
         self.queues: asyncio.Queue[BMCLAPIFile] = asyncio.Queue()
         self.storages = []
-    async def get_files(self):
+    async def get_files(self) -> list[BMCLAPIFile]:
         async with aiohttp.ClientSession(base_url=BASE_URL, headers={
             "User-Agent": USER_AGENT,
             "Authorization": f"Bearer {await token.getToken()}"
@@ -256,16 +256,25 @@ class FileStorage(Storage):
             self.cache.pop(key)
         logger.info(f"Outdate caches: {unit.format_number(len(old_keys))}({unit.format_bytes(old_size)})")
     async def get_files(self, dir: str) -> list[str]:
+        files = []
         with os.scandir(str(self.dir) + f"/{dir}") as session:
             for file in session:
-                print(file)
-        return []
-    async def remove(self, hash: str):
-        file = str(self.dir) + f"/{hash[:2]}/{hash}"
-        if os.path.exists(file):
-            os.remove(file)
-            return True
-        return False
+                files.append(file.name)
+        return files
+    async def removes(self, hashs: list[str]) -> int:
+        success = 0
+        for hash in hashs:
+            file = str(self.dir) + f"/{hash[:2]}/{hash}"
+            if os.path.exists(file):
+                os.remove(file)
+                success += 1
+        return success 
+    async def get_files_size(self, dir: str) -> int:
+        size = 0
+        with os.scandir(str(self.dir) + f"/{dir}") as session:
+            for file in session:
+                size += file.stat().st_size
+        return size
 class Cluster:
     def __init__(self) -> None:
         self.sio = socketio.AsyncClient()
@@ -295,15 +304,7 @@ class Cluster:
     async def check_files(self):
         downloader = FileDownloader()
         files = await downloader.get_files()
-        """with tqdm(total=len(files) * len(self.storages), unit=" file(s)", unit_scale=True) as pbar:
-            pbar.set_description(f"[Storage] Checking remove files")
-            miss_storage: list[list[BMCLAPIFile]] = await asyncio.gather(*[storage.check_missing_files(pbar, files) for storage in self.storages])  
-            missing_files_by_storage: dict[Storage, set[BMCLAPIFile]] = {}  
-            total_missing_bytes = 0
-
-            for storage, missing_files in zip(self.storages, miss_storage):  
-                missing_files_by_storage[storage] = set(missing_files)  
-                total_missing_bytes += sum((file.size for file in missing_files_by_storage[storage]))"""
+        sorted(files, key=lambda x: x.hash)
         with tqdm(total=len(files) * len(self.storages), unit=" file(s)", unit_scale=True) as pbar:
             pbar.set_description(f"[Storage] Checking files")
             task = Timer.repeat(self._check_files_sync_status, ("检查文件完整性", pbar, ), 0, 1)
@@ -316,6 +317,29 @@ class Cluster:
                 missing_files_by_storage[storage] = set(missing_files)  
                 total_missing_bytes += sum((file.size for file in missing_files_by_storage[storage]))
             await self._check_files_sync_status("检查文件完整性", pbar)
+        more_files = {storage: [] for storage in self.storages}
+        prefix_files = {prefix: [] for prefix in (prefix.to_bytes().hex() for prefix in range(256))}
+        prefix_hash = {prefix: [] for prefix in (prefix.to_bytes().hex() for prefix in range(256))}
+
+        for file in files:
+            prefix_files[file.hash[:2]].append(file)
+            prefix_hash[file.hash[:2]].append(file.hash)
+        for more, more_storage in more_files.items():
+            for prefix, filelist in prefix_files.items():
+                size = await more.get_files_size(prefix) 
+                if size != sum((file.size for file in filelist)):
+                    for file in await more.get_files(prefix):
+                        if file in prefix_hash[prefix]:
+                            continue
+                        more_storage.append(file)
+        more_total = sum(len(storage) for storage in more_files.values())
+        if more_total != 0:
+            with tqdm(total=more_total, desc="Delete old files", unit="file", unit_scale=True) as pbar:
+                for storage, filelist in more_files.items():
+                    removed = await storage.removes(filelist)
+                    if removed != (total := len(filelist)):
+                        logger.warn(f"Cannot delete all files? Success: {removed}, Total: {total}")
+                    pbar.update(total)
         if total_missing_bytes != 0 and len(miss_storage) >= 2:
             with tqdm(total=total_missing_bytes, desc="Copying local storage files", unit="bytes", unit_divisor=1024, unit_scale=True) as pbar:
                 task = Timer.repeat(self._check_files_sync_status, ("复制缺失文件中", pbar, ), 0, 1)
@@ -335,7 +359,7 @@ class Cluster:
                 task.block()
         miss = set().union(*missing_files_by_storage.values())
         if not miss:
-            logger.info("Checked all files")
+            logger.info(f"Checked all files {len(files) * len(self.storages)}")
         else:
             logger.info(f"Storage(s) total of missing files: {unit.format_number(len(miss))}")
             await downloader.download(self.storages, list(miss))
@@ -364,6 +388,7 @@ class Cluster:
     async def start(self, ):
         if self.started:
             return
+        logger.info(f"Loading cluster on {VERSION}")
         await set_status("启动节点中")
         try:
             await self.sio.connect(BASE_URL, auth={"token": await token.getToken()}, transports=["websocket"])
@@ -540,10 +565,14 @@ class DashboardData:
             return {"hourly": stats.hourly(), "days": stats.daily()}
         if type == "qps":
             c = web.statistics.get_time()
-            c -= (5 - c % 5) + 600
+            c -= 610
             return {k: v for k, v in web.statistics.get_all_qps().items() if k > c}
         if type == "status":
             return last_status
+        if type == "master":
+            async with aiohttp.ClientSession(BASE_URL) as session:
+                async with session.get(data) as resp:
+                    return resp.json()
 
 token = TokenManager()
 cluster: Optional[Cluster] = None
@@ -611,13 +640,6 @@ async def init():
             output.write(DashboardData.serialize(await DashboardData.process(type, data)).io.getvalue())
             await ws.send(output.io.getvalue())
 
-    @router.get("/master")
-    async def _(request: web.Request, url: str):
-        content = io.BytesIO()
-        async with aiohttp.ClientSession(BASE_URL) as session:
-            async with session.get(url) as resp:
-                content.write(await resp.read())
-        return content  # type: ignore
     app.mount(router)
 
 async def close():

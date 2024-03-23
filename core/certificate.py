@@ -1,11 +1,13 @@
 from pathlib import Path
 import ssl
 import time
+import traceback
 
-from core import logger
+from core.logger import logger
 import core
 
-
+ssl_dir = Path(".ssl")
+ssl_dir.mkdir(exist_ok=True, parents=True)
 server_side_ssl = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
 server_side_ssl.check_hostname = False
 client_side_ssl = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
@@ -17,10 +19,11 @@ def load_cert(cert, key):
     global server_side_ssl, client_side_ssl, _loads
     try:
         server_side_ssl.load_cert_chain(cert, key)
-        client_side_ssl.load_verify_locations(key)
+        client_side_ssl.load_verify_locations(cert)
         _loads += 1
         return True
     except:
+        logger.error("Failed to load certificate: ", traceback.format_exc())
         return False
 
 def get_loads() -> int:
@@ -36,8 +39,8 @@ def load_text(cert: str, key: str):
         k.write(key)
     if load_cert(cert_file, key_file):
         logger.info("Loaded certificate from text! Current:", get_loads())
+        core.restart = True
+        if core.server:
+            core.server.close()
     cert_file.unlink()
     key_file.unlink()
-    core.restart = True
-    if core.server:
-        core.server.close()
