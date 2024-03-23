@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import hashlib
 import hmac
 import io
@@ -25,6 +26,7 @@ import plugins
 from core.api import (
     File,
     BMCLAPIFile,
+    StatsCache,
     Storage,
     get_hash,
 )
@@ -202,14 +204,12 @@ class FileStorage(Storage):
             raise FileExistsError("The path is file.")
         self.dir.mkdir(exist_ok=True, parents=True)
         self.cache: dict[str, File] = {}
-        self.stats: stats.StorageStats = stats.get_storage(f"File_{self.dir}")
         self.timer = Timer.repeat(self.clear_cache, (), CHECK_CACHE, CHECK_CACHE)
-    async def get(self, hash: str, download: bool = False) -> File:
+    async def get(self, hash: str) -> File:
         if hash in self.cache:
             file = self.cache[hash]
             file.last_access = time.time()
-            if download:
-                self.stats.hit(file, cache = True)
+            file.cache = True
             return file
         path = Path(str(self.dir) + f"/{hash[:2]}/{hash}")
         buf = io.BytesIO()
@@ -219,8 +219,7 @@ class FileStorage(Storage):
         file = File(path, hash, buf.tell(), time.time(), time.time())
         file.set_data(buf.getbuffer())
         self.cache[hash] = file
-        if download:
-            self.stats.hit(file)
+        file.cache = False
         return file
     async def exists(self, hash: str) -> bool:
         return os.path.exists(str(self.dir) + f"/{hash[:2]}/{hash}")
@@ -290,6 +289,12 @@ class FileStorage(Storage):
                 for file in session:
                     size += file.stat().st_size
         return size
+    async def get_cache_stats(self) -> StatsCache:
+        stat = StatsCache()
+        for file in self.cache.values():
+            stat.total += 1
+            stat.bytes += file.size
+        return stat
 class WebDav(Storage):
     def __init__(self) -> None:
         super().__init__()
@@ -297,6 +302,7 @@ class Cluster:
     def __init__(self) -> None:
         self.sio = socketio.AsyncClient()
         self.storages: list[Storage] = []
+        self.storage_stats: dict[Storage, stats.StorageStats] = {}
         self.started = False
         self.sio.on("message", self._message)
         self.cur_storage: Optional[stats.SyncStorage] = None
@@ -310,8 +316,16 @@ class Cluster:
         logger.info(f"[Remote] {message}")
         if "信任度过低" in message:
             self.trusted = False
+    def get_storages(self):
+        return self.storages.copy()
     def add_storage(self, storage):
         self.storages.append(storage)
+        type = "Unknown"
+        key = time.time()
+        if isinstance(storage, FileStorage):
+            type = "File"
+            key = storage.dir
+        self.storage_stats[storage] = stats.get_storage(f"{type}_{key}")
     
     async def _check_files_sync_status(self, text: str, pbar: tqdm, format = unit.format_numbers):
         if self.check_files_timer:
@@ -418,8 +432,19 @@ class Cluster:
         await self.check_files()
         await set_status("启动服务")
         await self.enable()
-    async def get(self, hash):
-        return await self.storages[0].get(hash, True)
+    async def get(self, hash) -> File:
+        storage = self.storages[0]
+        stat = self.storage_stats[storage]
+        file = await storage.get(hash)
+        stat.hit(file)
+        return file
+    async def get_cache_stats(self) -> StatsCache:
+        stat = StatsCache()
+        for storage in self.storages:
+            t = await storage.get_cache_stats()
+            stat.total += t.total
+            stat.bytes += t.bytes
+        return stat
     async def exists(self, hash):
         return await self.storages[0].exists(hash)
     async def enable(self) -> None:
@@ -595,7 +620,9 @@ class DashboardData:
         if type == "system":
             return {
                 "memory": system.get_used_memory(),
-                "connections": system.get_connections()
+                "connections": system.get_connections(),
+                "cpu": system.get_cpus(),
+                "cache": dataclasses.asdict(await cluster.get_cache_stats()) if cluster else StatsCache()
             }
 
 token = TokenManager()
@@ -615,6 +642,7 @@ async def set_status(text: str):
 async def init():
     global cluster
     cluster = Cluster()
+    system.init()
     plugins.load_plugins()
     for plugin in plugins.get_plugins():
         await plugin.init()
