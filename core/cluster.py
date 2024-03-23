@@ -199,11 +199,12 @@ class FileStorage(Storage):
         self.cache: dict[str, File] = {}
         self.stats: stats.StorageStats = stats.get_storage(f"File_{self.dir}")
         self.timer = Timer.repeat(self.clear_cache, (), CHECK_CACHE, CHECK_CACHE)
-    async def get(self, hash: str) -> File:
+    async def get(self, hash: str, download: bool = False) -> File:
         if hash in self.cache:
             file = self.cache[hash]
             file.last_access = time.time()
-            self.stats.hit(file, cache = True)
+            if download:
+                self.stats.hit(file, cache = True)
             return file
         path = Path(str(self.dir) + f"/{hash[:2]}/{hash}")
         buf = io.BytesIO()
@@ -213,12 +214,18 @@ class FileStorage(Storage):
         file = File(path, hash, buf.tell(), time.time(), time.time())
         file.set_data(buf.getbuffer())
         self.cache[hash] = file
-        self.stats.hit(file)
+        if download:
+            self.stats.hit(file)
         return file
     async def exists(self, hash: str) -> bool:
         return os.path.exists(str(self.dir) + f"/{hash[:2]}/{hash}")
     async def get_size(self, hash: str) -> int:
         return os.path.getsize(str(self.dir) + f"/{hash[:2]}/{hash}")
+    async def copy(self, origin: Path, hash: str):
+        Path(str(self.dir) + f"/{hash[:2]}/{hash}").parent.mkdir(exist_ok=True, parents=True)
+        async with aiofiles.open(str(self.dir) + f"/{hash[:2]}/{hash}", "wb") as w, aiofiles.open(origin, "rb") as r:
+            await w.write(await r.read())
+            return r.tell()
     async def write(self, hash: str, io: io.BytesIO) -> int:
         Path(str(self.dir) + f"/{hash[:2]}/{hash}").parent.mkdir(exist_ok=True, parents=True)
         async with aiofiles.open(str(self.dir) + f"/{hash[:2]}/{hash}", "wb") as w:
@@ -276,6 +283,9 @@ class FileStorage(Storage):
             for file in session:
                 size += file.stat().st_size
         return size
+class WebDav(Storage):
+    def __init__(self) -> None:
+        super().__init__()
 class Cluster:
     def __init__(self) -> None:
         self.sio = socketio.AsyncClient()
@@ -403,7 +413,7 @@ class Cluster:
         await set_status("启动服务")
         await self.enable()
     async def get(self, hash):
-        return await self.storages[0].get(hash)
+        return await self.storages[0].get(hash, True)
     async def exists(self, hash):
         return await self.storages[0].exists(hash)
     async def enable(self) -> None:
@@ -450,7 +460,7 @@ class Cluster:
         elif type == "keep-alive":
             if err:
                 logger.error(f"Error: Unable to keep alive. Now reconnecting")
-                await self.disable()
+                await self.reconnect()
             if self.cur_storage:
                 storage = self.cur_storage
                 logger.info(f"Success keepalive, serve: {unit.format_number(storage.sync_hits)}({unit.format_bytes(storage.sync_bytes)})")
@@ -486,14 +496,16 @@ class Cluster:
                 "bytes": storage.get_total_bytes() - storage.get_last_bytes(),
             })
         await self.start_keepalive(300)
-    async def _keepalive_timeout(self):
-        logger.warn("Failed to keepalive? Reconnect the main")
+    async def reconnect(self):
         try:
             await self.disable()
         except:
             ...
         await self.cert()
         await self.enable()
+    async def _keepalive_timeout(self):
+        logger.warn("Failed to keepalive? Reconnect the main")
+        await self.reconnect()
     async def cert(self):
         if Path(".ssl/cert").exists() == Path(".ssl/key").exists() == True:
             return

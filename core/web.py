@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import stat
 import struct
 import tempfile
 import time
@@ -45,7 +46,7 @@ from core.logger import logger
 from core.config import Config
 from core.utils import Client
 from core.timer import Timer 
-import core.cluster as cluster
+from core import cluster
 
 
 TIMEOUT: int = Config.get_integer("advanced.timeout")
@@ -634,7 +635,9 @@ class Response:
                 yield data
         else:
             yield b""
-
+    async def partial_content(self, length: int, request: "Request") -> int:
+        range = await request.get_headers("range", "")
+        return length
     async def __call__(self, request: "Request", client: Client) -> Any:
         content, length = io.BytesIO(), 0
         if isinstance(self.content, Coroutine):
@@ -661,6 +664,21 @@ class Response:
             length = content.stat().st_size
         else:
             length = len(content.getbuffer())
+        start_bytes, end_bytes = 0, 0
+        range_str = await request.get_headers('range', '')
+        range_match = re.search(r'bytes=(\d+)-(\d+)', range_str, re.S) or re.search(r'bytes=(\d+)-', range_str, re.S)
+        end_bytes = length - 1
+        length = length - start_bytes if isinstance(self.content, Path) and self.content.is_file() and stat.S_ISREG(self.content.stat().st_mode) else length
+        if range_match:
+            start_bytes = int(range_match.group(1)) if range_match else 0
+            if range_match.lastindex == 2:
+                end_bytes = int(range_match.group(2))
+            self.set_headers({
+                'Accept-ranges': 'bytes',
+                'Content-Range': f'bytes {start_bytes}-{end_bytes}/{length}'
+            })
+            self.status_code = 206 if start_bytes > 0 else 200
+            length = length - start_bytes
         self.set_headers(
             {
                 **RESPONSE_HEADERS,
@@ -686,11 +704,12 @@ class Response:
         client.write(header)
         if length != 0:
             if isinstance(content, io.BytesIO): 
-                client.write(content.getbuffer())
+                client.write(content.getbuffer()[start_bytes:])
                 await client.writer.drain()
             else:
                 async with aiofiles.open(content, "rb") as r:
                     cur_length: int = 0
+                    await r.seek(start_bytes, os.SEEK_SET)
                     while (data := await r.read(min(IO_BUFFER, length - cur_length))):
                         cur_length += len(data)
                         client.write(data)

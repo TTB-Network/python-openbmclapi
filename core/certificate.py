@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import ssl
 import time
@@ -17,6 +18,8 @@ _loads: int = 0
 
 def load_cert(cert, key):
     global server_side_ssl, client_side_ssl, _loads
+    if not os.path.exists(cert) or not os.path.exists(key):
+        return False
     try:
         server_side_ssl.load_cert_chain(cert, key)
         client_side_ssl.load_verify_locations(cert)

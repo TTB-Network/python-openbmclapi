@@ -72,6 +72,11 @@ class Proxy:
         if client not in self._tables:
             return
         self._tables.remove(client)
+    def get_origin_from_ip(self, ip: tuple[str, int]):
+        for target in self._tables:
+            if target.target.get_address() == ip:
+                return target.origin.get_address()
+        return None
 
 ssl_server: Optional[asyncio.Server] = None
 server: Optional[asyncio.Server] = None
@@ -86,7 +91,7 @@ IO_BUFFER: int = Config.get_integer("advanced.io_buffer")
 DEBUG: bool = Config.get_boolean("advanced.debug")
 
 async def _handle_ssl(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    return await _handle_process(Client(reader, writer), True)
+    return await _handle_process(Client(reader, writer, peername = proxy.get_origin_from_ip(writer.get_extra_info("peername"))), True)
 
 async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     return await _handle_process(Client(reader, writer))
@@ -145,6 +150,7 @@ async def check_ports():
 async def main():
     global ssl_server, server, server_side_ssl, restart
     await web.init()
+    certificate.load_cert(Path(".ssl/cert"), Path(".ssl/key"))
     Timer.delay(check_ports, (), 5)
     while 1:
         try:

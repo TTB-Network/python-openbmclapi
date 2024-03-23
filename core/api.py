@@ -51,8 +51,9 @@ class File:
 
 class Storage(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def get(self, file: str) -> File:
+    async def get(self, file: str, download: bool = False) -> File:
         """
+            not download can't record file bytes and hits.
             return 
                 type: Path, str
                 Path: Local File
@@ -64,6 +65,9 @@ class Storage(metaclass=abc.ABCMeta):
         raise NotImplementedError
     @abc.abstractmethod
     async def get_size(self, hash: str) -> int:
+        raise NotImplementedError
+    @abc.abstractmethod
+    async def copy(self, origin: Path, hash: str) -> int:
         raise NotImplementedError
     @abc.abstractmethod
     async def write(self, hash: str, io: io.BytesIO) -> int:
