@@ -43,9 +43,9 @@ class Client:
     peername: Optional[tuple[str, int]] = None
     sockname: Optional[tuple[str, int]] = None 
     closed: bool = False
-    min_rate: int = Config.get_integer("advnaced.min_rate")
-    min_rate_timestamp: int = Config.get_integer("advanced.min_rate_timestamp")
-    timeout: int = Config.get_integer("advanced.timeout")
+    min_rate: int = Config.get("advanced.min_rate")
+    min_rate_timestamp: int = Config.get("advanced.min_rate_timestamp")
+    timeout: int = Config.get("advanced.timeout")
     def is_proxy(self):
         return self.peername is not None
     def get_server_port(self):

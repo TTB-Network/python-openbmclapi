@@ -6,6 +6,6 @@ logs
 config/config.yml
 bmclapi
 cache
-bmclapi_other
+public
 .ssl
 .lh

@@ -84,12 +84,11 @@ server: Optional[asyncio.Server] = None
 proxy: Proxy = Proxy()
 restart = False
 check_port_key = os.urandom(8)
-PORT: int = Config.get_integer("web.port") 
-TIMEOUT: int = Config.get_integer("advanced.timeout") 
-SSL_PORT: int = Config.get_integer("web.ssl_port")
-PROTOCOL_HEADER_BYTES = Config.get_integer("advanced.header_bytes", 4096)
-IO_BUFFER: int = Config.get_integer("advanced.io_buffer")
-DEBUG: bool = Config.get_boolean("advanced.debug")
+PORT: int = Config.get("web.port") 
+TIMEOUT: int = Config.get("advanced.timeout") 
+SSL_PORT: int = Config.get("web.ssl_port")
+PROTOCOL_HEADER_BYTES = Config.get("advanced.header_bytes")
+IO_BUFFER: int = Config.get("advanced.io_buffer")
 
 async def _handle_ssl(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     return await _handle_process(Client(reader, writer, peername = proxy.get_origin_from_ip(writer.get_extra_info("peername"))), True)

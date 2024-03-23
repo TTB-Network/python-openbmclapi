@@ -17,6 +17,7 @@ import struct
 import tempfile
 import time
 import traceback
+import core.cluster as cluster
 import zlib
 from typing import (
     Any,
@@ -49,8 +50,8 @@ from core.timer import Timer
 from core import cluster
 
 
-TIMEOUT: int = Config.get_integer("advanced.timeout")
-REQUEST_BUFFER: int = Config.get_integer("advanced.request_buffer")
+TIMEOUT: int = Config.get("advanced.timeout")
+REQUEST_BUFFER: int = Config.get("advanced.request_buffer")
 FILE_REDIRECTS = [
     "index.html",
     "index.htm",
@@ -115,7 +116,7 @@ STATUS_CODES: dict[int, str] = {
     504: "Gateway Time-out",
     505: "HTTP Version not supported",
 }
-IO_BUFFER: int = Config.get_integer("advanced.io_buffer")
+IO_BUFFER: int = Config.get("advanced.io_buffer")
 REQUEST_TIME_UNITS = ["ns", "ms", "s", "m", "h"]
 
 class Route:

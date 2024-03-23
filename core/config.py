@@ -6,27 +6,28 @@ from core.logger import logger
 
 defaults = {
     "cluster.id": "",
-    "cluster.secert": "",
-    "cluster.public_port": None,
+    "cluster.secret": "",
+    "cluster.public_port": 8800,
     "cluster.public_host": "",
     "cluster.byoc": False,
     "download.threads": 64,
     "web.server_name": "TTB-Network",
     "web.port": 80,
-    "web.ssl_port": 0,
+    "web.ssl_port": 8800,
     "web.force_ssl": False,
     "advanced.timeout": 30,
     "advanced.min_rate_timestamp": 1000,
     "advanced.min_rate": 500,
     "advanced.request_buffer": 8192,
     "advanced.io_buffer": 16777216,
+    "advanced.header_bytes": 4096,
 }
 
 
 class CFG:
     def __init__(self, path: str) -> None:
         self.file = Path(path)
-        logger.debug(f"Load config: {self.file.absolute()}")
+        logger.debug(f"Loading config: {self.file.absolute()}")
         self.cfg = {}
         if self.file.exists():
             self.load()
@@ -34,20 +35,17 @@ class CFG:
         with open(self.file, "r", encoding="utf-8") as f:
             self.cfg = yaml.load(f.read(), Loader=yaml.FullLoader) or {}
     def get(self, key: str, def_: Any = None) -> Any:
-        value = self._get_value(self.cfg, key.split(".")) or (defaults[key] if key in defaults else def_)
-        self.set(key, value)
+        value = self._get_value(self.cfg, key.split(".")) or os.environ.get(key) or (defaults[key] if key in defaults else def_)
+        if value == None:
+            self.set(key, value)
         return value
-    def get_integer(self, key: str, def_: Optional[int] = None) -> Any:
-        return self.get(key, def_) or 0
-    def get_boolean(self, key: str, def_: Optional[int] = None) -> Any:
-        val = self.get(key, def_) or "false"
-        return val.lower() == "true"
     def set(self, key: str, value: Any):
         self._set_value(self.cfg, key.split("."), value)  
         self.save()  
     def save(self):
         with open(self.file, "w", encoding="utf-8") as f:
             yaml.dump(data=self.cfg, stream=f, allow_unicode=True)
+
     def _get_value(self, dict_obj, keys):  
         for key in keys:  
             if key in dict_obj:  
