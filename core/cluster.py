@@ -54,6 +54,7 @@ class TokenManager:
         async with aiohttp.ClientSession(
             headers={"User-Agent": USER_AGENT}, base_url=BASE_URL
         ) as session:
+            logger.info("Fetching token")
             try:
                 async with session.get(
                     "/openbmclapi-agent/challenge", params={"clusterId": CLUSTER_ID}
@@ -80,15 +81,14 @@ class TokenManager:
                     Timer.delay(
                         self.fetchToken, delay=float(content["ttl"]) / 1000.0 - 600
                     )
+                    logger.info("Fetched token")
 
             except aiohttp.ClientError as e:
                 logger.error(f"Error fetching token: {e}.")
 
     async def getToken(self) -> str:
         if not self.token:
-            logger.info("Fetching token")
             await self.fetchToken()
-            logger.info("Fetched token")
         return self.token or ""
 
 class ParseFileList:
@@ -152,6 +152,8 @@ class FileDownloader:
             except:
                 pbar.update(-size)
                 await self.queues.put(file)
+            if cluster:
+                await cluster._check_files_sync_status("下载文件中", pbar, unit.format_more_bytes)
         await session.close()
 
     async def _mount_file(self, file: BMCLAPIFile):
@@ -166,9 +168,12 @@ class FileDownloader:
                 logger.error(traceback.format_exc())
             if result != file.size:
                 logger.error(f"Download file error: File {file.hash}({unit.format_bytes(file.size)}) copy to target file error: {file.hash}({unit.format_bytes(result)})")
-        os.remove(f"./cache/download/{file.hash[:2]}/{file.hash}")
+        try:
+            os.remove(f"./cache/download/{file.hash[:2]}/{file.hash}")
+        except:
+            ...
     async def download(self, storages: list['Storage'], miss: list[BMCLAPIFile]):
-        with tqdm(desc="Downloading files", unit="bytes", unit_divisor=1024, total=sum((file.size for file in miss)), unit_scale=True) as pbar:
+        with tqdm(desc="Downloading files", unit="b", unit_divisor=1024, total=sum((file.size for file in miss)), unit_scale=True) as pbar:
             self.storages = storages
             for file in miss:
                 await self.queues.put(file)
@@ -225,7 +230,7 @@ class FileStorage(Storage):
         Path(str(self.dir) + f"/{hash[:2]}/{hash}").parent.mkdir(exist_ok=True, parents=True)
         async with aiofiles.open(str(self.dir) + f"/{hash[:2]}/{hash}", "wb") as w, aiofiles.open(origin, "rb") as r:
             await w.write(await r.read())
-            return r.tell()
+            return origin.stat().st_size
     async def write(self, hash: str, io: io.BytesIO) -> int:
         Path(str(self.dir) + f"/{hash[:2]}/{hash}").parent.mkdir(exist_ok=True, parents=True)
         async with aiofiles.open(str(self.dir) + f"/{hash[:2]}/{hash}", "wb") as w:
@@ -265,9 +270,10 @@ class FileStorage(Storage):
         logger.info(f"Outdate caches: {unit.format_number(len(old_keys))}({unit.format_bytes(old_size)})")
     async def get_files(self, dir: str) -> list[str]:
         files = []
-        with os.scandir(str(self.dir) + f"/{dir}") as session:
-            for file in session:
-                files.append(file.name)
+        if os.path.exists(str(self.dir) + f"/{dir}"):
+            with os.scandir(str(self.dir) + f"/{dir}") as session:
+                for file in session:
+                    files.append(file.name)
         return files
     async def removes(self, hashs: list[str]) -> int:
         success = 0
@@ -279,9 +285,10 @@ class FileStorage(Storage):
         return success 
     async def get_files_size(self, dir: str) -> int:
         size = 0
-        with os.scandir(str(self.dir) + f"/{dir}") as session:
-            for file in session:
-                size += file.stat().st_size
+        if os.path.exists(str(self.dir) + f"/{dir}"):
+            with os.scandir(str(self.dir) + f"/{dir}") as session:
+                for file in session:
+                    size += file.stat().st_size
         return size
 class WebDav(Storage):
     def __init__(self) -> None:
@@ -306,10 +313,10 @@ class Cluster:
     def add_storage(self, storage):
         self.storages.append(storage)
     
-    async def _check_files_sync_status(self, text: str, pbar: tqdm):
+    async def _check_files_sync_status(self, text: str, pbar: tqdm, format = unit.format_numbers):
         if self.check_files_timer:
             return
-        n, total = unit.format_numbers(pbar.n, pbar.total)
+        n, total = format(pbar.n, pbar.total)
         await set_status(f"{text} ({n}/{total})")
 
     async def check_files(self):

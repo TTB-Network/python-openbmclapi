@@ -73,8 +73,9 @@ class Proxy:
             return
         self._tables.remove(client)
     def get_origin_from_ip(self, ip: tuple[str, int]):
+        # ip is connected client
         for target in self._tables:
-            if target.target.get_address() == ip:
+            if target.target.get_sock_address() == ip:
                 return target.origin.get_address()
         return None
 
@@ -107,7 +108,7 @@ async def _handle_process(client: Client, ssl: bool = False):
                 await client.writer.drain()
                 break
             if protocol == Protocol.Unknown and not ssl and ssl_server:
-                target = Client(*(await asyncio.open_connection("127.0.0.1", ssl_server.sockets[0].getsockname()[1])))
+                target = Client(*(await asyncio.open_connection("127.0.0.1", ssl_server.sockets[0].getsockname()[1])), peername=client.get_address())
                 proxying = True
                 await proxy.connect(client, target, header)
                 break
