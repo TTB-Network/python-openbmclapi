@@ -1,4 +1,3 @@
-
 <div align="center">
 
 ![](https://s21.ax1x.com/2024/03/09/pFyV90g.png)
@@ -70,6 +69,12 @@
     docker pull silianz/python-openbmclapi:latest
     ```
 
+    你也可使用镜像源进行拉取：
+
+   ```sh
+   docker pull registry.cn-hangzhou.aliyuncs.com/silianz/python-openbmclapi:latest
+   ```
+
 2. 创建容器：
 
     ```sh
@@ -79,7 +84,7 @@
     -e cluster_secret=${cluster_secret} \
     -e public_port=${port} \
     -v /data/openbmclapi:/opt/openbmclapi/cache \
-    -p ${port}:8800 \
+    -p ${port}:80 \
     --restart always \
     --name python-openbmclapi \
     silianz/python-openbmclapi 

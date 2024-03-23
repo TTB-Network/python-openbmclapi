@@ -474,14 +474,14 @@ class Cluster:
         if type == "request-cert":
             err, ack = data
             if err:
-                logger.error(f"Error: Unable to request cert. {ack}")
+                logger.error(f"Unable to request cert. {ack}")
                 return
             logger.info("Requested cert!")
             certificate.load_text(ack["cert"], ack["key"])
         elif type == "enable":
             err, ack = data
             if err:
-                logger.error(f"Error: Unable to start service: {err['message']}")
+                logger.error(f"Unable to start service: {err['message']}")
                 await self._keepalive_timeout()
                 return
             self.connected = True
@@ -490,8 +490,8 @@ class Cluster:
             await set_status("正常工作" + ("" if self.trusted else "（节点信任度过低）"))
         elif type == "keep-alive":
             if err:
-                logger.error(f"Error: Unable to keep alive. Now reconnecting")
-                await self.reconnect()
+                logger.error(f"Unable to keep alive. Now reconnecting")
+                await self.disable()
             if self.cur_storage:
                 storage = self.cur_storage
                 logger.info(f"Success keepalive, serve: {unit.format_number(storage.sync_hits)}({unit.format_bytes(storage.sync_bytes)})")
@@ -538,7 +538,7 @@ class Cluster:
         logger.warn("Failed to keepalive? Reconnect the main")
         await self.reconnect()
     async def cert(self):
-        if Path(".ssl/cert").exists() == Path(".ssl/key").exists() == True:
+        if Path("./.ssl/cert").exists() == Path("./.ssl/key").exists() == True:
             return
         await self.emit("request-cert")
     async def emit(self, channel, data=None):

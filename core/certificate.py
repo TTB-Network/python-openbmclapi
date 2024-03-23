@@ -34,8 +34,8 @@ def get_loaded() -> bool:
 
 def load_text(cert: str, key: str):
     t = time.time()
-    cert_file = Path(f".ssl/{t}_cert")
-    key_file = Path(f".ssl/{t}_key")
+    cert_file = Path(f"./.ssl/{t}_cert")
+    key_file = Path(f"./.ssl/{t}_key")
     with open(cert_file, "w") as c, open(key_file, "w") as k:
         c.write(cert)
         k.write(key)

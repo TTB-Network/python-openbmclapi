@@ -103,7 +103,7 @@ def get_hash(org):
 async def get_file_hash(org: str, path: Path):
     hash = get_hash(org)
     async with aiofiles.open(path, "rb") as r:
-        while data := await r.read(Config.get_integer("io_buffer")):
+        while data := await r.read(Config.get("io_buffer")):
             if not data:
                 break
             hash.update(data)
