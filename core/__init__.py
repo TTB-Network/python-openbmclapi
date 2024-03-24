@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 import os
+import signal
 import traceback
 from .config import Config
 from .timer import Timer
@@ -167,7 +168,7 @@ async def _handle_process(client: Client, ssl: bool = False):
 
 async def check_ports():
     global ssl_server, server, client_side_ssl, restart, check_port_key
-    while 1:
+    while int(os.environ["ASYNCIO_STARTUP"]):
         ports: list[tuple[asyncio.Server, ssl.SSLContext | None]] = []
         for service in (
             (server, None),
@@ -206,6 +207,7 @@ async def check_ports():
 
 async def main():
     global ssl_server, server, server_side_ssl, restart
+    os.environ["ASYNCIO_STARTUP"] = str(1)
     await web.init()
     certificate.load_cert(Path(".ssl/cert"), Path(".ssl/key"))
     Timer.delay(check_ports, (), 5)
@@ -224,20 +226,34 @@ async def main():
             async with server, ssl_server:
                 await asyncio.gather(server.serve_forever(), ssl_server.serve_forever())
         except asyncio.CancelledError:
-            if restart:
-                if server:
-                    server.close()
-                restart = False
-            else:
-                logger.info("Shutting down web service...")
-                web.close()
+            if not restart:
                 break
+            if server:
+                server.close()
+            restart = False
         except:
             if server:
                 server.close()
             logger.error(traceback.format_exc())
             await asyncio.sleep(2)
-
+    await close()
+    logger.info("Shutting down web service...")
+    os.environ["ASYNCIO_STARTUP"] = str(0)
+    os.kill(os.getpid(), signal.SIGINT)
 
 def init():
     asyncio.run(main())
+
+async def close():
+    await web.close()
+
+def kill(_, __):
+    if int(os.environ["ASYNCIO_STARTUP"]) and server:
+        server.close()
+        asyncio.get_running_loop().close()
+        return
+    exit(0)
+
+
+for sig in (signal.SIGINT, signal.SIGTERM):
+    signal.signal(sig, kill)

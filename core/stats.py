@@ -1,14 +1,13 @@
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
+import os
 from pathlib import Path
 import sqlite3
 import time
 from typing import Any
 
 from core.utils import (
-    DataInputStream,
     DataOutputStream,
     FileDataInputStream,
-    FileDataOutputStream,
     get_timestamp_from_day_tohour,
     get_timestamp_from_hour_tohour,
 )
@@ -321,6 +320,6 @@ def init():
 
 
 def write_database():
-    while 1:
+    while int(os.environ["ASYNCIO_STARTUP"]):
         _write_database()
         time.sleep(1)

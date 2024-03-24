@@ -1,6 +1,5 @@
 import asyncio
 import base64
-import dataclasses
 import hashlib
 import hmac
 import io
