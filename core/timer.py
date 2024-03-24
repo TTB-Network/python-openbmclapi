@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+import os
 import time
 import traceback
 from core.logger import logger
@@ -30,7 +31,7 @@ class Task:
         self.cur = None
 
     async def call(self):
-        if self.blocked:
+        if self.blocked or not int(os.environ["ASYNCIO_STARTUP"]):
             return
         try:
             if inspect.iscoroutinefunction(self.target):
@@ -48,7 +49,7 @@ class Task:
             await self.callback_error()
 
     async def callback(self):
-        if not self.back:
+        if not self.back or not int(os.environ["ASYNCIO_STARTUP"]):
             return
         try:
             if inspect.iscoroutinefunction(self.back):
@@ -66,7 +67,7 @@ class Task:
         self.blocked = True
 
     async def callback_error(self):
-        if not self.error:
+        if not self.error or not int(os.environ["ASYNCIO_STARTUP"]):
             logger.debug(traceback.format_exc())
             return
         try:

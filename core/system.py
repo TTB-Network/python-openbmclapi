@@ -10,11 +10,10 @@ cpus: list[float] = []
 
 def _cpu():
     global cpus
-    while 1:
+    while int(os.environ["ASYNCIO_STARTUP"]):
         for _ in range(max(len(cpus) - 600, 0)):
             cpus.pop(0)
         cpus.append(process.cpu_percent(1))
-
 
 def get_cpus():
     global cpus

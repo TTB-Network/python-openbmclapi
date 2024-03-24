@@ -11,7 +11,6 @@ from mimetypes import guess_type
 import os
 from pathlib import Path
 import re
-import signal
 import stat
 import struct
 import tempfile
@@ -1252,19 +1251,3 @@ async def init():
 async def close():
     await cluster.close()
 
-
-def kill(_, __):
-    res = 0
-    try:
-        loop = asyncio.get_running_loop()
-        if not loop.is_closed():
-            res = loop.run_until_complete(asyncio.create_task(close()))
-        else:
-            res = asyncio.run(close())
-    except:
-        exit(res or 0)
-        ...
-
-
-for sig in (signal.SIGILL, signal.SIGINT, signal.SIGTERM):
-    signal.signal(sig, kill)

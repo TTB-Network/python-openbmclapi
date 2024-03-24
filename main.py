@@ -12,6 +12,9 @@ os.environ["UTC"] = str(
 os.environ["STARTUP"] = str(
     cur
 )
+os.environ["ASYNCIO_STARTUP"] = str(
+    0
+)
 
 if __name__ == "__main__":
     import core

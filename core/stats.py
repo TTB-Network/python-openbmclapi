@@ -1,4 +1,5 @@
 from dataclasses import dataclass, asdict
+import os
 from pathlib import Path
 import sqlite3
 import time
@@ -321,6 +322,6 @@ def init():
 
 
 def write_database():
-    while 1:
+    while int(os.environ["ASYNCIO_STARTUP"]):
         _write_database()
         time.sleep(1)
