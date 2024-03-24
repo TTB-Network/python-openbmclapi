@@ -1,7 +1,6 @@
 import os
 
 import psutil
-import time
 
 from core.timer import Timer
 
