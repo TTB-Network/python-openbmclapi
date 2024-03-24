@@ -55,10 +55,10 @@
 3. 运行一次主程序生成配置文件：
 
     ```sh
-    python ./container/main.py
+    python main.py
     ```
 
-4. 在 `config/config.yaml` 中，填写你的 `cluster_id`（即 `CLUSTER_ID`）和 `cluster_secret`（即 `CLUSTER_SECRET`）。
+4. 在 `config/config.yml` 中，填写你的 `id`（即 `CLUSTER_ID`）和 `secret`（即 `CLUSTER_SECRET`）。
 
 5. 重新启动程序。
 
