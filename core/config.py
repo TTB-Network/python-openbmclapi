@@ -38,13 +38,13 @@ class CFG:
 
     def get(self, key: str, def_: Any = None) -> Any:
         value = (
-            self._get_value(self.cfg, key.split("."))
-            or os.environ.get(key)
+            os.environ.get(key)
+            or self._get_value(self.cfg, key.split("."))  
         )
         if value == None or value == "":
             logger.warn(f"{key} is not set! Does it exist?")
-            self.set(key, defaults[key])
-            value = defaults[key]
+            self.set(key, defaults[key] or def_)
+            value = defaults[key] or def_
         return value if value else defaults[key]
 
     def set(self, key: str, value: Any):
