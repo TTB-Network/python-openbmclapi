@@ -1,6 +1,6 @@
 .vscode/
 config/config.properties
-*/__pycache__
+**/__pycache__
 .venv
 logs
 config/config.yml

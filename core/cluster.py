@@ -364,7 +364,7 @@ class WebDav(Storage):
 
 class Cluster:
     def __init__(self) -> None:
-        self.sio = socketio.AsyncClient(logger=True)
+        self.sio = socketio.AsyncClient()
         self.storages: list[Storage] = []
         self.storage_stats: dict[Storage, stats.StorageStats] = {}
         self.started = False

@@ -504,8 +504,6 @@ class DataInputStream:
             k = int.from_bytes(self.read(1))
             i |= (k & 0x7F) << j * 7
             j += 1
-            if j > 5:
-                raise RuntimeError("VarInt too big")
             if (k & 0x80) != 128:
                 break
         return i - 2**31 * 2 if i >= 2**31 - 1 else i
