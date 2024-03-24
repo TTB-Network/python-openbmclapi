@@ -305,7 +305,7 @@ class WebDav(Storage):
         super().__init__()
 class Cluster:
     def __init__(self) -> None:
-        self.sio = socketio.AsyncClient()
+        self.sio = socketio.AsyncClient(logger=True)
         self.storages: list[Storage] = []
         self.storage_stats: dict[Storage, stats.StorageStats] = {}
         self.started = False
@@ -396,7 +396,7 @@ class Cluster:
                 task.block()
         miss = set().union(*missing_files_by_storage.values())
         if not miss:
-            logger.info(f"Checked all files {len(files) * len(self.storages)}")
+            logger.info(f"Checked all files, total: {len(files) * len(self.storages)}")
         else:
             logger.info(f"Storage(s) total of missing files: {unit.format_number(len(miss))}")
             await downloader.download(self.storages, list(miss))
