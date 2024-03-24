@@ -92,6 +92,13 @@ class Proxy:
             return
         self._tables.remove(client)
 
+    def get_origin_from_ip(self, ip: tuple[str, int]):
+        # ip is connected client
+        for target in self._tables:
+            if target.target.get_sock_address() == ip:
+                return target.origin.get_address()
+        return None
+
 
 ssl_server: Optional[asyncio.Server] = None
 server: Optional[asyncio.Server] = None
@@ -106,7 +113,14 @@ IO_BUFFER: int = Config.get("advanced.io_buffer")
 
 
 async def _handle_ssl(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    return await _handle_process(Client(reader, writer), True)
+    return await _handle_process(
+        Client(
+            reader,
+            writer,
+            peername=proxy.get_origin_from_ip(writer.get_extra_info("peername")),
+        ),
+        True,
+    )
 
 
 async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -131,7 +145,8 @@ async def _handle_process(client: Client, ssl: bool = False):
                         await asyncio.open_connection(
                             "127.0.0.1", ssl_server.sockets[0].getsockname()[1]
                         )
-                    )
+                    ),
+                    peername=client.get_address(),
                 )
                 proxying = True
                 await proxy.connect(client, target, header)
@@ -156,7 +171,7 @@ async def check_ports():
         ports: list[tuple[asyncio.Server, ssl.SSLContext | None]] = []
         for service in (
             (server, None),
-            (ssl_server, client_side_ssl if get_loads() != 0 else None),
+            (ssl_server, client_side_ssl if get_loaded() else None),
         ):
             if not service[0]:
                 continue
@@ -192,6 +207,7 @@ async def check_ports():
 async def main():
     global ssl_server, server, server_side_ssl, restart
     await web.init()
+    certificate.load_cert(Path(".ssl/cert"), Path(".ssl/key"))
     Timer.delay(check_ports, (), 5)
     while 1:
         try:
@@ -199,13 +215,12 @@ async def main():
             ssl_server = await asyncio.start_server(
                 _handle_ssl,
                 port=0 if SSL_PORT == PORT else SSL_PORT,
-                ssl=server_side_ssl if get_loads() != 0 else None,
+                ssl=server_side_ssl if get_loaded() else None,
             )
             logger.info(f"Listening server on port {PORT}.")
             logger.info(
                 f"Listening server on {ssl_server.sockets[0].getsockname()[1]}."
             )
-            logger.info(f"Loaded {get_loads()} certificates!")
             async with server, ssl_server:
                 await asyncio.gather(server.serve_forever(), ssl_server.serve_forever())
         except asyncio.CancelledError:

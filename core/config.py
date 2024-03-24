@@ -12,7 +12,7 @@ defaults = {
     "cluster.byoc": False,
     "download.threads": 64,
     "web.server_name": "TTB-Network",
-    "web.port": 80,
+    "web.port": 8080,
     "web.ssl_port": 8800,
     "web.force_ssl": False,
     "advanced.timeout": 30,
@@ -40,12 +40,12 @@ class CFG:
         value = (
             self._get_value(self.cfg, key.split("."))
             or os.environ.get(key)
-            or (defaults[key] if key in defaults else def_)
         )
-        if value == None:
+        if value == None or value == "":
             logger.warn(f"{key} is not set! Does it exist?")
-            self.set(key, value)
-        return value
+            self.set(key, defaults[key])
+            value = defaults[key]
+        return value if value else defaults[key]
 
     def set(self, key: str, value: Any):
         self._set_value(self.cfg, key.split("."), value)
@@ -70,33 +70,5 @@ class CFG:
             dict_obj = dict_obj[key]
         dict_obj[keys[-1]] = value
 
-
-"""class CFG:
-    def __init__(self, path: str) -> None:
-        self.file = Path(path)
-        logger.debug(f"Load config: {self.file.absolute()}")
-        self.cfg = {}
-        if self.file.exists():
-            self.load()
-
-    def load(self):
-        with open(self.file, "r", encoding="utf-8") as f:
-            self.cfg = yaml.load(f.read(), Loader=yaml.FullLoader) or {}
-
-    def get(self, key):
-        value = self.cfg.get(key, None)
-        if value is None or value == "":
-            value = os.environ.get(key)
-            if value:
-                return value
-            logger.warn(f"{key} is not set! Does it exist?")
-            self.write(key, defaults[key])
-        return value or (defaults[key] if key in defaults else value)
-
-    def write(self, key, value):
-        self.cfg[key] = value
-        with open(self.file, "w", encoding="utf-8") as f:
-            yaml.dump(data=self.cfg, stream=f, allow_unicode=True)
-"""
 
 Config: CFG = CFG("./config/config.yml")

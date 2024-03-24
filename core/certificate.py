@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import ssl
 import time
@@ -13,24 +14,25 @@ server_side_ssl.check_hostname = False
 client_side_ssl = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
 client_side_ssl.check_hostname = False
 
-_loads: int = 0
+_loaded: bool = False
 
 
 def load_cert(cert, key):
-    global server_side_ssl, client_side_ssl, _loads
+    global server_side_ssl, client_side_ssl, _loaded
+    if not os.path.exists(cert) or not os.path.exists(key):
+        return False
     try:
         server_side_ssl.load_cert_chain(cert, key)
         client_side_ssl.load_verify_locations(cert)
-        _loads += 1
+        _loaded = True
         return True
     except:
         logger.error(f"Failed to load certificate: {traceback.format_exc()}.")
         return False
 
 
-def get_loads() -> int:
-    global _loads
-    return _loads
+def get_loaded() -> bool:
+    return _loaded
 
 
 def load_text(cert: str, key: str):
@@ -41,9 +43,7 @@ def load_text(cert: str, key: str):
         c.write(cert)
         k.write(key)
     if load_cert(cert_file, key_file):
-        logger.info(
-            f"Loaded certificate from local files! Current certificate: {get_loads()}."
-        )
+        logger.info("Loaded certificate from local files!")
         core.restart = True
         if core.server:
             core.server.close()

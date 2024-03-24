@@ -40,6 +40,7 @@ class File:
     last_hit: float = 0
     last_access: float = 0
     data: Optional[io.BytesIO] = None
+    cache: bool = False
 
     def is_url(self):
         if not isinstance(self.path, str):
@@ -60,6 +61,12 @@ class File:
         self.data = io.BytesIO(zlib.compress(data.getbuffer()))
 
 
+@dataclass
+class StatsCache:
+    total: int = 0
+    bytes: int = 0
+
+
 class Storage(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     async def get(self, file: str) -> File:
@@ -77,6 +84,10 @@ class Storage(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     async def get_size(self, hash: str) -> int:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    async def copy(self, origin: Path, hash: str) -> int:
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -101,6 +112,10 @@ class Storage(metaclass=abc.ABCMeta):
     async def removes(self, hashs: list[str]) -> int:
         raise NotImplementedError
 
+    @abc.abstractmethod
+    async def get_cache_stats(self) -> StatsCache:
+        raise NotImplementedError
+
 
 def get_hash(org):
     if len(org) == 32:
@@ -112,7 +127,7 @@ def get_hash(org):
 async def get_file_hash(org: str, path: Path):
     hash = get_hash(org)
     async with aiofiles.open(path, "rb") as r:
-        while data := await r.read(Config.get("io_buffer")):
+        while data := await r.read(Config.get("advanced.io_buffer")):
             if not data:
                 break
             hash.update(data)

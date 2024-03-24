@@ -102,30 +102,40 @@
 ## 配置文件
 
 ```yml
-# 是否不使用 BMCLAPI 分发的证书, 同 CLUSTER_BYOC
-byoc: false
-# OpenBMCLAPI 的 CLUSTER_ID
-cluster_id: ''
-# OpenBMCLAPI 的 CLUSTER_SECRET
-cluster_secret: ''
-# 同步文件时最多打开的连接数量
-download_threads: 64
-# 超时时间
-timeout: 30
-# 实际开放的公网主机名, 同 CLUSTER_IP
-web_host: ''
-# 要监听的本地端口, 同 CLUSTER_PORT
-web_port: 8800
-# 实际开放的公网端口, 同 CLUSTER_PUBLIC_PORT
-web_publicport: 8800
-io_buffer: 16777216
-max_download: 64
-min_rate: 500
-min_rate_timestamp: 1000
-port: 8800
-public_host: ''
-public_port: null
-server_name: TTB-Network
+advanced:
+  # 新连接读取数据头大小
+  header_bytes: 4096
+  # 数据传输缓存大小
+  io_buffer: 16777216
+  # 最小读取速率（Bytes）
+  min_rate: 500
+  # 最小读取速率时间
+  min_rate_timestamp: 1000
+  # 请求缓存大小
+  request_buffer: 8192
+  # 超时时间
+  timeout: 30
+cluster:
+  # 是否不使用 BMCLAPI 分发的证书, 同 CLUSTER_BYOC
+  byoc: false
+  # OpenBMCLAPI 的 CLUSTER_ID
+  id: ''
+  # 实际开放的公网主机名, 同 CLUSTER_IP
+  public_host: ''
+  # 实际开放的公网端口, 同 CLUSTER_PUBLIC_PORT
+  public_port: 8800
+  # OpenBMCLAPI 的 CLUSTER_SECRET
+  secret: ''
+download:
+  # 最高下载线程
+  threads: 64
+web:
+  # 要监听的本地端口, 同 CLUSTER_PORT
+  port: 80
+  # 服务器名字
+  server_name: TTB-Network
+  # SSL 端口
+  ssl_port: 8800
 ```
 
 # 贡献
