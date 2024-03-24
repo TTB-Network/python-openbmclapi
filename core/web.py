@@ -1249,8 +1249,8 @@ async def init():
     await cluster.init()
 
 
-def close():
-    cluster.close()
+async def close():
+    await cluster.close()
 
 
 def kill(_, __):
