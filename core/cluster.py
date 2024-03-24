@@ -187,7 +187,7 @@ class FileDownloader:
                 logger.error(traceback.format_exc())
             if result != file.size:
                 logger.error(
-                    f"An error occured whilst downloading files: unable to copy file: {file.hash}({unit.format_bytes(file.size)}) => {file.hash}({unit.format_bytes(result)})."
+                    f"An error occured whilst downloading files: unable to copy file: {file.hash} ({unit.format_bytes(file.size)}) => {file.hash} ({unit.format_bytes(result)})."
                 )
 
         try:
