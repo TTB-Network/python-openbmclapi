@@ -80,11 +80,11 @@
 
     ```sh
     docker run -d \
-    -v ${/data/python-openbmclapi}:/bmclapi \
+    -v ${/path/to/your/cache}:/opt/python-openbmclapi/bmclapi \
     -e cluster.id=${cluster.id} \
     -e cluster.secret=${cluster.secret} \
     -e web.public_port=${web.public_port} \
-    -p ${web.public_port}:80 \
+    -p ${web.public_port}:8080 \
     --restart always \
     --name python-openbmclapi \
     silianz/python-openbmclapi 
@@ -98,7 +98,7 @@
 
     `cluster.secret` - 即 `CLUSTER_SECRET`。
 
-    `/data/python-openbmclapi` - `bmclapi` 文件夹（即缓存 `cache` 文件夹）挂载的路径。
+    `/path/to/your/cache` - `bmclapi` 文件夹（即缓存 `cache` 文件夹）挂载的路径。
 
 ## 配置文件
 
