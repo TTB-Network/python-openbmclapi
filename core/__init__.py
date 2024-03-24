@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from enum import Enum
 import os
 import signal
-import threading
 import traceback
 from .config import Config
 from .timer import Timer
