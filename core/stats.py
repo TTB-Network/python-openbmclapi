@@ -21,8 +21,8 @@ class StorageStats:
         self._name = name
         self.reset()
 
-    def hit(self, file: File):
-        byte = file.size
+    def hit(self, file: File, offset: int):
+        byte = file.size - offset
         if file.cache:
             self._cache_hits += 1
             self._cache_bytes += byte
@@ -88,7 +88,6 @@ class SyncStorage:
     sync_bytes: int
     object: StorageStats
 
-
 storages: dict[str, StorageStats] = {}
 cache: Path = Path("./cache")
 cache.mkdir(exist_ok=True, parents=True)
@@ -97,21 +96,19 @@ last_hour: int = 0
 db: sqlite3.Connection = sqlite3.Connection("./cache/stats.db", check_same_thread=False)
 db.execute(
     """
-CREATE TABLE IF NOT EXISTS access_logs (  
-    id INTEGER PRIMARY KEY AUTOINCREMENT,  
+CREATE TABLE IF NOT EXISTS access (  
+    hour unsigned bigint NOT NULL,
     storage TEXT NOT NULL,  
-    hour INTEGER NOT NULL,
-    hit INTEGER NOT NULL DEFAULT 0,
-    bytes INTEGER NOT NULL DEFAULT 0,
-    cache_hit INTEGER NOT NULL DEFAULT 0,
-    cache_bytes INTEGER NOT NULL DEFAULT 0,
-    last_hit INTEGER NOT NULL DEFAULT 0,
-    last_bytes INTEGER NOT NULL DEFAULT 0,
-    failed INTEGER NOT NULL DEFAULT 0
+    hit unsigned bigint NOT NULL DEFAULT 0,
+    bytes unsigned bigint NOT NULL DEFAULT 0,
+    cache_hit unsigned bigint NOT NULL DEFAULT 0,
+    cache_bytes unsigned bigint NOT NULL DEFAULT 0,
+    last_hit unsigned bigint NOT NULL DEFAULT 0,
+    last_bytes unsigned bigint NOT NULL DEFAULT 0,
+    failed unsigned bigint NOT NULL DEFAULT 0
 );"""
 )
 db.commit()
-
 
 def read_storage():
     global storages, last_hour
@@ -181,20 +178,20 @@ def _write_database():
     for storage in storages.values():
         if hour not in last_storages or hour != last_storages[storage.get_name()]:
             if not exists(
-                "select storage from access_logs where storage = ? and hour = ?",
+                "select storage from access where storage = ? and hour = ?",
                 storage.get_name(),
                 hour,
             ):
                 cmds.append(
                     (
-                        "insert into access_logs(storage, hour) values (?, ?)",
+                        "insert into access(storage, hour) values (?, ?)",
                         (storage.get_name(), hour),
                     )
                 )
             last_storages[storage.get_name()] = hour
         cmds.append(
             (
-                "update access_logs set hit = ?, bytes = ?, cache_hit = ?, cache_bytes = ?, last_hit = ?, last_bytes = ?, failed = ? where storage = ? and hour = ?",
+                "update access set hit = ?, bytes = ?, cache_hit = ?, cache_bytes = ?, last_hit = ?, last_bytes = ?, failed = ? where storage = ? and hour = ?",
                 (
                     storage._hits,
                     storage._bytes,
@@ -263,7 +260,7 @@ def hourly():
     data = []
     t = get_timestamp_from_day_tohour(0)
     for r in queryAllData(
-        "select storage, hour, hit, bytes, cache_hit, cache_bytes, last_hit, last_bytes, failed from access_logs where hour >= ?",
+        "select storage, hour, hit, bytes, cache_hit, cache_bytes, last_hit, last_bytes, failed from access where hour >= ?",
         t,
     ):
         data.append(
@@ -286,7 +283,7 @@ def daily():
     t = get_timestamp_from_day_tohour(30)
     days: dict[int, StorageStats] = {}
     for r in queryAllData(
-        "select storage, hour, hit, bytes, cache_hit, cache_bytes, last_hit, last_bytes, failed from access_logs where hour >= ?",
+        "select storage, hour, hit, bytes, cache_hit, cache_bytes, last_hit, last_bytes, failed from access where hour >= ?",
         t,
     ):
         hour = (r[1] - t) // 24
