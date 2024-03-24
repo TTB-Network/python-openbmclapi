@@ -43,8 +43,8 @@ class CFG:
         )
         if value == None or value == "":
             logger.warn(f"{key} is not set! Does it exist?")
-            self.set(key, defaults[key] or def_)
-            value = defaults[key] or def_
+            value = defaults[key] if key in defaults else def_
+            self.set(key, value)
         return value if value else defaults[key]
 
     def set(self, key: str, value: Any):
