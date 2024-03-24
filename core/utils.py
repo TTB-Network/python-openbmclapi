@@ -41,7 +41,7 @@ class Client:
     compressed: bool = False
     is_ssl: bool = False
     peername: Optional[tuple[str, int]] = None
-    sockname: Optional[tuple[str, int]] = None 
+    sockname: Optional[tuple[str, int]] = None
     closed: bool = False
     min_rate: int = Config.get("advanced.min_rate")
     min_rate_timestamp: int = Config.get("advanced.min_rate_timestamp")
@@ -116,7 +116,7 @@ class Client:
 
     def get_address(self):
         return self.peername or self.writer.get_extra_info("peername")[:2]
-    
+
     def get_sock_address(self):
         return self.sockname or self.writer.get_extra_info("sockname")[:2]
 

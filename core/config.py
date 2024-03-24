@@ -37,10 +37,7 @@ class CFG:
             self.cfg = yaml.load(f.read(), Loader=yaml.FullLoader) or {}
 
     def get(self, key: str, def_: Any = None) -> Any:
-        value = (
-            os.environ.get(key)
-            or self._get_value(self.cfg, key.split("."))  
-        )
+        value = os.environ.get(key) or self._get_value(self.cfg, key.split("."))
         if value == None or value == "":
             logger.warn(f"{key} is not set! Does it exist?")
             value = defaults[key] if key in defaults else def_

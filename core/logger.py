@@ -2,9 +2,7 @@ from loguru import logger as Logger
 from pathlib import Path
 import sys
 
-basic_logger_format = (
-    "<green>[{time:YYYY-MM-DD HH:mm:ss}]</green><yellow>[{name}:{function}:{line}]</yellow><level>[{level}]: {message}</level>"
-)
+basic_logger_format = "<green>[{time:YYYY-MM-DD HH:mm:ss}]</green><yellow>[{name}:{function}:{line}]</yellow><level>[{level}]: {message}</level>"
 
 
 def log(*values, func):

@@ -13,6 +13,7 @@ def format_bytes(size):
         size = round(size / (1024**i), 2)
     return f"{size}{_BYTES_[i]}"
 
+
 def format_more_bytes(*sizes):
     size = max(*sizes)
     if size == 0:
@@ -21,6 +22,7 @@ def format_more_bytes(*sizes):
     if i != 0:
         return (f"{round(size / (1024 ** i), 2)}{_BYTES_[i]}" for size in sizes)
     return (f"{size}{_BYTES_[i]}" for size in sizes)
+
 
 def format_bits(size):
     return format_bytes(size * 8)
