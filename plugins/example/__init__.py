@@ -8,6 +8,6 @@ from core import cluster
 
 async def enable():
     if not cluster.cluster:
-        logger.error("Current not any cluster?")
+        logger.error("There is currently no running cluster!")
         return
-    logger.info("This is a Example Plugin")
+    logger.info("This is an example plugin.")

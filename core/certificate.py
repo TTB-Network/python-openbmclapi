@@ -15,6 +15,7 @@ client_side_ssl.check_hostname = False
 
 _loads: int = 0
 
+
 def load_cert(cert, key):
     global server_side_ssl, client_side_ssl, _loads
     try:
@@ -23,12 +24,14 @@ def load_cert(cert, key):
         _loads += 1
         return True
     except:
-        logger.error("Failed to load certificate: ", traceback.format_exc())
+        logger.error(f"Failed to load certificate: {traceback.format_exc()}.")
         return False
+
 
 def get_loads() -> int:
     global _loads
     return _loads
+
 
 def load_text(cert: str, key: str):
     t = time.time()
@@ -38,7 +41,9 @@ def load_text(cert: str, key: str):
         c.write(cert)
         k.write(key)
     if load_cert(cert_file, key_file):
-        logger.info("Loaded certificate from text! Current: ", get_loads())
+        logger.info(
+            f"Loaded certificate from local files! Current certificate: {get_loads()}."
+        )
         core.restart = True
         if core.server:
             core.server.close()

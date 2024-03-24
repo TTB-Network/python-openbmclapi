@@ -79,12 +79,11 @@
 
     ```sh
     docker run -d \
-    -v ${/data/python-openbmclapi}:/python-openbmclapi/bmclapi \
-    -e cluster_id=${cluster_id} \
-    -e cluster_secret=${cluster_secret} \
-    -e public_port=${port} \
-    -v /data/openbmclapi:/opt/openbmclapi/cache \
-    -p ${port}:80 \
+    -v ${/data/python-openbmclapi}:/bmclapi \
+    -e cluster.id=${cluster.id} \
+    -e cluster.secret=${cluster.secret} \
+    -e web.public_port=${web.public_port} \
+    -p ${web.public_port}:80 \
     --restart always \
     --name python-openbmclapi \
     silianz/python-openbmclapi 
@@ -92,17 +91,17 @@
 
     **参数说明：**
 
-    `port` - 对外开放的端口。
+    `web.public_port` - 对外开放的端口。
 
-    `cluster_id` - 即 `CLUSTER_ID`。
+    `cluster.id` - 即 `CLUSTER_ID`。
 
-    `cluster_secret` - 即 `CLUSTER_SECRET`。
+    `cluster.secret` - 即 `CLUSTER_SECRET`。
 
     `/data/python-openbmclapi` - `bmclapi` 文件夹（即缓存 `cache` 文件夹）挂载的路径。
 
 ## 配置文件
 
-```yaml
+```yml
 # 是否不使用 BMCLAPI 分发的证书, 同 CLUSTER_BYOC
 byoc: false
 # OpenBMCLAPI 的 CLUSTER_ID

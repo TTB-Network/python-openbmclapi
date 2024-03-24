@@ -45,18 +45,13 @@ import urllib.parse as urlparse
 from core.logger import logger
 from core.config import Config
 from core.utils import Client
-from core.timer import Timer 
+from core.timer import Timer
 import core.cluster as cluster
 
 
 TIMEOUT: int = Config.get("advanced.timeout")
 REQUEST_BUFFER: int = Config.get("advanced.request_buffer")
-FILE_REDIRECTS = [
-    "index.html",
-    "index.htm",
-    "default.html",
-    "default.htm"
-]
+FILE_REDIRECTS = ["index.html", "index.htm", "default.html", "default.htm"]
 RESPONSE_HEADERS = {
     "Server": Config.get("web.server_name"),
 }
@@ -118,6 +113,7 @@ STATUS_CODES: dict[int, str] = {
 IO_BUFFER: int = Config.get("advanced.io_buffer")
 REQUEST_TIME_UNITS = ["ns", "ms", "s", "m", "h"]
 
+
 class Route:
     def __init__(
         self, path: str, method: Optional[str], handler: Callable[..., Coroutine]
@@ -134,14 +130,15 @@ class Route:
 
     def is_params(self):
         return self._params
+
     def __str__(self) -> str:
         return 'Route(path="{}", method="{}", handler="{}")'.format(
-            self._path,
-            self.method,
-            self.handler
+            self._path, self.method, self.handler
         )
+
     def __repr__(self) -> str:
         return self.__str__()
+
 
 class Router:
     def __init__(self, prefix: str = "", *routes: Route) -> None:
@@ -167,7 +164,7 @@ class Router:
             return None
         url = url.removeprefix(self.prefix)
         for route in self._routes[method]:
-            if  route.is_params() and route.regexp.match(url) or route._path == url:
+            if route.is_params() and route.regexp.match(url) or route._path == url:
                 return route
         return None
 
@@ -191,9 +188,10 @@ class Router:
 
     def post(self, path):
         return self.route(path, "POST")
-    
+
     def websocket(self, path):
-        return self.route(path, 'WebSocket')
+        return self.route(path, "WebSocket")
+
 
 class Resource:
     def __init__(self, url: str, path: Path, show_dir: bool = False) -> None:
@@ -207,7 +205,7 @@ class Resource:
     async def __call__(self, request: "Request") -> Any:
         if self.path.is_file():
             return self.dir
-        path = (self.dir + "/" + request.path.removeprefix(self.url))
+        path = self.dir + "/" + request.path.removeprefix(self.url)
         filepath = Path(self.dir + "/" + request.path.removeprefix(self.url))
         if filepath.is_dir():
             if path == "" and not path.endswith("/"):
@@ -245,14 +243,15 @@ class Resource:
             return filepath
         return Response("Not Found", status_code=404)
 
-class WebSocketError(Exception):
-    ...
 
-class ServerWebSocketError(WebSocketError):
-    ...
+class WebSocketError(Exception): ...
 
-class ServerWebSocketUnknownDataError(ServerWebSocketError):
-    ...
+
+class ServerWebSocketError(WebSocketError): ...
+
+
+class ServerWebSocketUnknownDataError(ServerWebSocketError): ...
+
 
 class WebSocketOpcode(Enum):
     CONTINUATION = 0
@@ -261,6 +260,7 @@ class WebSocketOpcode(Enum):
     CLOSE = 8
     PING = 9
     PONG = 10
+
 
 class WebSocketFrame:
     def __init__(self, opcode: int, data: io.BytesIO) -> None:
@@ -273,32 +273,37 @@ class WebSocketFrame:
         self.content = data
         if self.opcode == WebSocketOpcode.TEXT.value:
             try:
-                self.content = self.content.getvalue().decode('utf-8')
+                self.content = self.content.getvalue().decode("utf-8")
             except:
                 ...
         if isinstance(self.content, io.BytesIO):
             self.content = self.content.getvalue()
+
     def __str__(self) -> str:
         return "{} {}".format(self.opcode, self.content)
+
     def __repr__(self) -> str:
         return self.__str__()
+
 
 class WebSocket:
     def __init__(self, conn: Client) -> None:
         self.conn = conn
         self.keepalive_checked = True
         self.closed = False
+
     def start(self):
         self.keepalive_thread = asyncio.create_task(self._keepalive())
+
     async def _get_content(self, data):
         content: io.BytesIO = io.BytesIO()
         if isinstance(data, (Generator, Iterator, AsyncGenerator, AsyncIterator)):
             async for data in self._iter(data):
-                content.write(str(content).encode('utf-8'))
+                content.write(str(content).encode("utf-8"))
         elif isinstance(data, (list, dict, tuple, set)):
-            content.write(json.dumps(data).encode('utf-8'))
+            content.write(json.dumps(data).encode("utf-8"))
         elif isinstance(data, str):
-            content.write(data.encode('utf-8'))
+            content.write(data.encode("utf-8"))
         elif isinstance(data, (memoryview, bytes)):
             content = io.BytesIO(data)
         elif isinstance(data, io.BytesIO):
@@ -306,11 +311,26 @@ class WebSocket:
         else:
             raise ServerWebSocketUnknownDataError("Type: " + str(type(data)))
         return content
+
     def _get_opcode(self, data):
-        if isinstance(data, (Generator, Iterator, AsyncGenerator, AsyncIterator, list, dict, tuple, set, str)):
+        if isinstance(
+            data,
+            (
+                Generator,
+                Iterator,
+                AsyncGenerator,
+                AsyncIterator,
+                list,
+                dict,
+                tuple,
+                set,
+                str,
+            ),
+        ):
             return WebSocketOpcode.TEXT
         else:
             return WebSocketOpcode.BINARY
+
     async def _iter(self, content):
         if isinstance(content, (AsyncGenerator, AsyncIterator)):
             async for data in content:
@@ -320,62 +340,82 @@ class WebSocket:
                 yield data
         else:
             yield content
-    def _build_frame(self, content: memoryview, opcode: WebSocketOpcode, status: int = 0):  
-        data = io.BytesIO()  
-        close = opcode == WebSocketOpcode.CLOSE  
-        payload = len(content)  
-        head1 = 0b10000000 | opcode.value  
-        head2 = 0  
-        if not close:  
+
+    def _build_frame(
+        self, content: memoryview, opcode: WebSocketOpcode, status: int = 0
+    ):
+        data = io.BytesIO()
+        close = opcode == WebSocketOpcode.CLOSE
+        payload = len(content)
+        head1 = 0b10000000 | opcode.value
+        head2 = 0
+        if not close:
             first = True
             cur = 0
             while cur < payload:
-                header = (0b10000000 if payload <= cur + 65535 else 0)
-                if first:  
-                    head1 = header | opcode.value  
-                    first = False  
-                else:  
-                    head1 = header | WebSocketOpcode.CONTINUATION.value 
+                header = 0b10000000 if payload <= cur + 65535 else 0
+                if first:
+                    head1 = header | opcode.value
+                    first = False
+                else:
+                    head1 = header | WebSocketOpcode.CONTINUATION.value
                 length = min(payload - cur, 65535)
-                if length < 126:  
-                    data.write(struct.pack("!BB", head1, head2 | length))  
-                elif length < 65536:  
-                    data.write(struct.pack("!BBH", head1, head2 | 126, length))  
-                else:  
-                    data.write(struct.pack("!BBQ", head1, head2 | 127, length))  
-                data.write(content[cur:length + cur])  
+                if length < 126:
+                    data.write(struct.pack("!BB", head1, head2 | length))
+                elif length < 65536:
+                    data.write(struct.pack("!BBH", head1, head2 | 126, length))
+                else:
+                    data.write(struct.pack("!BBQ", head1, head2 | 127, length))
+                data.write(content[cur : length + cur])
                 cur += length
-        else:  
-            if payload > 123:  
-                content = content[:123]  
-                payload = len(content)  
+        else:
+            if payload > 123:
+                content = content[:123]
+                payload = len(content)
             data.write(struct.pack("!BB", 0b10000000 | opcode.value, 0 | payload + 2))
-            data.write(struct.pack("!H", status))  
-            data.write(content)  
+            data.write(struct.pack("!H", status))
+            data.write(content)
         return data
-    async def send(self, data: WEBSOCKETCONTENT, opcode: Optional[WebSocketOpcode] = None):
+
+    async def send(
+        self, data: WEBSOCKETCONTENT, opcode: Optional[WebSocketOpcode] = None
+    ):
         if self.is_closed():
             return
-        self.conn.write(self._build_frame((await self._get_content(data)).getbuffer(), opcode or self._get_opcode(data), 0).getbuffer())
+        self.conn.write(
+            self._build_frame(
+                (await self._get_content(data)).getbuffer(),
+                opcode or self._get_opcode(data),
+                0,
+            ).getbuffer()
+        )
         await self.conn.writer.drain()
-    async def close(self, data: WEBSOCKETCONTENT = b'', status: int = 1000):
+
+    async def close(self, data: WEBSOCKETCONTENT = b"", status: int = 1000):
         if self.is_closed():
             return
-        self.conn.write(self._build_frame((await self._get_content(data)).getbuffer(), WebSocketOpcode.CLOSE, status).getbuffer())
+        self.conn.write(
+            self._build_frame(
+                (await self._get_content(data)).getbuffer(),
+                WebSocketOpcode.CLOSE,
+                status,
+            ).getbuffer()
+        )
         await self.conn.writer.drain()
         self.keepalive_thread.cancel()
         self.closed = True
         await self.conn.writer.wait_closed()
+
     async def _read_frame(self):
         if self.is_closed():
             return None
         try:
             head1, head2 = struct.unpack("!BB", await self.conn.readexactly(2))
-            fin  = bool(head1 & 0b10000000)
+            fin = bool(head1 & 0b10000000)
             mask = bool((head1 & 0x80) >> 7)
             opcode = head1 & 0b00001111
             length = head2 & 0b01111111
-            mask_bits = b''
+            mask_bits = b""
             if length == 126:
                 (length,) = struct.unpack("!H", await self.conn.readexactly(2))
             elif length == 127:
@@ -384,23 +424,40 @@ class WebSocket:
                 mask_bits = await self.conn.readexactly(4)
             data = await self.conn.readexactly(length)
             content = io.BytesIO()
-            if (mask and mask_bits is None) or (mask and mask_bits and len(mask_bits) != 4):
+            if (mask and mask_bits is None) or (
+                mask and mask_bits and len(mask_bits) != 4
+            ):
                 raise ValueError("mask must contain 4 bytes")
             if mask:
-                content.write(b''.join(((data[i] ^ mask_bits[i % 4]).to_bytes() for i in range(len(data)))))
+                content.write(
+                    b"".join(
+                        (
+                            (data[i] ^ mask_bits[i % 4]).to_bytes()
+                            for i in range(len(data))
+                        )
+                    )
+                )
             if opcode == 8:
                 self.conn.close()
                 return WebSocketFrame(opcode, content)
             if not fin:
                 frame = await self._read_frame()
-                if not frame or frame.opcode != WebSocketOpcode.CONTINUATION.value and len(content.getbuffer()) + len(frame.data.getbuffer()) != length:
-                    raise ValueError("opcode doesn't match {} {}".format(opcode, length))
+                if (
+                    not frame
+                    or frame.opcode != WebSocketOpcode.CONTINUATION.value
+                    and len(content.getbuffer()) + len(frame.data.getbuffer()) != length
+                ):
+                    raise ValueError(
+                        "opcode doesn't match {} {}".format(opcode, length)
+                    )
                 content.write(frame.data.getbuffer())
             return WebSocketFrame(opcode, content)
         except:
             return None
+
     def is_closed(self):
         return self.conn.is_closed() or self.closed
+
     async def _keepalive(self):
         while self.keepalive_checked and not self.is_closed():
             self.keepalive_checked = False
@@ -408,6 +465,7 @@ class WebSocket:
             await asyncio.sleep(10)
         if not self.is_closed():
             await self.close()
+
     async def _read(self):
         frame = await self._read_frame()
         if not frame:
@@ -416,12 +474,17 @@ class WebSocket:
         if frame.opcode == WebSocketOpcode.CLOSE:
             await self.close()
             raise WebSocketError("Client Closed")
-        if frame.opcode == WebSocketOpcode.PING.value or frame.opcode == WebSocketOpcode.PONG.value:
+        if (
+            frame.opcode == WebSocketOpcode.PING.value
+            or frame.opcode == WebSocketOpcode.PONG.value
+        ):
             self.keepalive_checked = True
             return await self._read()
         return frame
+
     async def read(self):
         return (await self._read()).content
+
     async def __aiter__(self):
         try:
             while (data := await self.read()) and not self.is_closed():
@@ -429,25 +492,33 @@ class WebSocket:
         except:
             ...
 
+
 class Application:
     def __init__(self) -> None:
         self._routes: list[Router] = [Router()]
         self._resources: list[Resource] = []
         self._ws: dict[str, list[WebSocket]] = {}
+
     def route(self, path: str, method):
         def decorator(f):
             self._add_route(Route(path, method, f))
             return f
+
         return decorator
+
     def _add_route(self, route: Route):
         self._routes[0].add(route)
+
     def get(self, path):
-        return self.route(path, 'GET')
+        return self.route(path, "GET")
+
     def post(self, path):
-        return self.route(path, 'POST')
+        return self.route(path, "POST")
+
     def websocket(self, path):
-        return self.route(path, 'WebSocket')
-    async def handle(self, request: 'Request'):
+        return self.route(path, "WebSocket")
+
+    async def handle(self, request: "Request"):
         cur_route = None
         method = await request.get_method()
         url = request.get_url()
@@ -464,7 +535,12 @@ class Application:
                 if r:
                     url_params.update({name: r.group(name) for name in cur_route.param})
             annotations = inspect.get_annotations(handler)
-            default_params: dict[str, Any] = {name.lower(): value.default for name, value in inspect.signature(handler).parameters.items() if (not isinstance(value, inspect._empty)) and (value.default != inspect._empty)}
+            default_params: dict[str, Any] = {
+                name.lower(): value.default
+                for name, value in inspect.signature(handler).parameters.items()
+                if (not isinstance(value, inspect._empty))
+                and (value.default != inspect._empty)
+            }
             params = {}
             sets = []
             is_json = await request.is_json()
@@ -489,20 +565,40 @@ class Application:
                         params[include_name] = json[include_name]
                     elif include_name in default_params:
                         params[include_name] = default_params[include_name]
-                    elif hasattr(include_type, '__origin__') and include_type.__origin__ is Union and type(None) in get_args(include_type):
+                    elif (
+                        hasattr(include_type, "__origin__")
+                        and include_type.__origin__ is Union
+                        and type(None) in get_args(include_type)
+                    ):
                         params[include_name] = None
                     try:
-                        params[include_name] = parse_obj_as_type(params[include_name], include_type)
+                        params[include_name] = parse_obj_as_type(
+                            params[include_name], include_type
+                        )
                         sets.append(include_name)
                     except:
                         traceback.print_exc()
                         return
             if method == "WebSocket":
-                yield Response(headers=Header({
-                    "Upgrade": "WebSocket",
-                    "Connection": "Upgrade",
-                    "Sec-WebSocket-Accept": base64.b64encode(hashlib.sha1((await request.get_headers("Sec-WebSocket-Key", "")).encode('utf-8') + b'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest()).decode('utf-8')
-                }), status_code=101)
+                yield Response(
+                    headers=Header(
+                        {
+                            "Upgrade": "WebSocket",
+                            "Connection": "Upgrade",
+                            "Sec-WebSocket-Accept": base64.b64encode(
+                                hashlib.sha1(
+                                    (
+                                        await request.get_headers(
+                                            "Sec-WebSocket-Key", ""
+                                        )
+                                    ).encode("utf-8")
+                                    + b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+                                ).digest()
+                            ).decode("utf-8"),
+                        }
+                    ),
+                    status_code=101,
+                )
                 ws.start()
                 if request.get_url() not in self._ws:
                     self._ws[request.get_url()] = []
@@ -524,18 +620,27 @@ class Application:
                     result = await resource(request)
                     break
         if result == None and cur_route == None:
-            result = ErrorResonse.not_found(request) if method != "WebSocket" else ErrorResonse.bad_request(request)
-        yield Response(content=result or '', headers=Header({
-            "Server": "TTB-Network"
-        }))
+            result = (
+                ErrorResonse.not_found(request)
+                if method != "WebSocket"
+                else ErrorResonse.bad_request(request)
+            )
+        yield Response(
+            content=result or "",
+            headers=Header({"Server": Config.get("web.server_name")}),
+        )
+
     def mount(self, router: Router):
         self._routes.append(router)
-        logger.info(f"Serve router at: {router.prefix}")
+        logger.info(f"Serving router at {router.prefix}.")
+
     def mount_resource(self, resource: Resource):
         self._resources.append(resource)
         self._resources.sort(key=lambda x: len(x.url), reverse=True)
+
     def get_websockets(self, path) -> list[WebSocket]:
         return self._ws.get(path, [])
+
 
 class Cookie:
     def __init__(self, key: str, value: str) -> None:
@@ -543,27 +648,42 @@ class Cookie:
         self.value = value
 
     def __str__(self) -> str:
-        return "{}={}".format(
-            self.key,
-            self.value
-        )
+        return "{}={}".format(self.key, self.value)
+
 
 class Header:
     def __init__(self, header: dict[str, Any] | bytes | str | None = None) -> None:
         self._headers = {}
         if isinstance(header, bytes):
-            self._headers.update({v[0]: v[1] for v in (v.split(": ") for v in header.decode('utf-8').split("\r\n") if v.strip())})
+            self._headers.update(
+                {
+                    v[0]: v[1]
+                    for v in (
+                        v.split(": ")
+                        for v in header.decode("utf-8").split("\r\n")
+                        if v.strip()
+                    )
+                }
+            )
         elif isinstance(header, str):
-            self._headers.update({v[0]: v[1] for v in (v.split(": ") for v in header.split("\r\n") if v.strip())})
+            self._headers.update(
+                {
+                    v[0]: v[1]
+                    for v in (v.split(": ") for v in header.split("\r\n") if v.strip())
+                }
+            )
         elif isinstance(header, dict):
             self._headers.update(header)
-    def get(self, key: str, def_ = None) -> Any:
+
+    def get(self, key: str, def_=None) -> Any:
         return self._headers.get(self._parse_key(key), def_)
+
     def set(self, key: str, value: Any) -> None:
         org_key = self._parse_key(key)
         if org_key in self._headers:
             self._headers.pop(self._parse_key(key))
         self._headers[key] = value
+
     def _parse_key(self, key: str) -> str:
         keys = list(self._headers.keys())
         lkeys = list(map(str.lower, keys))
@@ -576,12 +696,13 @@ class Header:
             return
         for k, v in value.items():
             self.set(k, v)
+
     def __str__(self) -> str:
-        return '\r\n'.join(
-            ("{}: {}".format(k, v) for k, v in self._headers.items())
-        )
+        return "\r\n".join(("{}: {}".format(k, v) for k, v in self._headers.items()))
+
     def __len__(self) -> int:
         return self._headers.keys().__len__()
+
 
 class Response:
     def __init__(
@@ -628,7 +749,7 @@ class Response:
             self.content_type = "application/json"
             yield json.dumps(self.content).encode("utf-8")
         elif isinstance(self.content, (Iterator, Generator)):
-            async for data in content_next(self.content): 
+            async for data in content_next(self.content):
                 yield data
         elif isinstance(self.content, (AsyncIterator, AsyncGenerator)):
             async for data in self.content:
@@ -686,22 +807,24 @@ class Response:
         )
         client.write(header)
         if length != 0:
-            if isinstance(content, io.BytesIO): 
+            if isinstance(content, io.BytesIO):
                 client.write(content.getbuffer())
                 await client.writer.drain()
             else:
                 async with aiofiles.open(content, "rb") as r:
                     cur_length: int = 0
-                    while (data := await r.read(min(IO_BUFFER, length - cur_length))):
+                    while data := await r.read(min(IO_BUFFER, length - cur_length)):
                         cur_length += len(data)
                         client.write(data)
                         await client.writer.drain()
         if (self._headers.get("Connection") or "Closed").lower() == "closed":
             client.close()
 
+
 class RedirectResponse(Response):
     def __init__(self, location: str) -> None:
         super().__init__(headers=Header({"Location": location}), status_code=301)
+
 
 class Request:
     def __init__(self, data: bytes, client: Client):
@@ -712,8 +835,12 @@ class Request:
         self._ip = client.get_ip()
         self._user_agent = None
         self.client = client
-        self.method, self.url, self.protocol = self._info.decode('utf-8').strip().split(" ")
-        self.path = urlparse.unquote((url := urlparse.urlparse(self.url)).path).replace("//", "/")
+        self.method, self.url, self.protocol = (
+            self._info.decode("utf-8").strip().split(" ")
+        )
+        self.path = urlparse.unquote((url := urlparse.urlparse(self.url)).path).replace(
+            "//", "/"
+        )
         self.params = {k: v[-1] for k, v in urlparse.parse_qs(url.query).items()}
         self.parameters: dict[str, str] = {}
         self._headers = {}
@@ -723,12 +850,16 @@ class Request:
         self._check_websocket = False
         self._json = None
         self._form = None
+
     def is_ssl(self):
         return self.client.is_ssl
+
     def get_url(self):
         return self.path
+
     def get_url_params(self):
         return self.params
+
     def get_ip(self):
         return self._ip
 
@@ -736,12 +867,17 @@ class Request:
         return self._user_agent or ""
 
     async def get_method(self):
-        if not self._check_websocket and self.method == "GET" and (await self.get_headers("Connection") or "Closed") == "Upgrade":
+        if (
+            not self._check_websocket
+            and self.method == "GET"
+            and (await self.get_headers("Connection") or "Closed") == "Upgrade"
+        ):
             method = await self.get_headers("Upgrade") or ""
             if method.lower() == "websocket":
                 self.method = "WebSocket"
         return self.method
-    async def get_headers(self, key: str, def_ = None):
+
+    async def get_headers(self, key: str, def_=None):
         if not self._headers:
             if b"\r\n\r\n" not in self._body:
                 self._body += await self.client.readuntil(b"\r\n\r\n")
@@ -838,57 +974,102 @@ class Request:
             }
         return self._json
 
+
 class ErrorResonse:
     @staticmethod
     async def not_found(request: Request):
-        if "text/html" in (await request.get_headers("Accept", ) or ""):
+        if "text/html" in (
+            await request.get_headers(
+                "Accept",
+            )
+            or ""
+        ):
             return Response("404 Not Found", status_code=404, content_type="text/html")
         return Response("Not Found", status_code=404)
+
     @staticmethod
     async def bad_request(request: Request):
-        if "text/html" in (await request.get_headers("Accept", ) or ""):
-            return Response("400 Bad Request", status_code=400, content_type="text/html")
+        if "text/html" in (
+            await request.get_headers(
+                "Accept",
+            )
+            or ""
+        ):
+            return Response(
+                "400 Bad Request", status_code=400, content_type="text/html"
+            )
         return Response("Bad Request", status_code=400)
+
     @staticmethod
     async def error(request: Request):
-        if "text/html" in (await request.get_headers("Accept", ) or ""):
-            return Response("502 Internet Error", status_code=502, content_type="text/html")
+        if "text/html" in (
+            await request.get_headers(
+                "Accept",
+            )
+            or ""
+        ):
+            return Response(
+                "502 Internet Error", status_code=502, content_type="text/html"
+            )
         return Response("Internet Error", status_code=502)
+
+
 @dataclass
 class Form:
     boundary: str
     files: dict[str, list[tempfile._TemporaryFileWrapper]]
     fields: dict[str, list[tempfile._TemporaryFileWrapper]]
 
+
 class FormParse:
     @staticmethod
-    async def parse(boundary_: str, content_iter, length: int) -> 'Form':
-        boundary = b'\r\n--' + boundary_.encode("utf-8")
+    async def parse(boundary_: str, content_iter, length: int) -> "Form":
+        boundary = b"\r\n--" + boundary_.encode("utf-8")
         if length == 0:
             return Form(boundary_, {}, {})
         files: dict[str, list[tempfile._TemporaryFileWrapper]] = {}
         fields: dict[str, list[tempfile._TemporaryFileWrapper]] = {}
 
         async def read_in_chunks(content_iter):
-            yield b'\r\n'
+            yield b"\r\n"
             async for data in content_iter:
                 yield data
-        def process_part(boundary: bytes, files: dict[str, list[tempfile._TemporaryFileWrapper]], fields: dict[str, list[tempfile._TemporaryFileWrapper]], part: bytes, temp_file):
-            if b'\r\n\r\n' not in part:
+
+        def process_part(
+            boundary: bytes,
+            files: dict[str, list[tempfile._TemporaryFileWrapper]],
+            fields: dict[str, list[tempfile._TemporaryFileWrapper]],
+            part: bytes,
+            temp_file,
+        ):
+            if b"\r\n\r\n" not in part:
                 if temp_file:
                     temp_file.write(part.rstrip(boundary))
                 return
-            headers, body = part.split(b'\r\n\r\n', 1)
-            headers = {key: value for key, value in ((urlparse.unquote(a.groupdict()['key']), urlparse.unquote(a.groupdict()['value'])) for a in re.finditer(r'(?P<key>\w+)="(?P<value>[^"\\]*(\\.[^"\\]*)*)"', headers.decode("utf-8")))}
+            headers, body = part.split(b"\r\n\r\n", 1)
+            headers = {
+                key: value
+                for key, value in (
+                    (
+                        urlparse.unquote(a.groupdict()["key"]),
+                        urlparse.unquote(a.groupdict()["value"]),
+                    )
+                    for a in re.finditer(
+                        r'(?P<key>\w+)="(?P<value>[^"\\]*(\\.[^"\\]*)*)"',
+                        headers.decode("utf-8"),
+                    )
+                )
+            }
             temp_file.write(body)
-            if 'filename' in headers:
-                if headers['filename'] not in files:
-                    files[headers['filename']] = []
-                files[headers['filename']].append(temp_file)
-            if 'name' in headers:
-                if headers['name'] not in fields:
-                    fields[headers['name']] = []
-                fields[headers['name']].append(temp_file)
+            if "filename" in headers:
+                if headers["filename"] not in files:
+                    files[headers["filename"]] = []
+                files[headers["filename"]].append(temp_file)
+            if "name" in headers:
+                if headers["name"] not in fields:
+                    fields[headers["name"]] = []
+                fields[headers["name"]].append(temp_file)
+
         buffer = []
         temp_file = None
         async for chunk in read_in_chunks(content_iter):
@@ -910,13 +1091,15 @@ class FormParse:
             await asyncio.sleep(0.001)
         process_part(boundary, files, fields, b"".join(buffer), temp_file)
         if temp_file:
-            temp_file.seek(0) 
+            temp_file.seek(0)
         return Form(boundary_, files, fields)
-        
+
+
 class Statistics:
     def __init__(self) -> None:
         self.qps = {}
         Timer.repeat(self._clear, (), 1, 1)
+
     def _clear(self):
         t = self.get_time()
         pops = []
@@ -925,23 +1108,30 @@ class Statistics:
                 pops.append(k)
         for pop in pops:
             self.qps.pop(pop)
+
     def add_qps(self):
         t = self.get_time()
         if t not in self.qps:
             self.qps[t] = 0
         self.qps[t] += 1
+
     def get_time(self):
         return int(time.time())
+
     def get_cur_qps(self):
         return self.qps.get(self.get_time(), 0)
+
     def get_in_time_qps(self, t: float):
         c = self.get_time()
         return {k: v for k, v in self.qps.items() if k - t <= c}
+
     def get_all_qps(self):
         return self.qps.copy()
 
+
 statistics: Statistics = Statistics()
 app: Application = Application()
+
 
 async def handle(data, client: Client):
     try:
@@ -952,7 +1142,17 @@ async def handle(data, client: Client):
             await resp(request, client)
             if not log:
                 log = True
-                logger.info(request.get_request_time(), "|", (await request.get_method()).ljust(9), request.get_status_code(), "|", request.get_ip().ljust(16), "|", request.url, request.get_user_agent())
+                logger.info(
+                    request.get_request_time(),
+                    "|",
+                    (await request.get_method()).ljust(9),
+                    request.get_status_code(),
+                    "|",
+                    request.get_ip().ljust(16),
+                    "|",
+                    request.url,
+                    request.get_user_agent(),
+                )
         await request.skip()
         request.client.set_log_network(None)
     except TimeoutError:
@@ -960,17 +1160,23 @@ async def handle(data, client: Client):
     except:
         traceback.print_exc()
 
+
 @app.get("/favicon.ico")
 async def _():
-    return zlib.decompress(b'x\x9cc``d`b\x10\x10`\x00\xd2\n\x0c\x19,\x0c\x0cj\x0c\x0c\x0c\n\n\x10\xbe\x86 \x03C\x1fPL\x03(&\x00\x12g\x80\x88\x83\x01\x0b\x03\x06\x90\xe1\xfd\xfd\x7f\x14\x0f\x1e\x0c\x8c\x12\xac\x98^\xfaG:F\x0f/r\xc3\x9f\\\xfd\x03\xe0_\x8a\x80\x06\xb4\x8cq@.g\x04F\xcb\x99Q<\x8aG\xf1(\x1e*X\x9a\xe7\x0bI\x98\xdav32\xf2\x01\xeb"v\xa20H-5\xdd\x002\x0bb6\xf6\xb6\x13&f\x1fv\xf6\x0fd\xf8\x0ft\xfa\x1b\xc5\xa3x\xa4cB\xf9\x8b\x9e\xe5?z\xf9BH\x9e\x1a\xf6\xa3\x96\xbf\xec\x18\xf6\xe3\x93\x1f\x0e\xf6\x0fd\xf8\x0ft\xfa\x1b\xc5\xb4\xc7\x94\x8e3\x0cu\x00\x00-\xd7@W')
+    return zlib.decompress(
+        b'x\x9cc``d`b\x10\x10`\x00\xd2\n\x0c\x19,\x0c\x0cj\x0c\x0c\x0c\n\n\x10\xbe\x86 \x03C\x1fPL\x03(&\x00\x12g\x80\x88\x83\x01\x0b\x03\x06\x90\xe1\xfd\xfd\x7f\x14\x0f\x1e\x0c\x8c\x12\xac\x98^\xfaG:F\x0f/r\xc3\x9f\\\xfd\x03\xe0_\x8a\x80\x06\xb4\x8cq@.g\x04F\xcb\x99Q<\x8aG\xf1(\x1e*X\x9a\xe7\x0bI\x98\xdav32\xf2\x01\xeb"v\xa20H-5\xdd\x002\x0bb6\xf6\xb6\x13&f\x1fv\xf6\x0fd\xf8\x0ft\xfa\x1b\xc5\xa3x\xa4cB\xf9\x8b\x9e\xe5?z\xf9BH\x9e\x1a\xf6\xa3\x96\xbf\xec\x18\xf6\xe3\x93\x1f\x0e\xf6\x0fd\xf8\x0ft\xfa\x1b\xc5\xb4\xc7\x94\x8e3\x0cu\x00\x00-\xd7@W'
+    )
+
 
 async def init():
     logger.info(f"Loading...")
     cluster.stats.init()
     await cluster.init()
-    
-async def close():
-    await cluster.close()
+
+
+def close():
+    cluster.close()
+
 
 def kill(_, __):
     res = 0
@@ -983,6 +1189,7 @@ def kill(_, __):
     except:
         exit(res or 0)
         ...
+
 
 for sig in (signal.SIGILL, signal.SIGINT, signal.SIGTERM):
     signal.signal(sig, kill)

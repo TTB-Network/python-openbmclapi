@@ -45,8 +45,10 @@ class Client:
     min_rate: int = Config.get("advanced.min_rate")
     min_rate_timestamp: int = Config.get("advanced.min_rate_timestamp")
     timeout: int = Config.get("advanced.timeout")
+
     def is_proxy(self):
         return self.peername is not None
+
     def get_server_port(self):
         return self.server_port
 
@@ -292,6 +294,7 @@ WEBSOCKETCONTENT = Union[
 
 class _StopIteration(Exception): ...
 
+
 def content_next(iterator: typing.Iterator):
     try:
         return next(iterator)
@@ -372,6 +375,7 @@ def format_time(n):
     second = int(n % 60)
     return f"{hour:02d}:{minutes:02d}:{second:02d}"
 
+
 def check_sign(hash: str, secret: str, s: str, e: str) -> bool:
     try:
         t = int(e, 36)
@@ -381,7 +385,10 @@ def check_sign(hash: str, secret: str, s: str, e: str) -> bool:
     sha1.update(secret.encode("utf-8"))
     sha1.update(hash.encode("utf-8"))
     sha1.update(e.encode("utf-8"))
-    return base64.urlsafe_b64encode(sha1.digest()).decode().strip("=") == s and time.time() * 1000 <= t
+    return (
+        base64.urlsafe_b64encode(sha1.digest()).decode().strip("=") == s
+        and time.time() * 1000 <= t
+    )
 
 
 class MinecraftUtils:
@@ -410,7 +417,7 @@ class DataOutputStream:
         if isinstance(value, bytes):
             self.io.write(value)
         else:
-            self.io.write((value + 256 if value < 0 else value).to_bytes()) # type: ignore
+            self.io.write((value + 256 if value < 0 else value).to_bytes())  # type: ignore
 
     def writeBoolean(self, value: bool):
         self.write(value.to_bytes())
