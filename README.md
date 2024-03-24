@@ -1,6 +1,6 @@
 <div align="center">
 
-![](https://s21.ax1x.com/2024/03/09/pFyV90g.png)
+![](https://s21.ax1x.com/2024/03/24/pF4md6U.png)
 
 # OpenBMCLAPI for Python
 
@@ -10,19 +10,20 @@
 ![GitHub Release](https://img.shields.io/github/v/release/TTB-Network/python-openbmclapi)
 ![GitHub Tag](https://img.shields.io/github/v/tag/TTB-Network/python-openbmclapi)
 ![GitHub Repo stars](https://img.shields.io/github/stars/TTB-Network/python-openbmclapi)
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/TTB-Network/python-openbmclapi/build_and_publish.yml?label=create%20tagged%20release)
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/TTB-Network/python-openbmclapi/github-code-scanning%2Fcodeql?label=codeql)
-
-
-
+[![CodeQL](https://github.com/TTB-Network/python-openbmclapi/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/TTB-Network/python-openbmclapi/actions/workflows/github-code-scanning/codeql)
+[![Create tagged release](https://github.com/TTB-Network/python-openbmclapi/actions/workflows/build_and_publish.yml/badge.svg)](https://github.com/TTB-Network/python-openbmclapi/actions/workflows/build_and_publish.yml)
 
 ✨ 基于 [OpenBMCLAPI](https://github.com/bangbang93/openbmclapi) 的 Python 实现。
 
-🎨 **跨系统**、**跨架构**和 **Docker** 支持。
+🎨 **跨系统**、**跨架构**。这得益于 Python 强大的语言功能。
+
+✨ **Docker** 支持。通过 Docker 更加**快捷地**部署 python-openbmclapi ~~（更支持一键跑路）~~
+
+🌈 __*新增功能！*__ **插件拓展**支持。你可以更方便地为 python-openbmclapi 编写自己的插件。
 
 🎉 __*新增功能！*__ 基于 Echart 的 OpenBMCLAPI 仪表盘（Dashboard）。
 
-🎉 __*新增功能！*__ 基于 loguru 的日志器。
+🎉 __*新增功能！*__ 基于 loguru 的**日志器**。
 
 </div>
 
