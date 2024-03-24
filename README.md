@@ -1,6 +1,6 @@
 <div align="center">
 
-![](https://s21.ax1x.com/2024/03/24/pF4md6U.png)
+![](https://s21.ax1x.com/2024/03/24/pF48fj1.png)
 
 # OpenBMCLAPI for Python
 
