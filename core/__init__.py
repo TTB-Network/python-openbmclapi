@@ -219,7 +219,7 @@ async def main():
             )
             logger.info(f"Listening server on port {PORT}.")
             logger.info(
-                f"Listening server on {ssl_server.sockets[0].getsockname()[1]}."
+                f"Listening SSL server on {ssl_server.sockets[0].getsockname()[1]}."
             )
             async with server, ssl_server:
                 await asyncio.gather(server.serve_forever(), ssl_server.serve_forever())
