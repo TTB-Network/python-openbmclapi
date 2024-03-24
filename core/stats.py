@@ -20,9 +20,9 @@ class StorageStats:
     def __init__(self, name) -> None:
         self._name = name
         self.reset()
-    def hit(self, file: File, cache: bool = False):
+    def hit(self, file: File):
         byte = file.size
-        if cache:
+        if file.cache:
             self._cache_hits += 1
             self._cache_bytes += byte
         else:

@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import hashlib
 import hmac
 import io
@@ -13,7 +14,7 @@ from typing import Any, Optional
 import socketio
 from tqdm import tqdm
 from core.config import Config
-from core import certificate, unit
+from core import certificate, system, unit
 from core.timer import Task, Timer
 import pyzstd as zstd
 import core.utils as utils
@@ -25,6 +26,7 @@ import plugins
 from core.api import (
     File,
     BMCLAPIFile,
+    StatsCache,
     Storage,
     get_hash,
 )
@@ -54,6 +56,7 @@ class TokenManager:
         async with aiohttp.ClientSession(
             headers={"User-Agent": USER_AGENT}, base_url=BASE_URL
         ) as session:
+            logger.info("Fetching token")
             try:
                 async with session.get(
                     "/openbmclapi-agent/challenge", params={"clusterId": CLUSTER_ID}
@@ -80,15 +83,14 @@ class TokenManager:
                     Timer.delay(
                         self.fetchToken, delay=float(content["ttl"]) / 1000.0 - 600
                     )
+                    logger.info("Fetched token")
 
             except aiohttp.ClientError as e:
                 logger.error(f"Error fetching token: {e}.")
 
     async def getToken(self) -> str:
         if not self.token:
-            logger.info("Fetching token")
             await self.fetchToken()
-            logger.info("Fetched token")
         return self.token or ""
 
 class ParseFileList:
@@ -152,6 +154,8 @@ class FileDownloader:
             except:
                 pbar.update(-size)
                 await self.queues.put(file)
+            if cluster:
+                await cluster._check_files_sync_status("下载文件中", pbar, unit.format_more_bytes)
         await session.close()
 
     async def _mount_file(self, file: BMCLAPIFile):
@@ -166,9 +170,12 @@ class FileDownloader:
                 logger.error(traceback.format_exc())
             if result != file.size:
                 logger.error(f"Download file error: File {file.hash}({unit.format_bytes(file.size)}) copy to target file error: {file.hash}({unit.format_bytes(result)})")
-        os.remove(f"./cache/download/{file.hash[:2]}/{file.hash}")
+        try:
+            os.remove(f"./cache/download/{file.hash[:2]}/{file.hash}")
+        except:
+            ...
     async def download(self, storages: list['Storage'], miss: list[BMCLAPIFile]):
-        with tqdm(desc="Downloading files", unit="bytes", unit_divisor=1024, total=sum((file.size for file in miss)), unit_scale=True) as pbar:
+        with tqdm(desc="Downloading files", unit="b", unit_divisor=1024, total=sum((file.size for file in miss)), unit_scale=True) as pbar:
             self.storages = storages
             for file in miss:
                 await self.queues.put(file)
@@ -197,13 +204,12 @@ class FileStorage(Storage):
             raise FileExistsError("The path is file.")
         self.dir.mkdir(exist_ok=True, parents=True)
         self.cache: dict[str, File] = {}
-        self.stats: stats.StorageStats = stats.get_storage(f"File_{self.dir}")
         self.timer = Timer.repeat(self.clear_cache, (), CHECK_CACHE, CHECK_CACHE)
     async def get(self, hash: str) -> File:
         if hash in self.cache:
             file = self.cache[hash]
             file.last_access = time.time()
-            self.stats.hit(file, cache = True)
+            file.cache = True
             return file
         path = Path(str(self.dir) + f"/{hash[:2]}/{hash}")
         buf = io.BytesIO()
@@ -213,12 +219,17 @@ class FileStorage(Storage):
         file = File(path, hash, buf.tell(), time.time(), time.time())
         file.set_data(buf.getbuffer())
         self.cache[hash] = file
-        self.stats.hit(file)
+        file.cache = False
         return file
     async def exists(self, hash: str) -> bool:
         return os.path.exists(str(self.dir) + f"/{hash[:2]}/{hash}")
     async def get_size(self, hash: str) -> int:
         return os.path.getsize(str(self.dir) + f"/{hash[:2]}/{hash}")
+    async def copy(self, origin: Path, hash: str):
+        Path(str(self.dir) + f"/{hash[:2]}/{hash}").parent.mkdir(exist_ok=True, parents=True)
+        async with aiofiles.open(str(self.dir) + f"/{hash[:2]}/{hash}", "wb") as w, aiofiles.open(origin, "rb") as r:
+            await w.write(await r.read())
+            return origin.stat().st_size
     async def write(self, hash: str, io: io.BytesIO) -> int:
         Path(str(self.dir) + f"/{hash[:2]}/{hash}").parent.mkdir(exist_ok=True, parents=True)
         async with aiofiles.open(str(self.dir) + f"/{hash[:2]}/{hash}", "wb") as w:
@@ -258,9 +269,10 @@ class FileStorage(Storage):
         logger.info(f"Outdate caches: {unit.format_number(len(old_keys))}({unit.format_bytes(old_size)})")
     async def get_files(self, dir: str) -> list[str]:
         files = []
-        with os.scandir(str(self.dir) + f"/{dir}") as session:
-            for file in session:
-                files.append(file.name)
+        if os.path.exists(str(self.dir) + f"/{dir}"):
+            with os.scandir(str(self.dir) + f"/{dir}") as session:
+                for file in session:
+                    files.append(file.name)
         return files
     async def removes(self, hashs: list[str]) -> int:
         success = 0
@@ -272,14 +284,25 @@ class FileStorage(Storage):
         return success 
     async def get_files_size(self, dir: str) -> int:
         size = 0
-        with os.scandir(str(self.dir) + f"/{dir}") as session:
-            for file in session:
-                size += file.stat().st_size
+        if os.path.exists(str(self.dir) + f"/{dir}"):
+            with os.scandir(str(self.dir) + f"/{dir}") as session:
+                for file in session:
+                    size += file.stat().st_size
         return size
+    async def get_cache_stats(self) -> StatsCache:
+        stat = StatsCache()
+        for file in self.cache.values():
+            stat.total += 1
+            stat.bytes += file.size
+        return stat
+class WebDav(Storage):
+    def __init__(self) -> None:
+        super().__init__()
 class Cluster:
     def __init__(self) -> None:
         self.sio = socketio.AsyncClient()
         self.storages: list[Storage] = []
+        self.storage_stats: dict[Storage, stats.StorageStats] = {}
         self.started = False
         self.sio.on("message", self._message)
         self.cur_storage: Optional[stats.SyncStorage] = None
@@ -293,13 +316,21 @@ class Cluster:
         logger.info(f"[Remote] {message}")
         if "信任度过低" in message:
             self.trusted = False
+    def get_storages(self):
+        return self.storages.copy()
     def add_storage(self, storage):
         self.storages.append(storage)
+        type = "Unknown"
+        key = time.time()
+        if isinstance(storage, FileStorage):
+            type = "File"
+            key = storage.dir
+        self.storage_stats[storage] = stats.get_storage(f"{type}_{key}")
     
-    async def _check_files_sync_status(self, text: str, pbar: tqdm):
+    async def _check_files_sync_status(self, text: str, pbar: tqdm, format = unit.format_numbers):
         if self.check_files_timer:
             return
-        n, total = unit.format_numbers(pbar.n, pbar.total)
+        n, total = format(pbar.n, pbar.total)
         await set_status(f"{text} ({n}/{total})")
 
     async def check_files(self):
@@ -377,7 +408,6 @@ class Cluster:
                 if paths:
                     for path in paths:
                         os.remove(path)
-                        pbar.disable()
                         pbar.update(1)
                 if dir:
                     for d in dir:
@@ -402,8 +432,19 @@ class Cluster:
         await self.check_files()
         await set_status("启动服务")
         await self.enable()
-    async def get(self, hash):
-        return await self.storages[0].get(hash)
+    async def get(self, hash) -> File:
+        storage = self.storages[0]
+        stat = self.storage_stats[storage]
+        file = await storage.get(hash)
+        stat.hit(file)
+        return file
+    async def get_cache_stats(self) -> StatsCache:
+        stat = StatsCache()
+        for storage in self.storages:
+            t = await storage.get_cache_stats()
+            stat.total += t.total
+            stat.bytes += t.bytes
+        return stat
     async def exists(self, hash):
         return await self.storages[0].exists(hash)
     async def enable(self) -> None:
@@ -486,14 +527,16 @@ class Cluster:
                 "bytes": storage.get_total_bytes() - storage.get_last_bytes(),
             })
         await self.start_keepalive(300)
-    async def _keepalive_timeout(self):
-        logger.warn("Failed to keepalive? Reconnect the main")
+    async def reconnect(self):
         try:
             await self.disable()
         except:
             ...
         await self.cert()
         await self.enable()
+    async def _keepalive_timeout(self):
+        logger.warn("Failed to keepalive? Reconnect the main")
+        await self.reconnect()
     async def cert(self):
         if Path("./.ssl/cert").exists() == Path("./.ssl/key").exists() == True:
             return
@@ -574,6 +617,13 @@ class DashboardData:
             async with aiohttp.ClientSession(BASE_URL) as session:
                 async with session.get(data) as resp:
                     return resp.json()
+        if type == "system":
+            return {
+                "memory": system.get_used_memory(),
+                "connections": system.get_connections(),
+                "cpu": system.get_cpus(),
+                "cache": dataclasses.asdict(await cluster.get_cache_stats()) if cluster else StatsCache()
+            }
 
 token = TokenManager()
 cluster: Optional[Cluster] = None
@@ -592,6 +642,7 @@ async def set_status(text: str):
 async def init():
     global cluster
     cluster = Cluster()
+    system.init()
     plugins.load_plugins()
     for plugin in plugins.get_plugins():
         await plugin.init()

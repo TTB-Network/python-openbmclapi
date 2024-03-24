@@ -72,6 +72,12 @@ class Proxy:
         if client not in self._tables:
             return
         self._tables.remove(client)
+    def get_origin_from_ip(self, ip: tuple[str, int]):
+        # ip is connected client
+        for target in self._tables:
+            if target.target.get_sock_address() == ip:
+                return target.origin.get_address()
+        return None
 
 ssl_server: Optional[asyncio.Server] = None
 server: Optional[asyncio.Server] = None
@@ -85,7 +91,7 @@ PROTOCOL_HEADER_BYTES = Config.get("advanced.header_bytes")
 IO_BUFFER: int = Config.get("advanced.io_buffer")
 
 async def _handle_ssl(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    return await _handle_process(Client(reader, writer), True)
+    return await _handle_process(Client(reader, writer, peername = proxy.get_origin_from_ip(writer.get_extra_info("peername"))), True)
 
 async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     return await _handle_process(Client(reader, writer))
@@ -101,7 +107,7 @@ async def _handle_process(client: Client, ssl: bool = False):
                 await client.writer.drain()
                 break
             if protocol == Protocol.Unknown and not ssl and ssl_server:
-                target = Client(*(await asyncio.open_connection("127.0.0.1", ssl_server.sockets[0].getsockname()[1])))
+                target = Client(*(await asyncio.open_connection("127.0.0.1", ssl_server.sockets[0].getsockname()[1])), peername=client.get_address())
                 proxying = True
                 await proxy.connect(client, target, header)
                 break
@@ -121,7 +127,7 @@ async def check_ports():
     global ssl_server, server, client_side_ssl, restart, check_port_key
     while 1:
         ports: list[tuple[asyncio.Server, ssl.SSLContext | None]] = []
-        for service in ((server, None), (ssl_server, client_side_ssl if get_loads() != 0 else None)):
+        for service in ((server, None), (ssl_server, client_side_ssl if get_loaded() else None)):
             if not service[0]:
                 continue
             ports.append((service[0], service[1]))
@@ -144,13 +150,14 @@ async def check_ports():
 async def main():
     global ssl_server, server, server_side_ssl, restart
     await web.init()
+    certificate.load_cert(Path(".ssl/cert"), Path(".ssl/key"))
     Timer.delay(check_ports, (), 5)
     while 1:
         try:
             server = await asyncio.start_server(_handle, port=PORT)
-            ssl_server = await asyncio.start_server(_handle_ssl, port=0 if SSL_PORT == PORT else SSL_PORT, ssl=server_side_ssl if get_loads() != 0 else None)
+            ssl_server = await asyncio.start_server(_handle_ssl, port=0 if SSL_PORT == PORT else SSL_PORT, ssl=server_side_ssl if get_loaded() else None)
             logger.info(f"Listening server on {PORT}")
-            logger.info(f"Listening server on {ssl_server.sockets[0].getsockname()[1]} Loaded certificates: {get_loads()}")
+            logger.info(f"Listening server on {ssl_server.sockets[0].getsockname()[1]}")
             async with server, ssl_server:
                 await asyncio.gather(server.serve_forever(), ssl_server.serve_forever())
         except asyncio.CancelledError:
