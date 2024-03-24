@@ -1,10 +1,13 @@
 import asyncio
+import base64
 import dataclasses
 import hashlib
 import hmac
 import io
+import json
 import os
 from pathlib import Path
+import re
 import sys
 import time
 import traceback
@@ -14,7 +17,7 @@ from typing import Any, Optional
 import socketio
 from tqdm import tqdm
 from core.config import Config
-from core import certificate, system, unit
+from core import certificate, dashboard, system, unit
 from core.timer import Task, Timer
 import pyzstd as zstd
 import core.utils as utils
@@ -47,6 +50,8 @@ CACHE_BUFFER: int = 1024 * 1024 * 512
 CACHE_TIME: int = 1800
 CHECK_CACHE: int = 60
 SIGN_SKIP: bool = False
+DASHBOARD_USERNAME: str = Config.get("dashboard.username")
+DASHBOARD_PASSWORD: str = Config.get("dashboard.password")
 
 class TokenManager:
     def __init__(self) -> None:
@@ -331,7 +336,7 @@ class Cluster:
         if self.check_files_timer:
             return
         n, total = format(pbar.n, pbar.total)
-        await set_status(f"{text} ({n}/{total})")
+        await dashboard.set_status(f"{text} ({n}/{total})")
 
     async def check_files(self):
         downloader = FileDownloader()
@@ -420,23 +425,23 @@ class Cluster:
         if self.started:
             return
         logger.info(f"Loading cluster on {VERSION}")
-        await set_status("启动节点中")
+        await dashboard.set_status("启动节点中")
         try:
             await self.sio.connect(BASE_URL, auth={"token": await token.getToken()}, transports=["websocket"])
         except:
             logger.warn("Cannot connect the main service. Retry after 5s")
             Timer.delay(self.start, (), 5)
-        await set_status("请求证书")
+        await dashboard.set_status("请求证书")
         await self.cert()
-        await set_status("检查文件完整性")
+        await dashboard.set_status("检查文件完整性")
         await self.check_files()
-        await set_status("启动服务")
+        await dashboard.set_status("启动服务")
         await self.enable()
-    async def get(self, hash) -> File:
+    async def get(self, hash, offset: int = 0) -> File:
         storage = self.storages[0]
         stat = self.storage_stats[storage]
         file = await storage.get(hash)
-        stat.hit(file)
+        stat.hit(file, offset)
         return file
     async def get_cache_stats(self) -> StatsCache:
         stat = StatsCache()
@@ -466,7 +471,7 @@ class Cluster:
                 }
             }
         )
-        await set_status("巡检中")
+        await dashboard.set_status("巡检中")
     async def message(self, type, data: list[Any]):
         if len(data) == 1:
             data.append(None)
@@ -487,7 +492,7 @@ class Cluster:
             self.connected = True
             logger.info(f"Connected Main, Starting service. Host on {CLUSTER_ID}.openbmclapi.933.moe:{PUBLIC_PORT or PORT}")
             await self.start_keepalive()
-            await set_status("正常工作" + ("" if self.trusted else "（节点信任度过低）"))
+            await dashboard.set_status("正常工作" + ("" if self.trusted else "（节点信任度过低）"))
         elif type == "keep-alive":
             if err:
                 logger.error(f"Unable to keep alive. Now reconnecting")
@@ -557,87 +562,9 @@ class Cluster:
             await self.emit("disable")
             logger.info("Disconnected from Main")
 
-class DashboardData:
-    @staticmethod
-    def deserialize(data: utils.DataInputStream):
-        match (data.readVarInt()):
-            case 0:
-                return data.readString()
-            case 1:
-                return data.readBoolean()
-            case 2:
-                return int(data.readString())
-            case 3:
-                return float(data.readString())
-            case 4:
-                return [DashboardData.deserialize(data) for _ in range(data.readVarInt())]
-            case 5:
-                return {DashboardData.deserialize(data): DashboardData.deserialize(data) for _ in range(data.readVarInt())}
-            case 6:
-                return None
-    @staticmethod
-    def serialize(data: Any):
-        buf = utils.DataOutputStream()
-        if isinstance(data, str):
-            buf.writeVarInt(0)
-            buf.writeString(data)
-        elif isinstance(data, bool):
-            buf.writeVarInt(1)
-            buf.writeBoolean(data)
-        elif isinstance(data, float):
-            buf.writeVarInt(2)
-            buf.writeString(str(data))
-        elif isinstance(data, int):
-            buf.writeVarInt(3)
-            buf.writeString(str(data))
-        elif isinstance(data, list):
-            buf.writeVarInt(4)
-            buf.writeVarInt(len(data))
-            buf.write(b''.join((DashboardData.serialize(v).io.getvalue() for v in data)))
-        elif isinstance(data, dict):
-            buf.writeVarInt(5)
-            buf.writeVarInt(len(data.keys()))
-            buf.write(b''.join((DashboardData.serialize(k).io.getvalue() + DashboardData.serialize(v).io.getvalue() for k, v in data.items())))
-        elif data == None:
-            buf.writeVarInt(6)
-        return buf
-    @staticmethod
-    async def process(type: str, data: Any):
-        if type == "runtime":
-            return float(os.getenv("STARTUP") or 0)
-        if type == "dashboard":
-            return {"hourly": stats.hourly(), "days": stats.daily()}
-        if type == "qps":
-            c = web.statistics.get_time()
-            c -= 610
-            return {k: v for k, v in web.statistics.get_all_qps().items() if k > c}
-        if type == "status":
-            return last_status
-        if type == "master":
-            async with aiohttp.ClientSession(BASE_URL) as session:
-                async with session.get(data) as resp:
-                    return resp.json()
-        if type == "system":
-            return {
-                "memory": system.get_used_memory(),
-                "connections": system.get_connections(),
-                "cpu": system.get_cpus(),
-                "cache": dataclasses.asdict(await cluster.get_cache_stats()) if cluster else StatsCache()
-            }
-
 token = TokenManager()
 cluster: Optional[Cluster] = None
 last_status: str = "-"
-
-async def set_status(text: str):
-    global last_status
-    last_status = text
-    app = web.app
-    output = utils.DataOutputStream()
-    output.writeString("status")
-    output.write(DashboardData.serialize(text).io.getvalue())
-    for ws in app.get_websockets("/bmcl/"):
-        await ws.send(output.io.getvalue())
 
 async def init():
     global cluster
@@ -667,7 +594,12 @@ async def init():
             return web.Response(status_code=403)
         if not await cluster.exists(hash):
             return web.Response(status_code=404)
-        data = await cluster.get(hash)
+        start_bytes = 0
+        range_str = await request.get_headers('range', '')
+        range_match = re.search(r'bytes=(\d+)-(\d+)', range_str, re.S) or re.search(r'bytes=(\d+)-', range_str, re.S)
+        if range_match:
+            start_bytes = int(range_match.group(1)) if range_match else 0
+        data = await cluster.get(hash, start_bytes)
         if data.is_url() and isinstance(data.get_path(), str):
             return web.RedirectResponse(str(data.get_path()))
         return data.get_data()
@@ -677,12 +609,16 @@ async def init():
     dir.mkdir(exist_ok=True, parents=True)
     app.mount_resource(web.Resource("/bmcl", dir, show_dir=False))
 
-    @router.get("/")
-    async def _(request: web.Request):
-        return Path("./bmclapi_dashboard/index.html")
-
     @router.websocket("/")
-    async def _(ws: web.WebSocket):
+    async def _(request: web.Request, ws: web.WebSocket):
+        auth = False
+        for cookie in await request.get_cookies():
+            if cookie.name == "auth" and dashboard.token_isvaild(cookie.value):
+                await ws.send(dashboard.to_bytes("auth", DASHBOARD_USERNAME).io.getbuffer())
+                auth = True
+                break
+        if not auth:
+            await ws.send(dashboard.to_bytes("auth", None).io.getbuffer())
         async for raw_data in ws:
             if isinstance(raw_data, str):
                 return
@@ -690,13 +626,22 @@ async def init():
                 raw_data = raw_data.getvalue()
             input = utils.DataInputStream(raw_data)
             type = input.readString()
-            data = DashboardData.deserialize(input)
-            output = utils.DataOutputStream()
-            output.writeString(type)
-            output.write(DashboardData.serialize(await DashboardData.process(type, data)).io.getvalue())
-            await ws.send(output.io.getvalue())
+            data = dashboard.deserialize(input)
+            await ws.send(dashboard.to_bytes(type, await dashboard.process(type, data)).io.getbuffer())
+    @router.get("/auth")
+    async def _(request: web.Request):
+        auth = (await request.get_headers("Authorization")).split(" ", 1)[1]
+        try:
+            info = json.loads(base64.b64decode(auth))
+        except:
+            return web.Response(status_code=401)
+        if info["username"] != DASHBOARD_USERNAME or info["password"] != DASHBOARD_PASSWORD:
+            return web.Response(status_code=401)
+        token = dashboard.generate_token(request)
+        return web.Response(DASHBOARD_USERNAME, cookies=[web.Cookie("auth", token.value, expires=int(time.time() + 86400))])
 
     app.mount(router)
+    app.redirect("/bmcl", "/bmcl/")
 
 async def close():
     global cluster

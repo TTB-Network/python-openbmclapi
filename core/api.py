@@ -59,38 +59,78 @@ class Storage(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     async def get(self, file: str) -> File:
         """
-            return 
-                type: Path, str
-                Path: Local File
-                str: url
+            get file metadata.
+            return File    
         """
         raise NotImplementedError
     @abc.abstractmethod
     async def exists(self, hash: str) -> bool:
+        """
+            return file is exists    
+        """
         raise NotImplementedError
     @abc.abstractmethod
     async def get_size(self, hash: str) -> int:
+        """
+            get file size
+            return File size  
+        """
         raise NotImplementedError
     @abc.abstractmethod
     async def copy(self, origin: Path, hash: str) -> int:
+        """
+            origin: src path
+            hash: desc path (new path)
+            return File size  
+        """
         raise NotImplementedError
     @abc.abstractmethod
     async def write(self, hash: str, io: io.BytesIO) -> int:
+        """
+            hash: desc path (new path)
+            io: file data
+            return File size
+        """
         raise NotImplementedError
     @abc.abstractmethod
     async def check_missing_files(self, pbar: tqdm, files: list[BMCLAPIFile]) -> list[BMCLAPIFile]:
+        """
+            pbar: tqdm is display to console.
+            files: The remote fetch files.
+            return list[BMCAPIFile] missing files
+        """
         raise NotImplementedError
     @abc.abstractmethod
     async def get_files(self, dir: str) -> list[str]:
+        """
+            dir: path
+            Getting files in a folder
+            return list[str]
+        """
         raise NotImplementedError
     @abc.abstractmethod
     async def get_files_size(self, dir: str) -> int:
+        """
+            dir: path
+            Getting files size in a folder
+            return files size
+        """
         raise NotImplementedError
     @abc.abstractmethod
     async def removes(self, hashs: list[str]) -> int:
+        """
+            dir: path
+            Remove files (file: hash str)
+            return success remove files
+        """
         raise NotImplementedError
     @abc.abstractmethod
     async def get_cache_stats(self) -> StatsCache:
+        """
+            dir: path
+            Getting cache files
+            return StatsCache
+        """
         raise NotImplementedError
 
 def get_hash(org):
