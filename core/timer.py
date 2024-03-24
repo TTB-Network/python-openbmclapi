@@ -36,7 +36,9 @@ class Task:
             if inspect.iscoroutinefunction(self.target):
                 self.cur = await asyncio.create_task(self.target(*self.args))
             else:
-                self.cur = await asyncio.get_event_loop().run_in_executor(None, lambda: self.target(*self.args))
+                self.cur = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: self.target(*self.args)
+                )
             if not self.loop:
                 self.called = True
             await self.callback()
@@ -52,7 +54,9 @@ class Task:
             if inspect.iscoroutinefunction(self.back):
                 self.cur = await asyncio.create_task(self.back())
             else:
-                self.cur = await asyncio.get_event_loop().run_in_executor(None, self.back)
+                self.cur = await asyncio.get_event_loop().run_in_executor(
+                    None, self.back
+                )
         except:
             await self.callback_error()
 
@@ -69,7 +73,9 @@ class Task:
             if inspect.iscoroutinefunction(self.error):
                 self.cur = await asyncio.create_task(self.error())
             else:
-                self.cur = await asyncio.get_event_loop().run_in_executor(None, self.error)
+                self.cur = await asyncio.get_event_loop().run_in_executor(
+                    None, self.error
+                )
         except:
             logger.debug(traceback.format_exc())
 

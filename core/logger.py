@@ -2,7 +2,8 @@ from loguru import logger as Logger
 from pathlib import Path
 import sys
 
-basic_logger_format = "<green>[{time:YYYY-MM-DD HH:mm:ss}]</green> <level>[{level}] {message}</level>"
+basic_logger_format = "<green>[{time:YYYY-MM-DD HH:mm:ss}]</green><yellow>[{name}:{function}:{line}]</yellow><level>[{level}]: {message}</level>"
+
 
 def log(*values, func):
     data = []
@@ -13,6 +14,8 @@ def log(*values, func):
             data.append(repr(v))
     msg = " ".join(data)
     func(msg)
+
+
 class LoggingLogger:
     def __init__(self):
         self.log = Logger
@@ -24,15 +27,16 @@ class LoggingLogger:
             colorize=True,
         )
         self.log.add(
-            Path("./logs/{time}.log"),
+            Path("./logs/{time:YYYY-MM-DD}.log"),
             format=basic_logger_format,
             retention="10 days",
             encoding="utf-8",
         )
-        self.info       = lambda *x: log(*x, func=self.log.info)
-        self.error      = lambda *x: log(*x, func=self.log.error)
-        self.debug      = lambda *x: log(*x, func=self.log.debug)
-        self.warn       = lambda *x: log(*x, func=self.log.warning)
-        self.exception  = lambda *x: log(*x, func=self.log.exception)
+        self.info = self.log.info
+        self.error = self.log.error
+        self.debug = self.log.debug
+        self.warn = self.log.warning
+        self.exception = self.log.exception
+
 
 logger = LoggingLogger()
