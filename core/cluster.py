@@ -57,7 +57,7 @@ class TokenManager:
         async with aiohttp.ClientSession(
             headers={"User-Agent": USER_AGENT}, base_url=BASE_URL
         ) as session:
-            logger.info("Fetching token")
+            logger.info("Fetching token...")
             try:
                 async with session.get(
                     "/openbmclapi-agent/challenge", params={"clusterId": CLUSTER_ID}
@@ -84,10 +84,10 @@ class TokenManager:
                     Timer.delay(
                         self.fetchToken, delay=float(content["ttl"]) / 1000.0 - 600
                     )
-                    logger.info("Fetched token")
+                    logger.info("Fetched token.")
 
             except aiohttp.ClientError as e:
-                logger.error(f"Error whilst fetching token: {e}.")
+                logger.error(f"An error occured whilst fetching token: {e}.")
 
     async def getToken(self) -> str:
         if not self.token:
@@ -537,7 +537,7 @@ class Cluster:
     ):
         if self.started:
             return
-        logger.info(f"Starting cluster version {VERSION}")
+        logger.info(f"Starting cluster version {VERSION}.")
         await set_status("启动节点中")
         try:
             await self.sio.connect(
@@ -546,7 +546,7 @@ class Cluster:
                 transports=["websocket"],
             )
         except:
-            logger.warn("Failed to connect to the main server. Retrying after 5s")
+            logger.warn("Failed to connect to the main server. Retrying after 5s.")
             Timer.delay(self.start, (), 5)
         await set_status("请求证书")
         await self.cert()
