@@ -1,0 +1,19 @@
+advanced:
+  header_bytes: 4096
+  io_buffer: 16777216
+  min_rate: 500
+  min_rate_timestamp: 1000
+  request_buffer: 8192
+  timeout: 30
+cluster:
+  byoc: false
+  id: ''
+  public_host: ''
+  public_port: 8800
+  secret: ''
+download:
+  threads: 64
+web:
+  port: 8080
+  server_name: TTB-Network
+  ssl_port: 8800
