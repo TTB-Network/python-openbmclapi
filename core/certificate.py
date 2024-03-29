@@ -43,7 +43,7 @@ def load_text(cert: str, key: str):
         c.write(cert)
         k.write(key)
     if load_cert(cert_file, key_file):
-        logger.info("Loaded certificate from local files!")
+        logger.success("Loaded certificate from local files!")
         core.restart = True
         if core.server:
             core.server.close()
