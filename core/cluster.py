@@ -33,7 +33,10 @@ from core.api import (
     get_hash,
 )
 
-VERSION = "1.9.8"
+VERSION = ''
+with open(Path("VERSION"), 'r', encoding='utf-8') as f:
+    VERSION = f.read()
+    f.close()
 API_VERSION = "1.9.8"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
 BASE_URL = "https://openbmclapi.bangbang93.com/"
