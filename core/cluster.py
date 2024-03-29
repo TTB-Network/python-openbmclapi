@@ -34,9 +34,13 @@ from core.api import (
 )
 
 VERSION = ''
-with open(Path("VERSION"), 'r', encoding='utf-8') as f:
-    VERSION = f.read()
-    f.close()
+version_path = Path("VERSION")
+if version_path.exists():
+    with open(Path("VERSION"), 'r', encoding='utf-8') as f:
+        VERSION = f.read()
+        f.close()
+else:
+    VERSION = ""
 API_VERSION = "1.9.8"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
 BASE_URL = "https://openbmclapi.bangbang93.com/"
@@ -506,7 +510,7 @@ class Cluster:
                 task.block()
         miss = set().union(*missing_files_by_storage.values())
         if not miss:
-            logger.info(f"Checked all files: {len(files) * len(self.storages)}!")
+            logger.success(f"Checked all files: {len(files) * len(self.storages)}!")
         else:
             logger.info(
                 f"File missing: {unit.format_number(len(miss))}."
@@ -611,7 +615,7 @@ class Cluster:
             if err:
                 logger.error(f"Unable to request cert. {ack}.")
                 return
-            logger.info("Requested cert!")
+            logger.success("Requested cert!")
             certificate.load_text(ack["cert"], ack["key"])
         elif type == "enable":
             err, ack = data
@@ -620,7 +624,7 @@ class Cluster:
                 await self._keepalive_timeout()
                 return
             self.connected = True
-            logger.info(f"Connected to the main server! Starting service...")
+            logger.success(f"Connected to the main server! Starting service...")
             logger.info(
                 f"Hosting on {CLUSTER_ID}.openbmclapi.933.moe:{PUBLIC_PORT or PORT}."
             )
@@ -632,8 +636,8 @@ class Cluster:
                 await self.disable()
             if self.cur_storage:
                 storage = self.cur_storage
-                logger.info(
-                    f"Successfully keep alive, served {unit.format_number(storage.sync_hits)}({unit.format_bytes(storage.sync_bytes)})."
+                logger.success(
+                    f"Successfully keep alive, serving {unit.format_number(storage.sync_hits)}({unit.format_bytes(storage.sync_bytes)})."
                 )
                 storage.object.add_last_hits(storage.sync_hits)
                 storage.object.add_last_bytes(storage.sync_bytes)
@@ -713,8 +717,25 @@ class Cluster:
 token = TokenManager()
 cluster: Optional[Cluster] = None
 last_status: str = "-"
+github_api = "https://api.github.com"
+async def check_update():
+    async with aiohttp.ClientSession(
+            base_url=github_api
+        ) as session:
+            logger.info("Checking update...")
+            try:
+                async with session.get("/repos/TTB-Network/python-openbmclapi/tags") as req:
+                    req.raise_for_status()
+                    fetched_version: str = (await req.json())[0]["name"]
+                if fetched_version != VERSION:
+                    logger.success(f"New version found: {fetched_version}!")
+                else:
+                    logger.info(f"Already up to date.")
+            except aiohttp.ClientError as e:
+                logger.error(f"An error occured whilst checking update: {e}.")
 
 async def init():
+    await check_update()
     global cluster
     cluster = Cluster()
     system.init()
