@@ -12,16 +12,20 @@ from core import cluster
 from core.api import StatsCache
 from core.config import Config
 
+
 @dataclass
 class Token:
     value: str
     create_at: float
+
 
 BASE_URL = "https://openbmclapi.bangbang93.com/"
 CLUSTER_ID: str = Config.get("cluster.id")
 CLUSTER_SECERT: str = Config.get("cluster.secret")
 last_status = ""
 tokens: list[Token] = []
+
+
 def deserialize(data: utils.DataInputStream):
     match (data.readVarInt()):
         case 0:
@@ -35,9 +39,13 @@ def deserialize(data: utils.DataInputStream):
         case 4:
             return [deserialize(data) for _ in range(data.readVarInt())]
         case 5:
-            return {deserialize(data): deserialize(data) for _ in range(data.readVarInt())}
+            return {
+                deserialize(data): deserialize(data) for _ in range(data.readVarInt())
+            }
         case 6:
             return None
+
+
 def serialize(data: Any):
     buf = utils.DataOutputStream()
     if isinstance(data, str):
@@ -55,14 +63,23 @@ def serialize(data: Any):
     elif isinstance(data, list):
         buf.writeVarInt(4)
         buf.writeVarInt(len(data))
-        buf.write(b''.join((serialize(v).io.getvalue() for v in data)))
+        buf.write(b"".join((serialize(v).io.getvalue() for v in data)))
     elif isinstance(data, dict):
         buf.writeVarInt(5)
         buf.writeVarInt(len(data.keys()))
-        buf.write(b''.join((serialize(k).io.getvalue() + serialize(v).io.getvalue() for k, v in data.items())))
+        buf.write(
+            b"".join(
+                (
+                    serialize(k).io.getvalue() + serialize(v).io.getvalue()
+                    for k, v in data.items()
+                )
+            )
+        )
     elif data == None:
         buf.writeVarInt(6)
     return buf
+
+
 async def process(type: str, data: Any):
     if type == "runtime":
         return float(os.getenv("STARTUP") or 0)
@@ -83,10 +100,16 @@ async def process(type: str, data: Any):
             "memory": system.get_used_memory(),
             "connections": system.get_connections(),
             "cpu": system.get_cpus(),
-            "cache": asdict(await cluster.cluster.get_cache_stats()) if cluster.cluster else StatsCache()
+            "cache": (
+                asdict(await cluster.cluster.get_cache_stats())
+                if cluster.cluster
+                else StatsCache()
+            ),
         }
+
+
 async def set_status(text):
-    global last_status 
+    global last_status
     if last_status != text:
         app = web.app
         output = to_bytes("status", text)
@@ -94,17 +117,36 @@ async def set_status(text):
             await ws.send(output.io.getvalue())
     last_status = text
 
+
 def to_bytes(type: str, data: Any):
     output = utils.DataOutputStream()
     output.writeString(type)
     output.write(serialize(data).io.getvalue())
     return output
 
-def generate_token(request: 'web.Request') -> Token:
+
+def generate_token(request: "web.Request") -> Token:
     global tokens
-    token = Token(hashlib.sha256(zlib.compress(hashlib.sha512((request.get_ip() + request.get_user_agent() + request.get_url() + CLUSTER_ID + CLUSTER_SECERT + str(time.time())).encode("utf-8")).digest())).hexdigest(), time.time())
+    token = Token(
+        hashlib.sha256(
+            zlib.compress(
+                hashlib.sha512(
+                    (
+                        request.get_ip()
+                        + request.get_user_agent()
+                        + request.get_url()
+                        + CLUSTER_ID
+                        + CLUSTER_SECERT
+                        + str(time.time())
+                    ).encode("utf-8")
+                ).digest()
+            )
+        ).hexdigest(),
+        time.time(),
+    )
     tokens.append(token)
     return token
+
 
 def token_isvaild(value) -> bool:
     for token in tokens:

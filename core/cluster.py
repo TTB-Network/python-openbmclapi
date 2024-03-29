@@ -33,10 +33,10 @@ from core.api import (
     get_hash,
 )
 
-VERSION = ''
+VERSION = ""
 version_path = Path("VERSION")
 if version_path.exists():
-    with open(Path("VERSION"), 'r', encoding='utf-8') as f:
+    with open(Path("VERSION"), "r", encoding="utf-8") as f:
         VERSION = f.read()
         f.close()
 else:
@@ -512,9 +512,7 @@ class Cluster:
         if not miss:
             logger.success(f"Checked all files: {len(files) * len(self.storages)}!")
         else:
-            logger.info(
-                f"File missing: {unit.format_number(len(miss))}."
-            )
+            logger.info(f"File missing: {unit.format_number(len(miss))}.")
             await downloader.download(self.storages, list(miss))
         if os.path.exists("./cache/download"):
             paths = []
@@ -565,6 +563,7 @@ class Cluster:
         await self.check_files()
         await dashboard.set_status("启动服务")
         await self.enable()
+
     async def get(self, hash, offset: int = 0) -> File:
         storage = self.storages[0]
         stat = self.storage_stats[storage]
@@ -606,6 +605,7 @@ class Cluster:
             },
         )
         await dashboard.set_status("巡检中")
+
     async def message(self, type, data: list[Any]):
         if len(data) == 1:
             data.append(None)
@@ -629,7 +629,9 @@ class Cluster:
                 f"Hosting on {CLUSTER_ID}.openbmclapi.933.moe:{PUBLIC_PORT or PORT}."
             )
             await self.start_keepalive()
-            await dashboard.set_status("正常工作" + ("" if self.trusted else "（节点信任度过低）"))
+            await dashboard.set_status(
+                "正常工作" + ("" if self.trusted else "（节点信任度过低）")
+            )
         elif type == "keep-alive":
             if err:
                 logger.error(f"Unable to keep alive! Reconnecting...")
@@ -718,21 +720,22 @@ token = TokenManager()
 cluster: Optional[Cluster] = None
 last_status: str = "-"
 github_api = "https://api.github.com"
+
+
 async def check_update():
-    async with aiohttp.ClientSession(
-            base_url=github_api
-        ) as session:
-            logger.info("Checking update...")
-            try:
-                async with session.get("/repos/TTB-Network/python-openbmclapi/tags") as req:
-                    req.raise_for_status()
-                    fetched_version: str = (await req.json())[0]["name"]
-                if fetched_version != VERSION:
-                    logger.success(f"New version found: {fetched_version}!")
-                else:
-                    logger.info(f"Already up to date.")
-            except aiohttp.ClientError as e:
-                logger.error(f"An error occured whilst checking update: {e}.")
+    async with aiohttp.ClientSession(base_url=github_api) as session:
+        logger.info("Checking update...")
+        try:
+            async with session.get("/repos/TTB-Network/python-openbmclapi/tags") as req:
+                req.raise_for_status()
+                fetched_version: str = (await req.json())[0]["name"]
+            if fetched_version != VERSION:
+                logger.success(f"New version found: {fetched_version}!")
+            else:
+                logger.info(f"Already up to date.")
+        except aiohttp.ClientError as e:
+            logger.error(f"An error occured whilst checking update: {e}.")
+
 
 async def init():
     await check_update()
@@ -778,8 +781,10 @@ async def init():
         if not await cluster.exists(hash):
             return web.Response(status_code=404)
         start_bytes = 0
-        range_str = await request.get_headers('range', '')
-        range_match = re.search(r'bytes=(\d+)-(\d+)', range_str, re.S) or re.search(r'bytes=(\d+)-', range_str, re.S)
+        range_str = await request.get_headers("range", "")
+        range_match = re.search(r"bytes=(\d+)-(\d+)", range_str, re.S) or re.search(
+            r"bytes=(\d+)-", range_str, re.S
+        )
         if range_match:
             start_bytes = int(range_match.group(1)) if range_match else 0
         data = await cluster.get(hash, start_bytes)
@@ -797,7 +802,9 @@ async def init():
         auth = False
         for cookie in await request.get_cookies():
             if cookie.name == "auth" and dashboard.token_isvaild(cookie.value):
-                await ws.send(dashboard.to_bytes("auth", DASHBOARD_USERNAME).io.getbuffer())
+                await ws.send(
+                    dashboard.to_bytes("auth", DASHBOARD_USERNAME).io.getbuffer()
+                )
                 auth = True
                 break
         if not auth:
@@ -810,7 +817,12 @@ async def init():
             input = utils.DataInputStream(raw_data)
             type = input.readString()
             data = dashboard.deserialize(input)
-            await ws.send(dashboard.to_bytes(type, await dashboard.process(type, data)).io.getbuffer())
+            await ws.send(
+                dashboard.to_bytes(
+                    type, await dashboard.process(type, data)
+                ).io.getbuffer()
+            )
+
     @router.get("/auth")
     async def _(request: web.Request):
         auth = (await request.get_headers("Authorization")).split(" ", 1)[1]
@@ -818,10 +830,16 @@ async def init():
             info = json.loads(base64.b64decode(auth))
         except:
             return web.Response(status_code=401)
-        if info["username"] != DASHBOARD_USERNAME or info["password"] != DASHBOARD_PASSWORD:
+        if (
+            info["username"] != DASHBOARD_USERNAME
+            or info["password"] != DASHBOARD_PASSWORD
+        ):
             return web.Response(status_code=401)
         token = dashboard.generate_token(request)
-        return web.Response(DASHBOARD_USERNAME, cookies=[web.Cookie("auth", token.value, expires=int(time.time() + 86400))])
+        return web.Response(
+            DASHBOARD_USERNAME,
+            cookies=[web.Cookie("auth", token.value, expires=int(time.time() + 86400))],
+        )
 
     app.mount(router)
     app.redirect("/bmcl", "/bmcl/")
