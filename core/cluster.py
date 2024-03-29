@@ -503,10 +503,10 @@ class Cluster:
                 task.block()
         miss = set().union(*missing_files_by_storage.values())
         if not miss:
-            logger.info(f"Checked all files, total: {len(files) * len(self.storages)}!")
+            logger.info(f"Checked all files: {len(files) * len(self.storages)}!")
         else:
             logger.info(
-                f"Total number of missing files: {unit.format_number(len(miss))}."
+                f"File missing: {unit.format_number(len(miss))}."
             )
             await downloader.download(self.storages, list(miss))
         if os.path.exists("./cache/download"):
@@ -519,7 +519,7 @@ class Cluster:
                     for d in dirs:
                         dir.append(d)
             with tqdm(
-                desc="Clean cache files",
+                desc="Cleaning cache files",
                 total=len(paths) + len(dir),
                 unit="file",
                 unit_scale=True,

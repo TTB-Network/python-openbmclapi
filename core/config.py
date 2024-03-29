@@ -21,6 +21,8 @@ defaults = {
     "advanced.request_buffer": 8192,
     "advanced.io_buffer": 16777216,
     "advanced.header_bytes": 4096,
+    "dashboard.username": "admin",
+    "dashboard.password": "",
 }
 
 
