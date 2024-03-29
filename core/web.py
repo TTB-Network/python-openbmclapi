@@ -16,7 +16,7 @@ import struct
 import tempfile
 import time
 import traceback
-import core.cluster as cluster
+from core import cluster
 import zlib
 from typing import (
     Any,
