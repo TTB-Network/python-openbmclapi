@@ -55,7 +55,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Write version
-        run: echo "${github.ref}" > VERSION
+        run: echo "${GITHUB_REF}" > VERSION
       - name: Commit and push
         run: |
           git add VERSION
