@@ -51,5 +51,8 @@ class LoggingLogger:
     def exception(self, *args, **kwargs):  
         self._log_with_args("EXCEPTION", *args, **kwargs) 
 
+    def success(self, *args, **kwargs):  
+        self._log_with_args("SUCCESS", *args, **kwargs) 
+
 
 logger = LoggingLogger()
