@@ -57,7 +57,7 @@ jobs:
         with:
           ref: master
       - name: Write version
-        run: echo "${GITHUB_REF}" > VERSION
+        run: echo "${GITHUB_REF#refs/*/}" > VERSION
       - name: Commit and push
         run: |
           git add VERSION
