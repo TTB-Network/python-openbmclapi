@@ -506,7 +506,7 @@ class DataInputStream:
             j += 1
             if (k & 0x80) != 128:
                 break
-        return i - 2**31 * 2 if i >= 2**31 - 1 else i
+        return i
 
     def readString(
         self, maximun: Optional[int] = None, encoding: Optional[str] = None
