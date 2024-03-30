@@ -450,6 +450,7 @@ class FileStorage(Storage):
         file.set_data(buf.getbuffer())
         self.cache[hash] = file
         file.cache = False
+        file.expiry = file.last_access + CACHE_TIME
         return file
 
     async def exists(self, hash: str) -> bool:
