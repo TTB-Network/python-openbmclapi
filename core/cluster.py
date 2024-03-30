@@ -911,8 +911,7 @@ async def init():
     for plugin in plugins.get_plugins():
         await plugin.init()
         await plugin.enable()
-    #storages.add_storage(FileStorage(Path("bmclapi")))
-    storages.add_storage(WebDav("admin", "123456", "http://127.0.0.1:5244", "/bmclapi", "alist-06e39e3a-d195-44a1-8f8f-296928308922Z84AuS5ttoA7hAW1Wy0jT2N40xpUrA2WeHQrJVum1WcmVmy3bv92zB5NrWbOpp96"))
+    storages.add_storage(FileStorage(Path("bmclapi")))
     Timer.delay(cluster.init)
     app = web.app
 
