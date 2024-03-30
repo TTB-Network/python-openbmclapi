@@ -37,12 +37,13 @@ VERSION = ""
 version_path = Path("VERSION")
 if version_path.exists():
     with open(Path("VERSION"), "r", encoding="utf-8") as f:
-        VERSION = f.read()
+        VERSION = f.read().split('\n')[0]
         f.close()
 else:
     VERSION = ""
 API_VERSION = "1.9.8"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
+logger.info(USER_AGENT)
 BASE_URL = "https://openbmclapi.bangbang93.com/"
 CLUSTER_ID: str = Config.get("cluster.id")
 CLUSTER_SECERT: str = Config.get("cluster.secret")
@@ -593,7 +594,7 @@ class Cluster:
             {
                 "host": PUBLIC_HOST,
                 "port": PUBLIC_PORT or PORT,
-                "version": VERSION,
+                "version": API_VERSION,
                 "byoc": BYOC,
                 "noFastEnable": False,
                 "flavor": {
