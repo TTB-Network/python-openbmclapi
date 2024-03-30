@@ -317,7 +317,7 @@ class WebSocketFrame:
         self.data = data
         self.close = self.opcode == WebSocketOpcode.CLOSE.value
         if self.close:
-            self.status = int.from_bytes(self.data.getbuffer()[:2])
+            self.status = int.from_bytes(self.data.getbuffer()[:2], byteorder="big")
             self.reason = self.data.getbuffer()[:2]
         self.content = data
         if self.opcode == WebSocketOpcode.TEXT.value:
@@ -937,7 +937,7 @@ class Response:
 
 class RedirectResponse(Response):
     def __init__(self, location: str) -> None:
-        super().__init__(headers=Header({"Location": location}), status_code=301)
+        super().__init__(headers=Header({"Location": location}), status_code=307)
 
 
 class Request:

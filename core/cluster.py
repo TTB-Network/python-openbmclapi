@@ -524,11 +524,97 @@ class FileStorage(Storage):
 
 
 class WebDav(Storage):
-    def __init__(self, username: str, password: str, endpoint: str) -> None:
+    def __init__(self, username: str, password: str, endpoint: str, dir: str, token: Optional[str] = None) -> None:
         self.username = username
         self.password = password
         self.endpoint = endpoint
+        self.dir = dir
+        self.cache: dict[str, File] = {}
+        self.timer = Timer.repeat(self.clear_cache, (), CHECK_CACHE, CHECK_CACHE)
+        self.files: dict[str, File] = {}
+        self.token = token
+        self.fetch = False
+        self.empty = File("", "", 0)
+        Timer.delay(self._list_all)
+    def _endpoint(self, file: str):
+        return f"{self.dir}/{file.removeprefix('/')}"
+    def _client(self):
+        return webdav3_client.Client({
+            "webdav_username": self.username,
+            "webdav_password": self.password,
+            "webdav_hostname": self.endpoint,
+            "webdav_token": self.token
+        })
+    async def get(self, file: str) -> File:
+        if file in self.cache:
+            self.cache[file].last_access = time.time()
+            self.cache[file].cache = True
+            return self.cache[file]
+        ...
+        
+    async def clear_cache(self):
+        ...
+    async def _list_all(self, force = False):
+        if self.fetch and not force:
+            return
+        self.fetch = True
+        self.files = {}
+        async with self._client() as client:
+            dirs = (await client.list(self.dir))[1:]
+            with tqdm(total=len(dirs), desc="[WebDav List Files]") as pbar:
+                await dashboard.set_status_by_tqdm("正在获取WebDav文件列表中", pbar)
+                for dir in (await client.list(self.dir))[1:]:
+                    pbar.update(1)
+                    for file in (await client.list(self._endpoint(dir,), get_info=True))[1:]:
+                        self.files[file['name']] = File(file['path'].removeprefix(f"/dav/{self.dir}/"), file['name'], int(file['size']))
+                        await asyncio.sleep(0)
+        return self.files
+    async def exists(self, hash: str) -> bool:
+        if not self.fetch:
+            self.fetch = True
+            await self._list_all()
+        return hash in self.files
+        
 
+    async def get_size(self, hash: str) -> int:
+        return self.files.get(hash, self.empty).size
+
+    async def write(self, hash: str, io: io.BytesIO) -> int:
+        async with self._client() as client:
+            path = self._endpoint(f"{hash[:2]}/{hash}")
+            await client.upload_to(io, path)
+            self.files[hash] = File(path, hash, len(io.getbuffer()))
+            return self.files[hash].size
+
+    async def get_files(self, dir: str) -> list[str]:
+        return list((hash for hash in self.files.keys() if hash.startswith(dir)))
+    
+    async def get_hash(self, hash: str) -> str:
+        """
+        hash: file, length `hash` parametar, md5 length is 32, else sha1
+        return hash file content
+        """
+        raise NotImplementedError
+
+
+    async def get_files_size(self, dir: str) -> int:
+        return sum((file.size for hash, file in self.files.items() if hash.startswith(dir)))
+
+    async def removes(self, hashs: list[str]) -> int:
+        """
+        dir: path
+        Remove files (file: hash str)
+        return success remove files
+        """
+        raise NotImplementedError
+
+    async def get_cache_stats(self) -> StatsCache:
+        """
+        dir: path
+        Getting cache files
+        return StatsCache
+        """
+        return StatsCache()
 class TypeStorage(Enum):
     FILE = "file"
     WEBDAV = "webdav"
@@ -625,6 +711,8 @@ class Cluster:
         for storage in storages.get_storages():
             if isinstance(storage, FileStorage):
                 storage_str["file"] += 1
+            elif isinstance(storage, WebDav):
+                storage_str["webdav"] += 1
         await self.emit(
             "enable",
             {

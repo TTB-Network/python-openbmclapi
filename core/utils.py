@@ -474,7 +474,7 @@ class DataInputStream:
         return (value[0] << 24) + (value[1] << 16) + (value[2] << 8) + (value[3] << 0)
 
     def readBoolean(self):
-        return bool(int.from_bytes(self.read(1)))
+        return bool(int.from_bytes(self.read(1), byteorder="big"))
 
     def readShort(self):
         value = self.read(2)
@@ -501,7 +501,7 @@ class DataInputStream:
         j: int = 0
         k: int
         while 1:
-            k = int.from_bytes(self.read(1))
+            k = int.from_bytes(self.read(1), byteorder="big")
             i |= (k & 0x7F) << j * 7
             j += 1
             if (k & 0x80) != 128:
