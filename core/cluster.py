@@ -288,10 +288,10 @@ class FileCheck:
             self.checked = True
             more_files = {storage: [] for storage in storages.get_storages()}
             prefix_files = {
-                prefix: [] for prefix in (prefix.to_bytes().hex() for prefix in range(256))
+                prefix: [] for prefix in (prefix.to_bytes(1, "big").hex() for prefix in range(256))
             }
             prefix_hash = {
-                prefix: [] for prefix in (prefix.to_bytes().hex() for prefix in range(256))
+                prefix: [] for prefix in (prefix.to_bytes(1, "big").hex() for prefix in range(256))
             }
 
             for file in files:

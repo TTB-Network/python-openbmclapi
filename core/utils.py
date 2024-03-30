@@ -421,20 +421,20 @@ class DataOutputStream:
         if isinstance(value, bytes):
             self.io.write(value)
         else:
-            self.io.write((value + 256 if value < 0 else value).to_bytes())  # type: ignore
+            self.io.write((value + 256 if value < 0 else value).to_bytes(1, "big"))  # type: ignore
 
     def writeBoolean(self, value: bool):
-        self.write(value.to_bytes())
+        self.write(value.to_bytes(1, "big"))
 
     def writeShort(self, data: int):
-        self.write(((data >> 8) & 0xFF).to_bytes())
-        self.write(((data >> 0) & 0xFF).to_bytes())
+        self.write(((data >> 8) & 0xFF).to_bytes(1, "big"))
+        self.write(((data >> 0) & 0xFF).to_bytes(1, "big"))
 
     def writeInteger(self, data: int):
-        self.write(((data >> 24) & 0xFF).to_bytes())
-        self.write(((data >> 16) & 0xFF).to_bytes())
-        self.write(((data >> 8) & 0xFF).to_bytes())
-        self.write((data & 0xFF).to_bytes())
+        self.write(((data >> 24) & 0xFF).to_bytes(1, "big"))
+        self.write(((data >> 16) & 0xFF).to_bytes(1, "big"))
+        self.write(((data >> 8) & 0xFF).to_bytes(1, "big"))
+        self.write((data & 0xFF).to_bytes(1, "big"))
 
     def writeVarInt(self, value: int):
         self.write(MinecraftUtils.getVarInt(value))
