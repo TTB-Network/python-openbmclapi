@@ -75,16 +75,25 @@ def serialize(data: Any):
     elif isinstance(data, dict):
         buf.writeVarInt(5)
         buf.writeVarInt(len(data.keys()))
-        buf.write(b''.join((serialize(k).io.getvalue() + serialize(v).io.getvalue() for k, v in data.items())))
+        buf.write(
+            b"".join(
+                (
+                    serialize(k).io.getvalue() + serialize(v).io.getvalue()
+                    for k, v in data.items()
+                )
+            )
+        )
     elif is_dataclass(data):
         buf.write(serialize(asdict(data)).io.getvalue())
     elif data == None:
         buf.writeVarInt(6)
     return buf
 
+
 def _format_time(k: float):
     local = time.localtime(k)
     return f"{local.tm_hour:02d}:{local.tm_min:02d}:{local.tm_sec:02d}"
+
 
 async def process(type: str, data: Any):
     if type == "uptime":
@@ -94,7 +103,9 @@ async def process(type: str, data: Any):
     if type == "qps":
         c = web.statistics.get_time()
         c -= c % 5
-        raw_data = {k: v for k, v in web.statistics.get_all_qps().items() if k > c - 300}
+        raw_data = {
+            k: v for k, v in web.statistics.get_all_qps().items() if k > c - 300
+        }
         resp_data: dict = {}
         for _ in range(c - 300, c, 5):
             resp_data[_] = 0
@@ -118,15 +129,11 @@ async def process(type: str, data: Any):
                 else StatsCache()
             ),
         }
-    if type == "version":
-        return {
-            "cur": cluster.VERSION,
-            "latest": cluster.fetch_version
-        }
-    
-async def set_status_by_tqdm(
-    text: str, pbar: tqdm, format=unit.format_numbers
-):
+    if type == "storage":
+        return stats.get_storage_stats()
+
+
+async def set_status_by_tqdm(text: str, pbar: tqdm, format=unit.format_numbers):
     global cur_tqdm_text, cur_tqdm, cur_tqdm_unit, task_tqdm
     cur_tqdm_text = text
     cur_tqdm = pbar
@@ -135,11 +142,18 @@ async def set_status_by_tqdm(
         return
     task_tqdm = Timer.repeat(_set_status_by_tqdm, (), 0, 1)
 
+
 async def _set_status_by_tqdm():
     global cur_tqdm_text, cur_tqdm, cur_tqdm_unit, last_tqdm
     if last_tqdm > time.time():
         return
-    if not cur_tqdm_text or cur_tqdm is None or not cur_tqdm_unit or cur_tqdm is not None and cur_tqdm.disable:
+    if (
+        not cur_tqdm_text
+        or cur_tqdm is None
+        or not cur_tqdm_unit
+        or cur_tqdm is not None
+        and cur_tqdm.disable
+    ):
         if cur_tqdm is not None:
             await _set_status()
         cur_tqdm = None
@@ -147,6 +161,7 @@ async def _set_status_by_tqdm():
     n, total = cur_tqdm_unit(cur_tqdm.n, cur_tqdm.total)
     await _set_status(f"{cur_tqdm_text} ({n}/{total})")
     last_tqdm = time.time() + 1
+
 
 async def _set_status(text: Optional[str] = None):
     global last_text, last_status
@@ -159,17 +174,12 @@ async def _set_status(text: Optional[str] = None):
             await ws.send(output.io.getvalue())
     last_status = text
 
+
 async def set_status(text):
-    global last_text 
+    global last_text
     if last_text != text:
         await _set_status(text)
     last_text = text
-
-async def trigger(type: str, data: Any = None):
-    app = web.app
-    output = to_bytes(type, await process(type, data))
-    for ws in app.get_websockets("/bmcl/"):
-        await ws.send(output.io.getvalue())
 
 
 def to_bytes(type: str, data: Any):

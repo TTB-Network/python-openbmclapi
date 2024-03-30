@@ -25,6 +25,7 @@ class BMCLAPIFile:
     hash: str
     size: int
     mtime: int = 0
+
     def __hash__(self):
         return int.from_bytes(bytes.fromhex(self.hash), byteorder="big")
 
@@ -78,8 +79,8 @@ class Storage(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     async def get(self, file: str) -> File:
         """
-            get file metadata.
-            return File
+        get file metadata.
+        return File
         """
         raise NotImplementedError
 
@@ -115,7 +116,7 @@ class Storage(metaclass=abc.ABCMeta):
         return list[str]
         """
         raise NotImplementedError
-    
+
     @abc.abstractmethod
     async def get_hash(self, hash: str) -> str:
         """
@@ -123,7 +124,6 @@ class Storage(metaclass=abc.ABCMeta):
         return hash file content
         """
         raise NotImplementedError
-
 
     @abc.abstractmethod
     async def get_files_size(self, dir: str) -> int:

@@ -42,7 +42,7 @@ fetch_version = ""
 version_path = Path("VERSION")
 if version_path.exists():
     with open(Path("VERSION"), "r", encoding="utf-8") as f:
-        fetch_version = VERSION = f.read().split('\n')[0]
+        VERSION = f.read().split("\n")[0]
         f.close()
 else:
     fetch_version = VERSION = "Unknown"
@@ -103,7 +103,7 @@ class TokenManager:
                     logger.info("Fetched token.")
 
             except aiohttp.ClientError as e:
-                logger.error(f"An error occured whilst fetching token, retry in 5s to fetch again: {e}.")
+                logger.error(f"An error occured whilst fetching token, retrying in 5s: {e}.")
                 await asyncio.sleep(5)
                 return self.fetchToken()
 
@@ -120,11 +120,15 @@ class ParseFileList:
         with tqdm(total=self.read_long(), desc="[ParseFileList]") as pbar:
             for _ in range(pbar.total):
                 self.files.append(
-                    BMCLAPIFile(self.read_string(), self.read_string(), self.read_long(), self.read_long())
+                    BMCLAPIFile(
+                        self.read_string(),
+                        self.read_string(),
+                        self.read_long(),
+                        self.read_long(),
+                    )
                 )
                 pbar.update(1)
         return self.files
-                
 
     def read_long(self):
         b = ord(self.data.read(1))
@@ -157,7 +161,12 @@ class FileDownloader:
         ) as session:
             logger.debug("Created ClientSession")
             async with session.get(
-                "/openbmclapi/files", data={"responseType": "buffer", "cache": "", "lastModified": self.last_modified}
+                "/openbmclapi/files",
+                data={
+                    "responseType": "buffer",
+                    "cache": "",
+                    "lastModified": self.last_modified,
+                },
             ) as req:
                 logger.debug(f"Filelist response status: {req.status}")
                 if req.status == 204:
@@ -170,9 +179,12 @@ class FileDownloader:
                     return []
                 logger.info("Requested filelist.")
                 files = await ParseFileList()(zstd.decompress(await req.read()))
-                self.last_modified = max(self.last_modified, *(file.mtime for file in files))
+                self.last_modified = max(
+                    self.last_modified, *(file.mtime for file in files)
+                )
                 logger.debug(f"Filelist last modified: {self.last_modified}")
                 return files
+
     async def _download(self, pbar: tqdm, session: aiohttp.ClientSession):
         while not self.queues.empty():
             file = await self.queues.get()
@@ -233,7 +245,9 @@ class FileDownloader:
             total=sum((file.size for file in miss)),
             unit_scale=True,
         ) as pbar:
-            await dashboard.set_status_by_tqdm("下载文件中", pbar, unit.format_more_bytes)
+            await dashboard.set_status_by_tqdm(
+                "下载文件中", pbar, unit.format_more_bytes
+            )
             self.storages = storages
             for file in miss:
                 await self.queues.put(file)
@@ -265,7 +279,10 @@ class FileCheck:
         self.files = []
         self.pbar: Optional[tqdm] = None
         self.check_files_timer: Optional[Task] = None
-    async def __call__(self, ) -> Any:
+
+    async def __call__(
+        self,
+    ) -> Any:
         if not self.checked:
             await dashboard.set_status("拉取最新文件列表")
         files = await self.downloader.get_files()
@@ -273,13 +290,15 @@ class FileCheck:
         if not self.checked:
             await dashboard.set_status("正在检查缺失文件")
         if not files:
-            logger.warn("No files? Skip check files")
+            logger.warn("File check skipped as there are currently no files available.")
             if self.check_files_timer:
                 self.check_files_timer.block()
             self.check_files_timer = Timer.repeat(self, (), 1800, 1800)
             return
         with tqdm(
-            total=len(files) * len(storages.get_storages()), unit=" file(s)", unit_scale=True
+            total=len(files) * len(storages.get_storages()),
+            unit=" file(s)",
+            unit_scale=True,
         ) as pbar:
             self.pbar = pbar
             self.files = files
@@ -287,7 +306,10 @@ class FileCheck:
             pbar.set_description(f"[Storage] Checking files")
 
             miss_storage: list[list[BMCLAPIFile]] = await asyncio.gather(
-                *[self.check_missing_files(storage) for storage in storages.get_storages()]
+                *[
+                    self.check_missing_files(storage)
+                    for storage in storages.get_storages()
+                ]
             )
             missing_files_by_storage: dict[Storage, set[BMCLAPIFile]] = {}
             total_missing_bytes = 0
@@ -297,16 +319,18 @@ class FileCheck:
                 total_missing_bytes += sum(
                     (file.size for file in missing_files_by_storage[storage])
                 )
-            
+
             self.pbar = None
         if not self.checked:
             self.checked = True
             more_files = {storage: [] for storage in storages.get_storages()}
             prefix_files = {
-                prefix: [] for prefix in (prefix.to_bytes(1, "big").hex() for prefix in range(256))
+                prefix: []
+                for prefix in (prefix.to_bytes().hex() for prefix in range(256))
             }
             prefix_hash = {
-                prefix: [] for prefix in (prefix.to_bytes(1, "big").hex() for prefix in range(256))
+                prefix: []
+                for prefix in (prefix.to_bytes().hex() for prefix in range(256))
             }
 
             for file in files:
@@ -323,7 +347,10 @@ class FileCheck:
             more_total = sum(len(storage) for storage in more_files.values())
             if more_total != 0:
                 with tqdm(
-                    total=more_total, desc="Delete old files", unit="file", unit_scale=True
+                    total=more_total,
+                    desc="Delete old files",
+                    unit="file",
+                    unit_scale=True,
                 ) as pbar:
                     await dashboard.set_status_by_tqdm("删除旧文件中", pbar)
                     for storage, filelist in more_files.items():
@@ -349,7 +376,8 @@ class FileCheck:
                                     continue
                                 if (
                                     await other_storage.exists(file.hash)
-                                    and await other_storage.get_size(file.hash) == file.size
+                                    and await other_storage.get_size(file.hash)
+                                    == file.size
                                 ):
                                     size = await storage.write(
                                         file.hash,
@@ -364,7 +392,9 @@ class FileCheck:
                                         pbar.update(size)
         miss = set().union(*missing_files_by_storage.values())
         if not miss:
-            logger.info(f"Checked all files, total: {len(files) * len(storages.get_storages())}!")
+            logger.info(
+                f"Checked all files, total: {len(files) * len(storages.get_storages())}!"
+            )
         else:
             logger.info(
                 f"Total number of missing files: {unit.format_number(len(miss))}."
@@ -400,14 +430,22 @@ class FileCheck:
 
     async def _exists(self, file: BMCLAPIFile, storage: Storage):
         return await storage.exists(file.hash)
+
     async def _size(self, file: BMCLAPIFile, storage: Storage):
-        return await storage.exists(file.hash) and await storage.get_size(file.hash) == file.size
+        return (
+            await storage.exists(file.hash)
+            and await storage.get_size(file.hash) == file.size
+        )
+
     async def _hash(self, file: BMCLAPIFile, storage: Storage):
-        return await storage.exists(file.hash) and await storage.get_hash(file.hash) == file.hash
+        return (
+            await storage.exists(file.hash)
+            and await storage.get_hash(file.hash) == file.hash
+        )
 
     async def check_missing_files(self, storage: Storage):
         if not self.pbar:
-            raise 
+            raise
         miss = []
         handler = None
         if self.check_type == FileCheckType.EXISTS:
@@ -424,6 +462,7 @@ class FileCheck:
             self.pbar.update(1)
             await asyncio.sleep(0)
         return miss
+
 
 class FileStorage(Storage):
     def __init__(self, dir: Path) -> None:
@@ -587,7 +626,7 @@ class WebDav(Storage):
         async with self._client() as client:
             dirs = (await client.list(self.endpoint))[1:]
             with tqdm(total=len(dirs), desc="[WebDav List Files]") as pbar:
-                await dashboard.set_status_by_tqdm("正在获取WebDav文件列表中", pbar)
+                await dashboard.set_status_by_tqdm("正在获取 WebDav 文件列表中", pbar)
                 for dir in (await client.list(self.endpoint))[1:]:
                     pbar.update(1)
                     for file in (await client.list(self._endpoint(dir,), get_info=True))[1:]:
@@ -601,50 +640,17 @@ class WebDav(Storage):
         return hash in self.files
         
 
-    async def get_size(self, hash: str) -> int:
-        return self.files.get(hash, self.empty).size
-
-    async def write(self, hash: str, io: io.BytesIO) -> int:
-        async with self._client() as client:
-            path = self._endpoint(f"{hash[:2]}/{hash}")
-            await client.upload_to(io, path)
-            self.files[hash] = File(path, hash, len(io.getbuffer()))
-            return self.files[hash].size
-
-    async def get_files(self, dir: str) -> list[str]:
-        return list((hash for hash in self.files.keys() if hash.startswith(dir)))
-    
-    async def get_hash(self, hash: str) -> str:
-        async with self._client() as session:
-            h = get_hash(hash)
-            async for data in await session.download_iter(self._endpoint(f"{hash[:2]}/{hash}")):
-                h.update(data)
-            return h.hexdigest()
-
-
-    async def get_files_size(self, dir: str) -> int:
-        return sum((file.size for hash, file in self.files.items() if hash.startswith(dir)))
-
-    async def removes(self, hashs: list[str]) -> int:
-        success = 0
-        async with self._client() as client:
-            for hash in hashs:
-                await client.clean(self._endpoint(f"{hash[:2]}/{hash}"))
-                success += 1
-        return success
-
-
-    async def get_cache_stats(self) -> StatsCache:
-        return StatsCache()
 class TypeStorage(Enum):
     FILE = "file"
     WEBDAV = "webdav"
+
 
 class StorageManager:
     def __init__(self) -> None:
         self._storages: list[Storage] = []
         self._interface_storage: dict[TypeStorage, Type[Storage]] = {}
         self._storage_stats: dict[Storage, stats.StorageStats] = {}
+
     def add_storage(self, storage):
         self._storages.append(storage)
         type = "Unknown"
@@ -653,26 +659,34 @@ class StorageManager:
             type = "File"
             key = storage.dir
         self._storage_stats[storage] = stats.get_storage(f"{type}_{key}")
+
     def remove_storage(self, storage):
         self._storages.remove(storage)
+
     def add_interface(self, type: TypeStorage, storage: Type[Storage]):
         self._interface_storage[type] = storage
+
     def create_storage(self, type: TypeStorage, *args, **kwargs):
         self.add_storage(self._interface_storage[type](*args, **kwargs))
+
     def get_storages(self):
         return self._storages
+
     def get_storage_stats(self):
         return self._storage_stats
+
     async def get(self, hash: str, offset: int) -> File:
         storage = self.get_storages()[0]
         file = await storage.get(hash)
         self._storage_stats[storage].hit(file, offset)
         return file
-    
+
     async def exists(self, hash: str) -> bool:
         return await self.get_storages()[0].exists(hash)
+
     def get_storage_stat(self, storage):
         return self._storage_stats[storage]
+
 
 class ClusterState(Enum):
     ENABLE = "enable"
@@ -682,9 +696,15 @@ class ClusterState(Enum):
     TRUST = "trust"
     START = "start"
     INIT = "init"
+
     @staticmethod
     def is_enable(value):
-        return value == ClusterState.ENABLE or value == ClusterState.KEEPALIVE  or value == ClusterState.TRUST
+        return (
+            value == ClusterState.ENABLE
+            or value == ClusterState.KEEPALIVE
+            or value == ClusterState.TRUST
+        )
+
 
 
 class Cluster:
@@ -696,17 +716,10 @@ class Cluster:
         self.downloader = FileDownloader()
         self.file_check = FileCheck(self.downloader)
         self._enable_timer: Optional[Task] = None
-        self.keepaliveTimer: Optional[Task] = None
-        self.keepaliveTimeoutTimer: Optional[Task] = None
-        self.keepalive_lock = asyncio.Lock()
     def _message(self, message):
         logger.info(f"[Remote] {message}")
         if "信任度过低" in message:
             self.trusted = False
-    async def emit(self, channel, data=None):
-        await self.sio.emit(
-            channel, data, callback=lambda x: Timer.delay(self.message, (channel, x))
-        )
     async def init(self):
         if not self.sio.connected:
             try:
@@ -720,30 +733,11 @@ class Cluster:
                 Timer.delay(self.init, (), 5)
                 return
         await self.start()
-        
     async def start(self):
         await self.cert()
-        await self.file_check()
-        await self.enable()
-    async def cert(self):
-        await self.emit("request-cert")
-    async def enable(self):
-        if self.connected:
-            logger.debug("Trying to enable again? Blocked. (\nFrom bangbang93:\n 谁他妈\n 一秒钟发了好几百个enable请求\n ban了解一下等我回杭州再看\n ban了先\n\n > Timestamp at 2024/3/30 14:07 GMT+8\n)")
-            return
-        self.connected = True
-        if self._enable_timer != None:
-            self._enable_timer.block()
-        self._enable_timer = Timer.delay(self.reconnect, (), 30)
-        await self._enable()
-    async def reconnect(self):
-        if self.connected:
-            await self.disable()
-            self.connected = False
-            logger.info("Retrying after 5s.")
-            await asyncio.sleep(5)
-        await self.enable()
-    async def _enable(self):
+        await self.reconnect()
+
+    async def enable(self) -> None:
         storage_str = {"file": 0, "webdav": 0}
         self.trusted = True
         for storage in storages.get_storages():
@@ -767,7 +761,16 @@ class Cluster:
                 },
             },
         )
+        self._enable_timer = Timer.delay(
+            self._enable_task,
+            (),
+            30,
+        )
         await dashboard.set_status("巡检中")
+
+    async def _enable_task(self):
+        await self.reconnect()
+
     async def message(self, type, data: list[Any]):
         if len(data) == 1:
             data.append(None)
@@ -785,7 +788,9 @@ class Cluster:
                 self._enable_timer.block()
                 self._enable_timer = None
             if err:
-                logger.error(f"Unable to start service: {err['message']} Retry in 5s to reconnect.")
+                logger.error(
+                    f"Unable to start service: {err['message']} Retry in 5s to reconnect."
+                )
                 await asyncio.sleep(5)
                 await self.reconnect()
                 return
@@ -865,6 +870,8 @@ class Cluster:
             stat.total += t.total
             stat.bytes += t.bytes
         return stat
+
+
 token = TokenManager()
 cluster: Optional[Cluster] = None
 last_status: str = "-"
@@ -878,7 +885,9 @@ async def check_update():
     async with aiohttp.ClientSession(base_url=github_api) as session:
         logger.info("Checking update...")
         try:
-            async with session.get("/repos/TTB-Network/python-openbmclapi/releases/latest") as req:
+            async with session.get(
+                "/repos/TTB-Network/python-openbmclapi/releases/latest"
+            ) as req:
                 req.raise_for_status()
                 data = await req.json()
                 fetch_version = data["tag_name"]
@@ -998,21 +1007,28 @@ async def init():
         ):
             return web.Response(status_code=401)
         token = dashboard.generate_token(request)
-        return web.Response(DASHBOARD_USERNAME, cookies=[web.Cookie("auth", token.value, expires=int(time.time() + 86400))])
-    
+        return web.Response(
+            DASHBOARD_USERNAME,
+            cookies=[web.Cookie("auth", token.value, expires=int(time.time() + 86400))],
+        )
+
     @router.get("/measure")
-    async def _(request: web.Request, config: web.ResponseConfiguration, size: int = 32):
+    async def _(
+        request: web.Request, config: web.ResponseConfiguration, size: int = 32
+    ):
         auth_cookie = (await request.get_cookies()).get("auth") or None
         auth = dashboard.token_isvaild(auth_cookie.value if auth_cookie else None)
         if not auth:
-            yield b''
+            yield b""
             return
         config.length = size * 1024 * 1024
         for _ in range(min(1024, max(0, size))):
-            yield b'\x00' * 1024 * 1024
+            yield b"\x00" * 1024 * 1024
 
     @router.post("/measure")
-    async def _(request: web.Request, config: web.ResponseConfiguration, size: int = 32):
+    async def _(
+        request: web.Request, config: web.ResponseConfiguration, size: int = 32
+    ):
         auth_cookie = (await request.get_cookies()).get("auth") or None
         auth = dashboard.token_isvaild(auth_cookie.value if auth_cookie else None)
         if not auth:

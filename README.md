@@ -46,6 +46,8 @@
     cd python-openbmclapi
     ```
 
+    仓库镜像地址：https://gitee.com/ttb-network/python-openbmclapi
+
 2. 安装依赖：
 
     ```sh
