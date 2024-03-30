@@ -1,37 +1,5 @@
-(() => {
+﻿(() => {
     const ttb = new TTB();
-    const langs = {
-        "zh_cn": {
-            "dashboard": "数据统计",
-            "measure": "宽带测试",
-            "authentication.fetching": "获取账户信息中",
-            "authentication.login": "登陆",
-            "dashboard.uptime": "运行时间",
-            "dashboard.status": "节点状态",
-            "dashboard.today.requests": "今日请求数",
-            "dashboard.today.filebytes": "今日下载量",
-            "dashboard.in30days.requests": "30 天内请求数",
-            "dashboard.in30days.filebytes": "30 天内下载量",
-            "dashboard.connections": "连接数",
-            "dashboard.memory": "内存使用",
-            "dashboard.file_cache": "文件缓存",
-            "dashboard.in5mins.load": "5 分钟负载",
-            "dashboard.in5mins.requests": "请求数 - 5 分钟内 %count% 次请求",
-            "dashboard.download.hourly": "每小时请求数",
-            "dashboard.download.daily": "每天请求数",
-            "dashboard.bytes.hourly": "每小时下载量",
-            "dashboard.bytes.daily": "每天下载量",
-            "dashboard.io.hit": "I/O访问数",
-            "dashboard.io.bytes": "I/O访问文件大小",
-            "dashboard.cache.hit": "缓存访问数",
-            "dashboard.cache.bytes": "缓存访问文件大小",
-            "unit.hourly": "%hour% 时",
-            "unit.daily": "%day% 天"
-        }
-    }
-    for (const lang in langs) {
-        ttb.addLangauge(lang).addAll(langs[lang])
-    }
     const global_styles = {
         "body,ol,ul,h1,h2,h3,h4,h5,h6,p,th,td,dl,dd,form,fieldset,legend,input,textarea,select": "margin:0;padding:0",
         "body": "font:12px;background:#fff;-webkit-text-size-adjust:100%",
@@ -43,9 +11,27 @@
         "p": "word-wrap:break-word",
         ":root": [
             "--r-main-background-color: #F6F7F9",
+            "--r-background-color: #191919",
+            "--r-main-font-size: 42px",
+            "--r-main-color: #fff",
+            "--r-block-margin: 20px",
+            "--r-heading-margin: 0 0 20px 0",
+            "--r-heading-font: Source Sans Pro, Helvetica, sans-serif",
+            "--r-heading-color: #fff",
+            "--r-heading-line-height: 1.2",
+            "--r-heading-letter-spacing: normal",
+            "--r-heading-text-transform: uppercase",
+            "--r-heading-text-shadow: none",
+            "--r-heading-font-weight: 600",
+            "--r-heading1-text-shadow: none",
+            "--r-heading1-size: 2.5em",
+            "--r-heading2-size: 1.6em",
+            "--r-heading3-size: 1.3em",
+            "--r-heading4-size: 1em",
+            "--r-code-font: monospace",
             "--r-link-color: #42affa",
             "--r-link-color-dark: #068de9",
-            "--r-link-color-hover: #ADD8E6",
+            "--r-link-color-hover: #8dcffc",
             "--r-selection-background-color: rgba(66, 175, 250, .75)",
             "--r-selection-color: #fff",
             "--r-overlay-element-bg-color: 240, 240, 240",
@@ -214,23 +200,6 @@
             "color: rgba(0, 0, 0, 0.7);",
             "font-size: 24px;",
         ],
-        ".root button": [
-            "border: none",
-            "background: none",
-            "padding: 6px",
-            "min-width: 64px",
-            "box-sizing: border-sizing",
-            "transition: background-color 0.3s ease, color 0.3s ease;",
-            "border-radius: 4px"
-        ],
-        ".root button:hover": [
-            "background: var(--r-link-color-hover)",
-            "color: white"
-        ],
-        ".root button:active": [
-            "background: var(--r-ligting-color)",
-            "color: white"
-        ],
         ".root .container .left.hide~.right": [
             "margin-left: 32px",
             "min-width: calc(100vw - 48px)"
@@ -296,29 +265,7 @@
             "background: var(--r-ligting-color)",
             "box-shadow: rgba(15, 198, 194, 0.2) 0px 10px 25px 0px;",
             "color: white"
-        ],
-        ".measure.button": [
-            "width: 100%",
-            "height: 100%",
-            "border: none",
-            "background: none",
-            "padding: 6px",
-            "min-width: 64px",
-            "box-sizing: border-sizing",
-            "transition: background-color 0.3s ease, color 0.3s ease;",
-            "border-radius: 50%",
-            "background: var(--r-link-color-hover)",
-            "color: white",
-            "font-size: 50px;"
-        ],
-        ".measure.button:hover": [
-            "background: var(--r-ligting-color)",
-            "color: white"
-        ],
-        ".measure.text": [
-            "text-align: center",
         ]
-        
     }
     const root = ttb.createElement("div").class("root")
     const header = ttb.createFlex().disable().class("header").style("align-items", "center").style("flex-wrap", "nowrap").style("justify-content", "space-between")
@@ -335,22 +282,21 @@
         progress.setStyle("width", (val * 100.0) + "%")
         if (val * 100.0 >= 99) setTimeout(() => progress.setStyle("width", 0), 250)
     }
-    const menu = (key, icon, core) => {  
+    const menu = (key, icon, text, core) => {  
         const hasSubmenu = key.includes('.');  
         if (hasSubmenu) {
             const [mainKey, subKey] = [key.slice(0, key.indexOf(".")), key.slice(key.indexOf(".") + 1)]
             if (!menu_data[mainKey]) menu_data[mainKey] = { icon, children: [], text: '', core };
             if (!("children" in menu_data[mainKey])) menu_data[mainKey].children = [];
-            menu_data[mainKey].children.push({ key: subKey, core });
-        } else menu_data[key] = { key, icon, core };
+            menu_data[mainKey].children.push({ key: subKey, text, core });
+        } else menu_data[key] = { key, icon, text, core };
     }
     const delete_menu = (key) => {
         const hasSubmenu = key.includes('.');  
         if (hasSubmenu) {
-            const mainKey = key.slice(0, key.indexOf("."))
-            const subKey = key.slice(key.indexOf(".") + 1)
+            const [mainKey, subKey] = [key.slice(0, key.indexOf(".")), key.slice(key.indexOf(".") + 1)]
             if (!menu_data[mainKey]) return
-            menu_data[mainKey].children = menu_data[mainKey].children.filter(v => v.key != subkey)
+            menu_data[mainKey].children = menu_data[mainKey].children.filter(v => v.key != key)
         } else delete menu_data[key]
     }
     const display_left = () => {
@@ -359,14 +305,14 @@
         for (const key in menu_data) {
             const object = menu_data[key]
             const sub = !(!object.children)
-            const div = ttb.createFlex().class("button").id("left-list-" + key).append(ttb.createElement("p").i18n(key)).style("align-items", "center").height("32px").event("click", () => {
+            const div = ttb.createFlex().class("button").id("left-list-" + key).append(ttb.createElement("p").setText(object.text)).style("align-items", "center").height("32px").event("click", () => {
                 window.location.hash = key + (sub ? "?key=" + object.children[0].key : "")
-            }).refreshI18n()
+            })
             left_content.append(div)
             if (sub) {
                 const sub_div = ttb.createElement("div").style("display: none").class("side").id("left-list-" + key + "-sub")
                 for (const child of object.children) {
-                    sub_div.append(ttb.createFlex().class("sidebutton").id("left-list-" + key + "-sub-" + child.key).append(ttb.createElement("div").class("cycle"), ttb.createElement("p").i18n(key + "." + child.key)).style("align-items", "center").height("32px").event("click", () => {
+                    sub_div.append(ttb.createFlex().class("sidebutton").id("left-list-" + key + "-sub-" + child.key).append(ttb.createElement("div").class("cycle"), ttb.createElement("p").setText(child.text)).style("align-items", "center").height("32px").event("click", () => {
                         window.location.hash = key + (sub ? "?key=" + child.key : "")
                     }))
                 }
@@ -396,11 +342,6 @@
             }
         }
     }
-    const refresh_menu = () => {
-        last_key = ''
-        last_key_b = ''
-        popstate()
-    }
     const popstate = () => {
         const key = ttb.getURLKey() || Object.keys(menu_data)[0]
         const last_key_sub = last_key_b
@@ -412,12 +353,8 @@
         }
         last_key = key;
     }
-    const getMenuHandler = (root, key) => {
-        const object = (key ? menu_data[root].children.filter(v => v.key == key_)[0] : menu_data[root]) || {}
-        return object.core || {}
-    }
     const handler = (root, key, type) => {
-        const object = getMenuHandler(root, key)
+        const object = (key ? menu_data[root].children.filter(v => v.key == key)[0] : menu_data[root]).core || {}
         root += (key ? "-" + key : "")
         if (last_root != root) {
             if (last_root in object && "disconnect" in object) {
@@ -454,14 +391,10 @@
             console.log(e)
         }
     }
-    const get_root = () => {
+    const root_handler = (func, ...data) => {
         var splited = last_root.split("-", 1)
         var root_ = splited[0], key_ = splited[1];
-        return [root_, key_]
-    }
-    const root_handler = (func, ...data) => {
-        const [root_, key_] = get_root()
-        const object = getMenuHandler(root_, key_)
+        const object = (key_ ? menu_data[root_].children.filter(v => v.key == key_)[0] : menu_data[root_]).core || {}
         if (func in object) object[func](...data)
     }
     let last_key = '';
@@ -471,14 +404,9 @@
         display_left()
         update_left()
     }
-    header.append(ttb.createElement("h3").append(ttb.createElement("a").setText(document.title).setAttribute("href", (() => { 
-        for (child of document.head.children) {
-            if (child.getAttribute("github")) return "//github.com/" + child.getAttribute("github")
-        }
-        return ""
-    })())))
+    header.append(ttb.createElement("h3").setText("Python OpenBMCLAPI Dashboard"))
     left_copyright.append(
-        ttb.createElement("p").append(ttb.createElement("a").setAttribute("href", "//github.com/TTB-Network").setText("TTB Network"), " - ", ttb.VERSION)
+        ttb.createElement("p").append(ttb.createElement("a").setAttribute("href", "mailto:administrator@ttb-network.top").setText("TTB Network"), " - ", ttb.VERSION)
     )
     left_arrow.event("click", () => {
         left.toggle("hide")
@@ -492,84 +420,83 @@
     (() => {
         class Dashboard {
             constructor() {
-                this.uptime = null
+                this.runtime = null
                 this._page = [
                     ttb.createElement("div").class("panel").append(
                         ttb.createFlex().child(2).append(
                             ttb.createElement("div").append(
-                                ttb.createElement("p").class("title").i18n("dashboard.uptime"),
+                                ttb.createElement("p").class("title").setText("运行时间"),
                                 ttb.createElement("p").class("value").setText("-")
                             ),
                             ttb.createElement("div").append(
-                                ttb.createElement("p").class("title").i18n("dashboard.status"),
+                                ttb.createElement("p").class("title").setText("状态"),
                                 ttb.createElement("p").class("value").setText("-")
                             )
-                        ).minWidth(384)
+                        )
                     ),
                     ttb.createFlex().child(2).append(
                         ttb.createElement("div").append(
                             ttb.createElement("div").class("panel").append(
                                 ttb.createFlex().child(4).append(
                                     ttb.createElement("div").append(
-                                        ttb.createElement("p").class("title").i18n("dashboard.today.requests"),
+                                        ttb.createElement("p").class("title").setText("今日下载数"),
                                         ttb.createElement("p").class("value").setText("-")
                                     ),
                                     ttb.createElement("div").append(
-                                        ttb.createElement("p").class("title").i18n("dashboard.today.filebytes"),
+                                        ttb.createElement("p").class("title").setText("今日下载量"),
                                         ttb.createElement("p").class("value").setText("-")
                                     ),
                                     ttb.createElement("div").append(
-                                        ttb.createElement("p").class("title").i18n("dashboard.in30days.requests"),
+                                        ttb.createElement("p").class("title").setText("30 天内下载数"),
                                         ttb.createElement("p").class("value").setText("-")
                                     ),
                                     ttb.createElement("div").append(
-                                        ttb.createElement("p").class("title").i18n("dashboard.in30days.filebytes"),
+                                        ttb.createElement("p").class("title").setText("30 天内下载量"),
                                         ttb.createElement("p").class("value").setText("-")
                                     )
-                                ).minWidth(384)
+                                ).minWidth(128)
                             ),
                             ttb.createElement("div").class("panel").append(
                                 ttb.createFlex().child(4).append(
                                     ttb.createElement("div").append(
-                                        ttb.createElement("p").class("title").i18n("dashboard.connections"),
+                                        ttb.createElement("p").class("title").setText("连接数"),
                                         ttb.createElement("p").class("value").setText("-")
                                     ),
                                     ttb.createElement("div").append(
-                                        ttb.createElement("p").class("title").i18n("dashboard.memory"),
+                                        ttb.createElement("p").class("title").setText("内存使用"),
                                         ttb.createElement("p").class("value").setText("-")
                                     ),
                                     ttb.createElement("div").append(
-                                        ttb.createElement("p").class("title").i18n("dashboard.file_cache"),
-                                        ttb.createElement("p").append(
-                                            ttb.createElement("span").class("value"),
-                                            ttb.createElement("span")
-                                        )
+                                        ttb.createElement("p").class("title").setText("文件缓存"),
+                                        ttb.createElement("p").class("value").setText("-")
                                     ),
                                     ttb.createElement("div").append(
-                                        ttb.createElement("p").class("title").i18n("dashboard.in5mins.load"),
+                                        ttb.createElement("p").class("title").setText("5 分钟负载"),
                                         ttb.createElement("p").class("value").setText("-")
                                     )
-                                ).minWidth(384)
+                                )
                             )
                         ),
                         ttb.createElement("div").class("panel").append(
-                            ttb.createElement("p").class("title").i18n("dashboard.in5mins.requests", {count: "-"}),
+                            ttb.createElement("p").class("title").append(ttb.createElement("span").setText("请求数 - 5 分钟内: ").append(
+                                ttb.createElement("span")
+                            )),
                             ttb.createElement("p").class("value").style("min-height: 162px;")
                         ),
                         ttb.createElement("div").class("panel").append(
-                            ttb.createElement("p").class("title").i18n("dashboard.download.hourly"),
+                            ttb.createElement("p").class("title").setText("每小时下载数"),
                             ttb.createElement("p").class("value").style("min-height: 128px")
                         ),
                         ttb.createElement("div").class("panel").append(
-                            ttb.createElement("p").class("title").i18n("dashboard.bytes.hourly"),
+                            ttb.createElement("p").class("title").setText("每小时下载量"),
                             ttb.createElement("p").class("value").style("min-height: 128px")
                         ),
                         ttb.createElement("div").class("panel").append(
-                            ttb.createElement("p").class("title").i18n("dashboard.download.daily"),
+                            ttb.createElement("p").class("title").setText("每天下载数"),
                             ttb.createElement("p").class("value").style("min-height: 128px")
                         ),
                         ttb.createElement("div").class("panel").append(
-                            ttb.createElement("p").class("title").i18n("dashboard.bytes.daily"),
+                            ttb.createElement("p").class("title").setText("每天下载量"),
                             ttb.createElement("p").class("value").style("min-height: 128px")
                         )
                     ).child(2).minWidth(896).addResize(() => {
@@ -604,6 +531,8 @@
                 };  
                 this._unit_bytes = ["B", "KB", "MB", "GB", "TB", "PB", "EB"]
                 this._unit_number = ["", "k", "M", "G", "T", "P", "E"]
+                this._hourly = Array.from({ length: 24 }, (_, i) => i + " 时")
+                this._daily = Array.from({ length: 31 }, (_, i) => i + " 天")
                 this._e_qps         = echarts.init(this._page[1].getChildrens()[1].getChildrens()[1].valueOf())
                 this._e_hits        = echarts.init(this._page[1].getChildrens()[2].getChildrens()[1].valueOf())
                 this._e_bytes       = echarts.init(this._page[1].getChildrens()[3].getChildrens()[1].valueOf())
@@ -611,13 +540,33 @@
                 this._e_daily_bytes = echarts.init(this._page[1].getChildrens()[5].getChildrens()[1].valueOf())
                 this._e_hits.setOption(this._e_options)
                 this._e_bytes.setOption(this._e_options)
+                this._e_hits.setOption({
+                    xAxis: {  
+                        data: this._hourly,
+                    }, 
+                })
+                this._e_bytes.setOption({
+                    xAxis: {  
+                        data: this._hourly,
+                    }, 
+                })
                 this._e_daily_hits.setOption(this._e_options)
                 this._e_daily_bytes.setOption(this._e_options)
+                this._e_daily_hits.setOption({
+                    xAxis: {  
+                        data: this._daily,
+                    }, 
+                })
+                this._e_daily_bytes.setOption({
+                    xAxis: {  
+                        data: this._daily,
+                    }, 
+                })
                 this._e_qps.setOption({
                     color: "#0fc6c2",
                     tooltip: {
                         trigger: 'axis',
-                        formatter: e => '<div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><div style="font-size:14px;color:#666;font-weight:400;line-height:1;">' + e[0].name + '</div><div style="margin: 10px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:#0fc6c2;"></span><span style="font-size:14px;color:#666;font-weight:400;margin-left:2px">QPS</span><span style="float:right;margin-left:20px;font-size:14px;color:#666;font-weight:900">Avg: ' + (e[0].data / 5) + " total: " + e[0].data + '</span><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div>',
+                        formatter: e => '<div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><div style="font-size:14px;color:#666;font-weight:400;line-height:1;">' + e[0].name + '</div><div style="margin: 10px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;"><span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:#0fc6c2;"></span><span style="font-size:14px;color:#666;font-weight:400;margin-left:2px">QPS</span><span style="float:right;margin-left:20px;font-size:14px;color:#666;font-weight:900">Avg: ' + e[0].data.value + " total: " + ttb.sum(...e[0].data.raw) + '</span><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div><div style="clear:both"></div></div>',
                     },
                     stateAnimation: {
                         duration: 300,
@@ -672,19 +621,13 @@
                     ]
                 })
                 this.update()
+                setTimeout(() => this._page[1].update(), 1)
             }
             connect(page) {
                 page.push(...this._page)
-                setTimeout(() => this._page[1].update(), 1)
             }
             update() {
-                this._page[0].getChildrens()[0].getChildrens()[0].getChildrens()[1].setText(this._format_time(this.uptime, true))
-            }
-            _hourly() {
-                return Array.from({length: 24}, (_, i) => ttb.getI18n("unit.hourly", {hour: i}))
-            }
-            _daily() {
-                return Array.from({length: 31}, (_, i) => ttb.getI18n("unit.daily", {day: i}))
+                this._page[0].getChildrens()[0].getChildrens()[0].getChildrens()[1].setText(this._format_time(this.runtime, true))
             }
             updateStatus(text) {
                 this._page[0].getChildrens()[0].getChildrens()[1].getChildrens()[1].setText(text)
@@ -721,25 +664,19 @@
         }
         class MainWebSocket {
             constructor() {
-                this._isws = __CONFIG__.dashboard == "websocket"
-                if (this._isws) {
-                    this.ws = ttb.websocket("ws" + (window.location.protocol.slice(4)) + "//" + window.location.host + window.location.pathname, {
-                        "onopen": () => {
-                            this.onopen()
-                            this._opened = true
-                        },
-                        "onmessage": (msg) => {
-                            let reader = new FileReader();
-                            reader.onload = () => {
-                                let arrayBuffer = reader.result;
-                                const input = new DataInputStream(arrayBuffer)
-                                this.message(input.readString(), this._deserializeData(input))
-                            }
-                            reader.readAsArrayBuffer(msg.data)
-                        },
-                        "onclose": () => this.onclose()
-                    });
-                }
+                this.ws = ttb.websocket("ws" + (window.location.protocol.slice(4)) + "//" + window.location.host + window.location.pathname, {
+                    "onopen": () => this.onopen(),
+                    "onmessage": (msg) => {
+                        let reader = new FileReader();
+                        reader.onload = () => {
+                            let arrayBuffer = reader.result;
+                            const input = new DataInputStream(arrayBuffer)
+                            this.message(input.readString(), this._deserializeData(input))
+                        }
+                        reader.readAsArrayBuffer(msg.data)
+                    },
+                    "onclose": () => this.onclose()
+                });
                 this._timer_qps = null
                 this._timer = null
                 this._timer_system = null
@@ -817,11 +754,6 @@
                 ]
                 this._auth = ttb.createElement("div").class("panel").style("width: 800px", "min-height: 600px; margin-left: 16px; margin-right: 16px")
                 header.append(this._auth_info)
-                this._opened = false
-                if (!this._isws) {
-                    this.onopen()
-                    this._opened = true
-                }
             }
             _getInputAuthInfo() {
                 const child = this._auth_login[1].getChildrens()[0].getChildrens()
@@ -831,16 +763,12 @@
                 }
             }
             onclose() {
-                if (this._isws) {
-                    ttb.createNotication("warn", "", ttb.createElement("h4").setText("实时隧道已关闭"))
-                }
-                if (!this._opened) return;
-                this._opened = false
-                dashboard.uptime = null
+                ttb.createNotication("warn", "", ttb.createElement("h4").setText("实时隧道已关闭"))
+                dashboard.runtime = null
             }
             onopen() {
-                if (this._isws)  ttb.createNotication("info", "", ttb.createElement("h4").setText("实时隧道已开启"))
-                this.send("uptime")
+                ttb.createNotication("info", "", ttb.createElement("h4").setText("实时隧道已开启"))
+                this.send("runtime")
                 this.send("storage")
                 this.send("status")
                 this._timer_qps?.block();
@@ -848,49 +776,24 @@
                 this._timer_system?.block()
                 this._timer_qps = ttb.runTaskRepeat(() => {
                     this.send("qps")
-                    if (!this._isws) {
-                        this.send("status")
-                        this.send("system")
-                    }
                 }, 0, 5000)
                 this._timer = ttb.runTaskRepeat(() => {
                     this.send("dashboard")
                 }, 0, 10000)
-                if (!this._isws) {
-                    this.send("auth")
-                } else {
-                    this._timer_system = ttb.runTaskRepeat(() => {
-                        this.send("system")
-                    }, 0, 1000)
-                }
+                this._timer_system = ttb.runTaskRepeat(() => {
+                    this.send("system")
+                }, 0, 1000)
             }
             send(type, data) {
-                if (this._isws) {
-                    const buf = new DataOutputStream()
-                    buf.writeString(type)
-                    buf.write(this._serializeData(data))
-                    this.ws.send(buf)
-                } else {
-                    ttb.request({
-                        "path": `api/${type}`,
-                        'method': "POST",
-                        "headers": {
-                            "Content-Type": "application/json"
-                        },
-                        data
-                    }).then((data) => {
-                        if (!this._opened) this.onopen()
-                        this._opened = true
-                        this.message(type, data)
-                    }).catch(() => {
-                        this.onclose()
-                    })
-                }
+                const buf = new DataOutputStream()
+                buf.writeString(type)
+                buf.write(this._serializeData(data))
+                this.ws.send(buf)
             }
             setAuthInfo() {
                 if (this._authing) {
                     this._auth_info.setStyle("cursor", "not-allowed")
-                    this._auth_info.i18n("authentication.fetching")
+                    this._auth_info.setText("获取账户信息中")
                     for (const m of this.menus) delete_menu(m.key)
                 } else {
                     this._auth_info.setStyle("cursor", "pointer")
@@ -898,13 +801,10 @@
                         this._auth_info.setText(this._authentication)
                         for (const m of this.menus) menu(m.key, m.icon, m.text, m.core)
                     } else {
-                        this._auth_info.i18n("authentication.login")
+                        this._auth_info.setText("登陆")
                         for (const m of this.menus) delete_menu(m.key)
                     }
                 }
-                display_left()
-                update_left()
-                refresh_menu()
             }
             menu(key, icon, text, core) {
                 this.menus.push({
@@ -917,15 +817,14 @@
                     this._authentication = data
                     this.setAuthInfo()
                 }
-                if (type == "uptime") {
-                    dashboard.uptime = data
+                if (type == "runtime") {
+                    dashboard.runtime = data
                     dashboard.update()
                 }
                 if (type == "status") {
                     dashboard.updateStatus(data)
                 }
                 if (type == "dashboard") {
-                    if (!this._isws) data = JSON.parse(data)
                     const hourly_data = data.hourly
                     const daily_data = data.days;
                     let min = Math.max(...hourly_data.map(v => v._hour))
@@ -939,22 +838,19 @@
                             min = Math.max(min, val._hour)
                         }
                         dashboard._e_hits.setOption({
-                            xAxis: {
-                                data: dashboard._hourly()
-                            },
                             legend: {
-                                data: [ttb.getI18n("dashboard.io.hit"), ttb.getI18n("dashboard.cache.hit")]
+                                data: ["I/O访问数", "缓存访问数"]
                             },
                             yAxis: {
                                 max: Math.max(10, ...io, ...cache),
                             },
                             series: [{
-                                name: ttb.getI18n("dashboard.io.hit"),
+                                name: "I/O访问数",
                                 data: io,
                                 type: 'line',
                                 smooth: true
                             }, {
-                                name: ttb.getI18n("dashboard.cache.hit"),
+                                name: "缓存访问数",
                                 data: cache,
                                 type: 'line',
                                 smooth: true
@@ -970,16 +866,13 @@
                             cache[val._hour] = val.cache_bytes
                         }
                         dashboard._e_bytes.setOption({
-                            xAxis: {
-                                data: dashboard._hourly()
-                            },
                             tooltip: {
                                 formatter: (params) => {
                                     return dashboard._e_templates(params, v => dashboard._format_bytes(v))
                                 }
                             },
                             legend: {
-                                data: [ttb.getI18n("dashboard.io.bytes"), ttb.getI18n("dashboard.cache.bytes")]
+                                data: ["I/O访问文件大小", "缓存访问文件大小"]
                             },
                             yAxis: {
                                 max: Math.max(10, ...io, ...cache),
@@ -990,12 +883,12 @@
                                 }
                             },
                             series: [{
-                                name: ttb.getI18n("dashboard.io.bytes"),
+                                name: "I/O访问文件大小",
                                 data: io,
                                 type: 'line',  
                                 smooth: true
                             }, {
-                                name: ttb.getI18n("dashboard.cache.bytes"),
+                                name: "缓存访问文件大小",
                                 data: cache,
                                 type: 'line',  
                                 smooth: true
@@ -1013,22 +906,19 @@
                             cache[val._day] = val.cache_hits
                         }
                         dashboard._e_daily_hits.setOption({
-                            xAxis: {
-                                data: dashboard._daily()
-                            },
                             legend: {
-                                data: [ttb.getI18n("dashboard.io.hit"), ttb.getI18n("dashboard.cache.hit")]
+                                data: ["I/O访问数", "缓存访问数"]
                             },
                             yAxis: {
                                 max: Math.max(10, ...io, ...cache),
                             },
                             series: [{
-                                name: ttb.getI18n("dashboard.io.hit"),
+                                name: "I/O访问数",
                                 data: io,
                                 type: 'line',  
                                 smooth: true
                             }, {
-                                name: ttb.getI18n("dashboard.cache.hit"),
+                                name: "缓存访问数",
                                 data: cache,
                                 type: 'line',  
                                 smooth: true
@@ -1044,16 +934,13 @@
                             cache[val._day] = val.cache_bytes
                         }
                         dashboard._e_daily_bytes.setOption({
-                            xAxis: {
-                                data: dashboard._daily()
-                            },
                             tooltip: {
                                 formatter: (params) => {
                                     return dashboard._e_templates(params, v => dashboard._format_bytes(v))
                                 }
                             },
                             legend: {
-                                data: [ttb.getI18n("dashboard.io.bytes"), ttb.getI18n("dashboard.cache.bytes")]
+                                data: ["I/O访问文件大小", "缓存访问文件大小"]
                             },
                             yAxis: {
                                 max: Math.max(10, ...io, ...cache),
@@ -1064,12 +951,12 @@
                                 }
                             },
                             series: [{
-                                name: ttb.getI18n("dashboard.io.bytes"),
+                                name: "I/O访问文件大小",
                                 data: io,
                                 type: 'line',  
                                 smooth: true
                             }, {
-                                name: ttb.getI18n("dashboard.cache.bytes"),
+                                name: "缓存访问文件大小",
                                 data: cache,
                                 type: 'line',  
                                 smooth: true
@@ -1081,21 +968,33 @@
                     dashboard._page[1].getChildrens()[0].getChildrens()[0].getChildrens()[0].getChildrens()[3].getChildrens()[1].setText(dashboard._format_bytes(bytes))
                 }
                 if (type == "system") {
-                    if (!this._isws) data = JSON.parse(data)
                     dashboard._page[1].getChildrens()[0].getChildrens()[1].getChildrens()[0].getChildrens()[0].getChildrens()[1].setText(dashboard._format_number_unit(data.connections))
                     dashboard._page[1].getChildrens()[0].getChildrens()[1].getChildrens()[0].getChildrens()[1].getChildrens()[1].setText(dashboard._format_bytes(data.memory))
-                    dashboard._page[1].getChildrens()[0].getChildrens()[1].getChildrens()[0].getChildrens()[2].getChildrens()[1].getChildrens()[0].setText(`${dashboard._format_number_unit(data.cache.total)}`)
-                    dashboard._page[1].getChildrens()[0].getChildrens()[1].getChildrens()[0].getChildrens()[2].getChildrens()[1].getChildrens()[1].setText(`(${dashboard._format_bytes(data.cache.bytes)})`)
+                    dashboard._page[1].getChildrens()[0].getChildrens()[1].getChildrens()[0].getChildrens()[2].getChildrens()[1].setText(`${dashboard._format_number_unit(data.cache.total)}(${dashboard._format_bytes(data.cache.bytes)})`)
                     dashboard._page[1].getChildrens()[0].getChildrens()[1].getChildrens()[0].getChildrens()[3].getChildrens()[1].setText(data.cpu.toFixed(2) + "%")
                 }
                 if (type == "qps") {
-                    if (!this._isws) data = JSON.parse(data)
-                    dashboard._page[1].getChildrens()[1].getChildrens()[0].i18nParams({count: dashboard._format_number_unit(ttb.sum(...Object.values(data)))})
+                    const time = parseInt(ttb.getTimestamp() / 1000)
+                    const ntime = (time % 5 != 0 ? 5 : 0) - (time % 5) + time
+                    const ltime = ntime - 300;
+                    const qps = []
+                    var sums = [];
+                    var date = []
+                    for (let i = ltime; i <= ntime; i++) {
+                        let value = (!data.hasOwnProperty(i) ? 0 : data[i]);
+                        sums.push(value);
+                        if (i % 5 == 0) {
+                            qps.push({value: ttb.sum(...sums) / sums.length, raw: sums});
+                            sums = []
+                            date.push(dashboard._e_format_time(i * 1000))
+                        }
+                    }
+                    dashboard._page[1].getChildrens()[1].getChildrens()[0].getChildrens()[0].getChildrens()[0].setText(dashboard._format_number_unit(ttb.sum(...ttb.collectionSingleList(qps.map(v => [...v.raw])))))
                     dashboard._e_qps.setOption({
                         xAxis: {
-                            data: Object.keys(data)
+                            data: date
                         },
-                        series: [{data: Object.values(data)}]
+                        series: [{data: qps}]
                     })
 
                 }
@@ -1184,199 +1083,13 @@
             }
         }
         class Measure {
-            constructor() {
-                this._page = [
-                    ttb.createElement("div").class("panel").append(
-                        ttb.createElement("p").class("value").setText("注意：测试开始之后，可能会造成节点无法下载情况"),
-                        ttb.createElement("br"), ttb.createElement("br"), ttb.createElement("br"),
-                        ttb.createElement("div").style("display: flex; justify-content: center").append(
-                            ttb.createElement("div").style("width: 256px; height: 256px;").append(
-                                ttb.createElement("button").class("measure button").setText("测速").event("click", () => this._start()),
-                                ttb.createElement("div").style("height: 256px; width: 256px; display: none")
-                            ),
-                            ttb.createElement("div").style("width: 256px; margin-left: 32px").class("measure text").append(
-                                ttb.createElement("div").style("display: flex; height: 50%").append(
-                                    ttb.createElement("div").append(
-                                        ttb.createElement("p").setText("下载/MBps"),
-                                        ttb.createElement("h2").setText("-")
-                                    )
-                                ),
-                                ttb.createElement("div").style("display: flex; height: 50%").append(
-                                    ttb.createElement("div").append(
-                                        ttb.createElement("p").setText("上传/MBps"),
-                                        ttb.createElement("h2").setText("-")
-                                    )
-                                ),
-                            )
-                        )
-                    )
-                ]
-                this._e_guage = echarts.init(this._page[0].getChildrens()[4].getChildrens()[0].getChildrens()[1].valueOf());
-                this._e_guage.setOption({
-                    series: [{
-                        type: 'gauge',
-                        max: 1000,
-                        progress: {
-                            show: true,
-                            width: 8
-                        },
-                        axisLine: {
-                            lineStyle: {
-                                width: 8
-                            }
-                        },
-                        axisTick: {
-                            show: false
-                        },
-                        axisLabel: {
-                            distance: 10,
-                        },
-                        anchor: {
-                            show: true,
-                            showAbove: true,
-                            itemStyle: {
-                                borderWidth: 4
-                            }
-                        },
-                        detail: {
-                            valueAnimation: true,
-                            offsetCenter: [0, '70%']
-                        },
-                        data: [{value: 0}]
-                    }]
-                })
-                this._started = false
-                this._threads = 8;
-                this._downloads = {}
-                this._uploads = {}
-                this.startUpload = 0
-                this.startDownload = 0
-                this._timestamp = 5000
-            }
-            _add(type, bit) {
-                const t = ttb.getTime()
-                var data = null
-                if (type == "download") data = this._downloads
-                else data = this._uploads
-                if (!(t in data)) data[t] = 0
-                data[t] += bit
-                return this._show(type)
-            }
-            _show(type) {
-                const t = Number.parseInt(ttb.getTime())
-                let bandwidths = {}
-                if (type == "download") bandwidths = this._downloads
-                else bandwidths = this._uploads
-                var data = []
-                const keys = Object.keys(bandwidths).sort()
-                for (const key of keys) {
-                    if (t <= key <= t + 1) data.push(bandwidths[key])
-                }
-                console.log((ttb.sum(...data) * 8 / 1024 / 1024).toFixed(0) + "Mbps")
-                this._e_guage.setOption({
-                    series: [{data: [{value: (ttb.sum(...data) * 8 / 1024 / 1024).toFixed(0)}]}]
-                })
-                const interval = (keys[keys.length - 1] - (keys[keys.length - 1] - 1))
-                const cur = (ttb.sum(...Object.values(bandwidths)) / interval)
-                this._page[0].getChildrens()[4].getChildrens()[1].getChildrens()[type == "download" ? 0 : 1].getChildrens()[0].getChildrens()[1].setText(((interval == 0 ? 0 : cur) * 8 / 1024 / 1024).toFixed(0))
-            }
-            _start() {
-                if (this._started) return
-                this._page[0].getChildrens()[4].getChildrens()[0].getChildrens()[0].valueOf().style.display = "none"
-                this._page[0].getChildrens()[4].getChildrens()[0].getChildrens()[1].valueOf().style.display = ""
-                this._page[0].getChildrens()[4].getChildrens()[1].getChildrens()[0].getChildrens()[0].getChildrens()[1].setText("-")
-                this._page[0].getChildrens()[4].getChildrens()[1].getChildrens()[1].getChildrens()[0].getChildrens()[1].setText("-")
-                this._downloads = {}
-                this._uploads = {}
-                new Promise((resolve) => {
-                    this.startDownload = ttb.getTimestamp()
-                    const xhrs = []
-                    const createRequest = () => {
-                        const xhr = new XMLHttpRequest();
-                        var last = 0
-                        xhrs.push(xhr)
-                        xhr.open("GET", "measure?size=10", true)
-                        xhr.onprogress = (event) => {
-                            this._add("download", event.loaded - last)
-                            last = event.loaded
-                        }
-                        xhr.onload = xhr.onerror = xhr.ontimeout = (event) => {
-                            xhr.onprogress(event)
-                            add_finish()
-                        }
-                        xhr.send();
-                    }
-                    const add_finish = () => {
-                        if (this.startDownload + this._timestamp >= ttb.getTimestamp()) {
-                            createRequest()
-                        }
-                    }
-                    setTimeout(() => { 
-                        for (const xhr of xhrs) xhr.abort()
-                        this._e_guage.setOption({
-                            series: [{data: [{value: 0}]}]
-                        })
-                        setTimeout(() => {
-                            resolve()
-                        }, 3000)
-                    }, this._timestamp)
-                    for (let i = 0; i < 4; i++) createRequest()
-                }).then(() => new Promise((resolve) => {
-                    var req = new BytesBuffer();
-                    for (let i = 0; i < 1024 * 1024 * 10; i++) req.write(Number.parseInt(Math.random() * 1000) % 255)
-                    this.startUpload = ttb.getTimestamp()
-                    const xhrs = []
-                    const createRequest = () => {
-                        const xhr = new XMLHttpRequest();
-                        var last = 0
-                        xhrs.push(xhr)
-                        xhr.open("POST", "measure", true)
-                        xhr.upload.onprogress = (event) => {
-                            this._add("upload", event.loaded - last)
-                            last = event.loaded
-                        }
-                        xhr.upload.onload = xhr.upload.onerror = xhr.upload.ontimeout = (event) => {
-                            xhr.upload.onprogress(event)
-                            add_finish()
-                        }
-                        xhr.send(req.toBytes());
-                    }
-                    const add_finish = () => {
-                        if (this.startUpload + this._timestamp >= ttb.getTimestamp()) {
-                            createRequest()
-                        }
-                    }
-                    setTimeout(() => { 
-                        for (const xhr of xhrs) xhr.abort()
-                        resolve()
-                    }, this._timestamp)
-                    for (let i = 0; i < 4; i++) createRequest()
-                })).finally(() => {
-                    this._page[0].getChildrens()[4].getChildrens()[0].getChildrens()[0].valueOf().style.display = ""
-                    this._page[0].getChildrens()[4].getChildrens()[0].getChildrens()[1].valueOf().style.display = "none"
-                    this._e_guage.setOption({
-                        series: [{data: [{value: 0}]}]
-                    })
-                })
-            }
-            connect(page) {
-                page.push(...this._page)
-            }
-        }
-        class Storage {
-            constructor() {
-                this._storages = []
-            }
-            connect() {
-                //ws.send("storage")
-            }
+
         }
         const ws = new MainWebSocket()
         const dashboard = new Dashboard()
         const measure = new Measure()
-        const storage = new Storage()
-        menu("dashboard", "", dashboard)
-        ws.menu("measure", "", measure)
+        menu("dashboard", "", "数据统计", dashboard)
+        ws.menu("measure", "", "带宽测试", measure)
         ws.setAuthInfo()
     })();
 
@@ -1391,5 +1104,4 @@
             ttb.createNotication("error", "", ttb.createElement("h4").setText("请求远程数据错误"), ttb.createElement("p").setText("返回代码为：" + e.status))
         }
     })
-    window.dispatchEvent(new Event("i18n"))
 })()

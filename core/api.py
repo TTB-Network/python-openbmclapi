@@ -1,6 +1,7 @@
 import abc
 import asyncio
 from dataclasses import dataclass
+from enum import Enum
 import hashlib
 import io
 from pathlib import Path
@@ -13,12 +14,18 @@ from tqdm import tqdm
 from core.config import Config
 
 
+class FileCheckType(Enum):
+    EXISTS = "exists"
+    SIZE = "size"
+    HASH = "hash"
+
+
 @dataclass
 class BMCLAPIFile:
     path: str
     hash: str
     size: int
-
+    mtime: int = 0
     def __hash__(self):
         return int.from_bytes(bytes.fromhex(self.hash))
 
@@ -71,15 +78,8 @@ class Storage(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     async def get(self, file: str) -> File:
         """
-        <<<<<<< HEAD
-                return
-                    type: Path, str
-                    Path: Local File
-                    str: url
-        =======
-                    get file metadata.
-                    return File
-        >>>>>>> 87bbb1a96405676e894a7c213cb3c2c31452eac5
+            get file metadata.
+            return File
         """
         raise NotImplementedError
 
@@ -117,12 +117,6 @@ class Storage(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def check_missing_files(
-        self, pbar: tqdm, files: list[BMCLAPIFile]
-    ) -> list[BMCLAPIFile]:
-        raise NotImplementedError
-
-    @abc.abstractmethod
     async def get_files(self, dir: str) -> list[str]:
         """
         dir: path
@@ -130,6 +124,15 @@ class Storage(metaclass=abc.ABCMeta):
         return list[str]
         """
         raise NotImplementedError
+    
+    @abc.abstractmethod
+    async def get_hash(self, hash: str) -> str:
+        """
+        hash: file, length `hash` parametar, md5 length is 32, else sha1
+        return hash file content
+        """
+        raise NotImplementedError
+
 
     @abc.abstractmethod
     async def get_files_size(self, dir: str) -> int:

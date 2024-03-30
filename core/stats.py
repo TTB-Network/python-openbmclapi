@@ -254,6 +254,32 @@ def addColumns(table, params, data, default=None):
         if default is not None:
             execute(f"UPDATE {table} SET {params}={default}")
 
+def get_storage_stats():
+    storage: dict[str, dict[str, int]] = {}
+    t = get_timestamp_from_day_tohour(30)
+    for r in queryAllData(
+        "select storage, hour, hit, bytes, cache_hit, cache_bytes, last_hit, last_bytes, failed from access where hour >= ?",
+        t,
+    ):
+        if r[0] not in storage:
+            storage[r[0]] = {
+                "cache_hits": 0,
+                "cache_bytes": 0,
+                "hits": 0,
+                "bytes": 0,
+                "last_hits": 0,
+                "last_bytes": 0,
+                "failed": 0,
+            }
+        storage[r[0]]["cache_hits"]     = r[4]
+        storage[r[0]]["cache_bytes"]    = r[5]
+        storage[r[0]]["hits"]           = r[2]
+        storage[r[0]]["bytes"]          = r[3]
+        storage[r[0]]["last_hits"]      = r[6]
+        storage[r[0]]["last_bytes"]     = r[7]
+        storage[r[0]]["failed"]         = r[8]
+    return storage
+
 
 def hourly():
     data = []
