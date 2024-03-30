@@ -393,49 +393,6 @@ def check_sign(hash: str, secret: str, s: str, e: str) -> bool:
         base64.urlsafe_b64encode(sha1.digest()).decode().strip("=") == s
         and time.time() * 1000 <= t
     )
-        
-
-@dataclass
-class Version:
-    major: int 
-    minor: int 
-    patch: int
-    @staticmethod
-    def from_string(version: str) -> 'Version':
-        if version.count(".") == 2:
-            v = [int(''.join((a for a in v if a.isdigit()))) for v in version.split(".", 2)]
-            return Version(v[0], v[1], v[2])
-        return Version(0, 0, 0)
-    def __eq__(self, other: object):
-        if isinstance(other, Version):  
-            return (self.major, self.minor, self.patch) == (other.major, other.minor, other.patch)  
-        elif isinstance(other, tuple) and len(other) == 3 and all(isinstance(v, int) for v in other):  
-            return (self.major, self.minor, self.patch) == other  
-        return False  
-  
-    def __lt__(self, other: object) -> bool:  
-        if isinstance(other, Version):
-            return (self.major, self.minor, self.patch) < (other.major, other.minor, other.patch)  
-        elif isinstance(other, tuple) and len(other) == 3 and all(isinstance(v, int) for v in other):  
-            return (self.major, self.minor, self.patch) < other
-        return False
-    
-    def __gt__(self, other: object) -> bool:  
-        if isinstance(other, Version):
-            return (self.major, self.minor, self.patch) > (other.major, other.minor, other.patch)  
-        elif isinstance(other, tuple) and len(other) == 3 and all(isinstance(v, int) for v in other):  
-            return (self.major, self.minor, self.patch) > other
-        return False
-    
-    def __ne__(self, other: object) -> bool:  
-        return not self.__eq__(other)  
-    
-    def __le__(self, other: object) -> bool:  
-        return self.__eq__(other) or self.__lt__(other)
-  
-    def __ge__(self, other: object) -> bool:  
-        return self.__eq__(other) or self.__gt__(other)
-
 
 
 class MinecraftUtils:

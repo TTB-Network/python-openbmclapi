@@ -38,14 +38,13 @@ from core.api import (
 )
 
 VERSION = ""
-fetch_version = ""
 version_path = Path("VERSION")
 if version_path.exists():
     with open(Path("VERSION"), "r", encoding="utf-8") as f:
         VERSION = f.read().split("\n")[0]
         f.close()
 else:
-    fetch_version = VERSION = "Unknown"
+    VERSION = "Unknown"
 API_VERSION = "1.10.1"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
 BASE_URL = "https://openbmclapi.bangbang93.com/"
@@ -325,12 +324,10 @@ class FileCheck:
             self.checked = True
             more_files = {storage: [] for storage in storages.get_storages()}
             prefix_files = {
-                prefix: []
-                for prefix in (prefix.to_bytes().hex() for prefix in range(256))
+                prefix: [] for prefix in (prefix.to_bytes(1, "big").hex() for prefix in range(256))
             }
             prefix_hash = {
-                prefix: []
-                for prefix in (prefix.to_bytes().hex() for prefix in range(256))
+                prefix: [] for prefix in (prefix.to_bytes(1, "big").hex() for prefix in range(256))
             }
 
             for file in files:
@@ -640,6 +637,42 @@ class WebDav(Storage):
         return hash in self.files
         
 
+    async def get_size(self, hash: str) -> int:
+        return self.files.get(hash, self.empty).size
+
+    async def write(self, hash: str, io: io.BytesIO) -> int:
+        async with self._client() as client:
+            path = self._endpoint(f"{hash[:2]}/{hash}")
+            await client.upload_to(io, path)
+            self.files[hash] = File(path, hash, len(io.getbuffer()))
+            return self.files[hash].size
+
+    async def get_files(self, dir: str) -> list[str]:
+        return list((hash for hash in self.files.keys() if hash.startswith(dir)))
+    
+    async def get_hash(self, hash: str) -> str:
+        async with self._client() as session:
+            h = get_hash(hash)
+            async for data in await session.download_iter(self._endpoint(f"{hash[:2]}/{hash}")):
+                h.update(data)
+            return h.hexdigest()
+
+
+    async def get_files_size(self, dir: str) -> int:
+        return sum((file.size for hash, file in self.files.items() if hash.startswith(dir)))
+
+    async def removes(self, hashs: list[str]) -> int:
+        success = 0
+        async with self._client() as client:
+            for hash in hashs:
+                await client.clean(self._endpoint(f"{hash[:2]}/{hash}"))
+                success += 1
+        return success
+
+
+    async def get_cache_stats(self) -> StatsCache:
+        return StatsCache()
+
 class TypeStorage(Enum):
     FILE = "file"
     WEBDAV = "webdav"
@@ -716,10 +749,20 @@ class Cluster:
         self.downloader = FileDownloader()
         self.file_check = FileCheck(self.downloader)
         self._enable_timer: Optional[Task] = None
+        self.keepaliveTimer: Optional[Task] = None
+        self.keepaliveTimeoutTimer: Optional[Task] = None
+        self.keepalive_lock = asyncio.Lock()
+        
     def _message(self, message):
         logger.info(f"[Remote] {message}")
         if "信任度过低" in message:
             self.trusted = False
+            
+    async def emit(self, channel, data=None):
+        await self.sio.emit(
+            channel, data, callback=lambda x: Timer.delay(self.message, (channel, x))
+        )
+      
     async def init(self):
         if not self.sio.connected:
             try:
@@ -729,15 +772,35 @@ class Cluster:
                     transports=["websocket"],
                 )
             except:
-                logger.warn("Failed to connect to the main server. Retrying after 5s.")
+                logger.warn("Failed to connect to the main server, retrying after 5s.")
                 Timer.delay(self.init, (), 5)
                 return
         await self.start()
+
+        
     async def start(self):
         await self.cert()
-        await self.reconnect()
-
-    async def enable(self) -> None:
+        await self.file_check()
+        await self.enable()
+    async def cert(self):
+        await self.emit("request-cert")
+    async def enable(self):
+        if self.connected:
+            logger.debug("Still trying to enable cluster? You has been blocked. (\nFrom bangbang93:\n 谁他妈\n 一秒钟发了好几百个enable请求\n ban了解一下等我回杭州再看\n ban了先\n\n > Timestamp at 2024/3/30 14:07 GMT+8\n)")
+            return
+        self.connected = True
+        if self._enable_timer != None:
+            self._enable_timer.block()
+        self._enable_timer = Timer.delay(self.reconnect, (), 30)
+        await self._enable()
+    async def reconnect(self):
+        if self.connected:
+            await self.disable()
+            self.connected = False
+            logger.info("Retrying after 5s.")
+            await asyncio.sleep(5)
+        await self.enable()
+    async def _enable(self):
         storage_str = {"file": 0, "webdav": 0}
         self.trusted = True
         for storage in storages.get_storages():
@@ -761,16 +824,8 @@ class Cluster:
                 },
             },
         )
-        self._enable_timer = Timer.delay(
-            self._enable_task,
-            (),
-            30,
-        )
         await dashboard.set_status("巡检中")
-
-    async def _enable_task(self):
-        await self.reconnect()
-
+  
     async def message(self, type, data: list[Any]):
         if len(data) == 1:
             data.append(None)
@@ -879,9 +934,9 @@ storages = StorageManager()
 github_api = "https://api.github.com"
 download_url = ""
 
-
 async def check_update():
-    global fetch_version, download_url
+    global fetched_version
+    fetched_version = "Unknown"
     async with aiohttp.ClientSession(base_url=github_api) as session:
         logger.info("Checking update...")
         try:
@@ -890,27 +945,15 @@ async def check_update():
             ) as req:
                 req.raise_for_status()
                 data = await req.json()
-                fetch_version = data["tag_name"]
-            if fetch_version != VERSION:
-                logger.success(f"New version found: {fetch_version}!")
-                download_url = data["zipball_url"]
+                fetched_version = data["tag_name"]
+            if fetched_version != VERSION:
+                logger.success(f"New version found: {fetched_version}!")
                 await dashboard.trigger("version")
-                if True and utils.Version.from_string(VERSION) < utils.Version.from_string(fetch_version):
-                    Timer.delay(download_latest)
             else:
                 logger.info(f"Already up to date.")
         except aiohttp.ClientError as e:
             logger.error(f"An error occured whilst checking update: {e}.")
     Timer.delay(check_update, (), 3600)
-
-
-async def download_latest():
-    async with aiohttp.ClientSession() as session:
-        async with session.get(download_url) as resp:
-            resp.raise_for_status()
-            async with aiofiles.open(f"./cache/latest_release-{fetch_version}.zip", "wb") as w:
-                await w.write(await resp.read())
-            logger.success(f"Downloaded latest release. See './cache/latest_release-{fetch_version}.zip'")
 
 async def init():
     await check_update()
