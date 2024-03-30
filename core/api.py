@@ -9,7 +9,6 @@ from typing import Optional
 import zlib
 
 import aiofiles
-from tqdm import tqdm
 
 from core.config import Config
 
@@ -46,6 +45,7 @@ class File:
     size: int
     last_hit: float = 0
     last_access: float = 0
+    expiry: Optional[float] = None 
     data: Optional[io.BytesIO] = None
     cache: bool = False
 
