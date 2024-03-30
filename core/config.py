@@ -34,7 +34,9 @@ class CFG:
         if self.file.exists():
             self.load()
         else:
-            logger.warn(f"File config is not exists: '{self.file.absolute()}' create default configs.")
+            logger.warn(
+                f'''The config file "{self.file.absolute()}" doesn't exist, creating a default config file...'''
+            )
             for key, value in defaults.items():
                 self.set(key, value)
 

@@ -46,7 +46,7 @@ class File:
     size: int
     last_hit: float = 0
     last_access: float = 0
-    expiry: Optional[float] = None 
+    expiry: Optional[float] = None
     data: Optional[io.BytesIO] = None
     cache: bool = False
 
