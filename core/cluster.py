@@ -1,6 +1,5 @@
 import asyncio
 import base64
-from dataclasses import dataclass
 from enum import Enum
 import hashlib
 import hmac
@@ -26,6 +25,8 @@ import core.stats as stats
 import core.web as web
 from core.logger import logger
 import plugins
+import aiowebdav.client as webdav3_client
+
 
 from core.api import (
     File,
@@ -43,7 +44,7 @@ if version_path.exists():
         VERSION = f.read().split("\n")[0]
         f.close()
 else:
-    VERSION = ""
+    VERSION = "Unknown"
 API_VERSION = "1.10.1"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
 BASE_URL = "https://openbmclapi.bangbang93.com/"
@@ -58,7 +59,7 @@ PORT: int = Config.get("web.port")
 CACHE_BUFFER: int = 1024 * 1024 * 512
 CACHE_TIME: int = 1800
 CHECK_CACHE: int = 60
-SIGN_SKIP: bool = False
+SIGN_SKIP: bool = True
 DASHBOARD_USERNAME: str = Config.get("dashboard.username")
 DASHBOARD_PASSWORD: str = Config.get("dashboard.password")
 
@@ -101,7 +102,11 @@ class TokenManager:
                     logger.info("Fetched token.")
 
             except aiohttp.ClientError as e:
-                logger.error(f"An error occured whilst fetching token: {e}.")
+                logger.error(
+                    f"An error occured whilst fetching token, retrying in 5s: {e}."
+                )
+                await asyncio.sleep(5)
+                return self.fetchToken()
 
     async def getToken(self) -> str:
         if not self.token:
@@ -167,7 +172,12 @@ class FileDownloader:
                 logger.debug(f"Filelist response status: {req.status}")
                 if req.status == 204:
                     return []
-                req.raise_for_status()
+                if req.status != 200:
+                    try:
+                        req.raise_for_status()
+                    except:
+                        logger.error(traceback.format_exc())
+                    return []
                 logger.info("Requested filelist.")
                 files = await ParseFileList()(zstd.decompress(await req.read()))
                 self.last_modified = max(
@@ -280,6 +290,12 @@ class FileCheck:
         sorted(files, key=lambda x: x.hash)
         if not self.checked:
             await dashboard.set_status("正在检查缺失文件")
+        if not files:
+            logger.warn("File check skipped as there are currently no files available.")
+            if self.check_files_timer:
+                self.check_files_timer.block()
+            self.check_files_timer = Timer.repeat(self, (), 1800, 1800)
+            return
         with tqdm(
             total=len(files) * len(storages.get_storages()),
             unit=" file(s)",
@@ -311,11 +327,11 @@ class FileCheck:
             more_files = {storage: [] for storage in storages.get_storages()}
             prefix_files = {
                 prefix: []
-                for prefix in (prefix.to_bytes().hex() for prefix in range(256))
+                for prefix in (prefix.to_bytes(1, "big").hex() for prefix in range(256))
             }
             prefix_hash = {
                 prefix: []
-                for prefix in (prefix.to_bytes().hex() for prefix in range(256))
+                for prefix in (prefix.to_bytes(1, "big").hex() for prefix in range(256))
             }
 
             for file in files:
@@ -462,6 +478,7 @@ class FileStorage(Storage):
         if hash in self.cache:
             file = self.cache[hash]
             file.last_access = time.time()
+            file.expiry = file.last_access + CACHE_TIME
             file.cache = True
             return file
         path = Path(str(self.dir) + f"/{hash[:2]}/{hash}")
@@ -473,6 +490,7 @@ class FileStorage(Storage):
         file.set_data(buf.getbuffer())
         self.cache[hash] = file
         file.cache = False
+        file.expiry = file.last_access + CACHE_TIME
         return file
 
     async def exists(self, hash: str) -> bool:
@@ -514,13 +532,15 @@ class FileStorage(Storage):
         size: int = 0
         old_keys: list[str] = []
         old_size: int = 0
-        for file in sorted(
-            self.cache.items(), key=lambda x: x[1].last_access, reverse=True
+        file: File
+        key: str
+        for key, file in sorted(
+            self.cache.items(), key=lambda x: x[1].expiry, reverse=True
         ):
-            if size <= CACHE_BUFFER and time.time() - file[1].last_access <= CACHE_TIME:
+            if size <= CACHE_BUFFER and time.time() >= file.expiry:
                 continue
-            old_keys.append(file[0])
-            old_size += file[1].size
+            old_keys.append(key)
+            old_size += file.size
         if not old_keys:
             return
         for key in old_keys:
@@ -563,10 +583,133 @@ class FileStorage(Storage):
 
 
 class WebDav(Storage):
-    def __init__(self, username: str, password: str, endpoint: str) -> None:
+    def __init__(
+        self,
+        username: str,
+        password: str,
+        hostname: str,
+        endpoint: str,
+        token: Optional[str] = None,
+        dav: str = "/dav",
+    ) -> None:
         self.username = username
         self.password = password
+        self.hostname = hostname
         self.endpoint = endpoint
+        self.dav = dav
+        self.files: dict[str, File] = {}
+        self.token = token
+        self.fetch = False
+        self.cache: dict[str, File] = {}
+        self.empty = File("", "", 0)
+        Timer.delay(self._list_all)
+
+    def _endpoint(self, file: str):
+        return f"{self.endpoint}/{file.removeprefix('/')}"
+
+    def _client(self):
+        return webdav3_client.Client(
+            {
+                "webdav_username": self.username,
+                "webdav_password": self.password,
+                "webdav_hostname": self.hostname + self.dav,
+                "webdav_token": self.token,
+            }
+        )
+
+    async def get(self, file: str) -> File:
+        if file in self.cache and self.cache[file].expiry - 10 > time.time():
+            self.cache[file].cache = True
+            self.cache[file].last_hit = time.time()
+            return self.cache[file]
+        async with aiohttp.ClientSession(
+            self.hostname, auth=aiohttp.BasicAuth(self.username, self.password)
+        ) as session:
+            async with session.get(
+                self.dav + self._endpoint(file[:2] + "/" + file), allow_redirects=False
+            ) as resp:
+                f = File(
+                    self.dav + self._endpoint(file[:2] + "/" + file),
+                    file,
+                    size=int(resp.headers.get("Content-Length", 0)),
+                )
+                if resp.status == 200:
+                    f.set_data(await resp.read())
+                elif resp.status // 100 == 3:
+                    f.path = resp.headers.get("Location")
+                self.cache[file] = f
+        return self.cache[file]
+
+    async def _list_all(self, force=False):
+        if self.fetch and not force:
+            return
+        self.fetch = True
+        self.files = {}
+        async with self._client() as client:
+            dirs = (await client.list(self.endpoint))[1:]
+            with tqdm(total=len(dirs), desc="[WebDav List Files]") as pbar:
+                await dashboard.set_status_by_tqdm("正在获取 WebDav 文件列表中", pbar)
+                for dir in (await client.list(self.endpoint))[1:]:
+                    pbar.update(1)
+                    for file in (
+                        await client.list(
+                            self._endpoint(
+                                dir,
+                            ),
+                            get_info=True,
+                        )
+                    )[1:]:
+                        self.files[file["name"]] = File(
+                            file["path"].removeprefix(f"/dav/{self.endpoint}/"),
+                            file["name"],
+                            int(file["size"]),
+                        )
+                        await asyncio.sleep(0)
+        return self.files
+
+    async def exists(self, hash: str) -> bool:
+        if not self.fetch:
+            self.fetch = True
+            await self._list_all()
+        return hash in self.files
+
+    async def get_size(self, hash: str) -> int:
+        return self.files.get(hash, self.empty).size
+
+    async def write(self, hash: str, io: io.BytesIO) -> int:
+        async with self._client() as client:
+            path = self._endpoint(f"{hash[:2]}/{hash}")
+            await client.upload_to(io, path)
+            self.files[hash] = File(path, hash, len(io.getbuffer()))
+            return self.files[hash].size
+
+    async def get_files(self, dir: str) -> list[str]:
+        return list((hash for hash in self.files.keys() if hash.startswith(dir)))
+
+    async def get_hash(self, hash: str) -> str:
+        async with self._client() as session:
+            h = get_hash(hash)
+            async for data in await session.download_iter(
+                self._endpoint(f"{hash[:2]}/{hash}")
+            ):
+                h.update(data)
+            return h.hexdigest()
+
+    async def get_files_size(self, dir: str) -> int:
+        return sum(
+            (file.size for hash, file in self.files.items() if hash.startswith(dir))
+        )
+
+    async def removes(self, hashs: list[str]) -> int:
+        success = 0
+        async with self._client() as client:
+            for hash in hashs:
+                await client.clean(self._endpoint(f"{hash[:2]}/{hash}"))
+                success += 1
+        return success
+
+    async def get_cache_stats(self) -> StatsCache:
+        return StatsCache()
 
 
 class TypeStorage(Enum):
@@ -637,54 +780,77 @@ class ClusterState(Enum):
 
 class Cluster:
     def __init__(self) -> None:
+        self.connected = False
         self.sio = socketio.AsyncClient()
         self.sio.on("message", self._message)
         self.stats_storage: Optional[stats.SyncStorage] = None
-        self.keepaliveTimer: Optional[Task] = None
-        self.keepaliveTimeoutTimer: Optional[Task] = None
-        self.keepalive_lock = asyncio.Lock()
-        self.connected = False
-        self.check_files_timer: Optional[Task] = None
-        self.trusted = True
-        self.state = ClusterState.INIT
         self.downloader = FileDownloader()
         self.file_check = FileCheck(self.downloader)
         self._enable_timer: Optional[Task] = None
+        self.keepaliveTimer: Optional[Task] = None
+        self.keepaliveTimeoutTimer: Optional[Task] = None
+        self.keepalive_lock = asyncio.Lock()
 
     def _message(self, message):
         logger.info(f"[Remote] {message}")
         if "信任度过低" in message:
             self.trusted = False
 
+    async def emit(self, channel, data=None):
+        await self.sio.emit(
+            channel, data, callback=lambda x: Timer.delay(self.message, (channel, x))
+        )
+
     async def init(self):
-        await dashboard.set_status("初始化节点中")
-        await self.file_check()
-        await dashboard.set_status("初始化节点成功")
+        if not self.sio.connected:
+            try:
+                await self.sio.connect(
+                    BASE_URL,
+                    auth={"token": await token.getToken()},
+                    transports=["websocket"],
+                )
+            except:
+                logger.warn("Failed to connect to the main server, retrying after 5s.")
+                Timer.delay(self.init, (), 5)
+                return
         await self.start()
 
     async def start(self):
-        self.state = ClusterState.START
-        logger.info(f"Starting cluster version {API_VERSION}.")
-        await dashboard.set_status("启动节点中")
-        try:
-            await self.sio.connect(
-                BASE_URL,
-                auth={"token": await token.getToken()},
-                transports=["websocket"],
-            )
-        except:
-            logger.warn("Failed to connect to the main server. Retrying after 5s.")
-            Timer.delay(self.start, (), 5)
-            return
         await self.cert()
-        await self.reconnect()
+        await self.file_check()
+        await self.enable()
 
-    async def enable(self) -> None:
+    async def cert(self):
+        await self.emit("request-cert")
+
+    async def enable(self):
+        if self.connected:
+            logger.debug(
+                "Still trying to enable cluster? You has been blocked. (\nFrom bangbang93:\n 谁他妈\n 一秒钟发了好几百个enable请求\n ban了解一下等我回杭州再看\n ban了先\n\n > Timestamp at 2024/3/30 14:07 GMT+8\n)"
+            )
+            return
+        self.connected = True
+        if self._enable_timer != None:
+            self._enable_timer.block()
+        self._enable_timer = Timer.delay(self.reconnect, (), 30)
+        await self._enable()
+
+    async def reconnect(self):
+        if self.connected:
+            await self.disable()
+            self.connected = False
+            logger.info("Retrying after 5s.")
+            await asyncio.sleep(5)
+        await self.enable()
+
+    async def _enable(self):
         storage_str = {"file": 0, "webdav": 0}
         self.trusted = True
         for storage in storages.get_storages():
             if isinstance(storage, FileStorage):
                 storage_str["file"] += 1
+            elif isinstance(storage, WebDav):
+                storage_str["webdav"] += 1
         await self.emit(
             "enable",
             {
@@ -701,15 +867,7 @@ class Cluster:
                 },
             },
         )
-        self._enable_timer = Timer.delay(
-            self._enable_task,
-            (),
-            30,
-        )
         await dashboard.set_status("巡检中")
-
-    async def _enable_task(self):
-        await self.reconnect()
 
     async def message(self, type, data: list[Any]):
         if len(data) == 1:
@@ -724,6 +882,9 @@ class Cluster:
             certificate.load_text(ack["cert"], ack["key"])
         elif type == "enable":
             err, ack = data
+            if self._enable_timer != None:
+                self._enable_timer.block()
+                self._enable_timer = None
             if err:
                 logger.error(
                     f"Unable to start service: {err['message']} Retry in 5s to reconnect."
@@ -736,9 +897,6 @@ class Cluster:
             logger.info(
                 f"Hosting on {CLUSTER_ID}.openbmclapi.933.moe:{PUBLIC_PORT or PORT}."
             )
-            if self._enable_timer != None:
-                self._enable_timer.block()
-                self._enable_timer = None
             await self.start_keepalive()
             await dashboard.set_status(
                 "正常工作" + ("" if self.trusted else "（节点信任度过低）")
@@ -793,39 +951,15 @@ class Cluster:
             )
         await self.start_keepalive(60)
 
-    async def reconnect(self):
-        try:
-            await self.disable()
-        except:
-            ...
-        await self.cert()
-        await self.enable()
-
     async def _keepalive_timeout(self):
         logger.warn("Failed to keepalive! Reconnecting the main server...")
         await self.reconnect()
 
-    async def cert(self):
-        if Path("./.ssl/cert").exists() == Path("./.ssl/key").exists() == True:
-            return
-        await self.emit("request-cert")
-
-    async def emit(self, channel, data=None):
-        await self.sio.emit(
-            channel, data, callback=lambda x: Timer.delay(self.message, (channel, x))
-        )
-
     async def disable(self):
-        self.connected = False
-        if self.keepalive_lock and self.keepalive_lock.locked():
-            self.keepalive_lock.release()
-        if self.keepaliveTimer:
-            self.keepaliveTimer.block()
-        if self.keepaliveTimeoutTimer:
-            self.keepaliveTimeoutTimer.block()
         if self.sio.connected:
             await self.emit("disable")
             logger.info("Disconnected from the main server...")
+        await dashboard.set_status("已下线")
 
     async def get_cache_stats(self) -> StatsCache:
         stat = StatsCache()
@@ -841,9 +975,12 @@ cluster: Optional[Cluster] = None
 last_status: str = "-"
 storages = StorageManager()
 github_api = "https://api.github.com"
+download_url = ""
 
 
 async def check_update():
+    global fetched_version
+    fetched_version = "Unknown"
     async with aiohttp.ClientSession(base_url=github_api) as session:
         logger.info("Checking update...")
         try:
@@ -851,13 +988,16 @@ async def check_update():
                 "/repos/TTB-Network/python-openbmclapi/releases/latest"
             ) as req:
                 req.raise_for_status()
-                fetched_version: str = (await req.json())["tag_name"]
+                data = await req.json()
+                fetched_version = data["tag_name"]
             if fetched_version != VERSION:
                 logger.success(f"New version found: {fetched_version}!")
+                await dashboard.trigger("version")
             else:
                 logger.info(f"Already up to date.")
         except aiohttp.ClientError as e:
             logger.error(f"An error occured whilst checking update: {e}.")
+    Timer.delay(check_update, (), 3600)
 
 
 async def init():

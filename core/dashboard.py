@@ -129,8 +129,8 @@ async def process(type: str, data: Any):
                 else StatsCache()
             ),
         }
-    if type == "storage":
-        return stats.get_storage_stats()
+    if type == "version":
+        return {"cur": cluster.VERSION, "latest": cluster.fetched_version}
 
 
 async def set_status_by_tqdm(text: str, pbar: tqdm, format=unit.format_numbers):
@@ -180,6 +180,13 @@ async def set_status(text):
     if last_text != text:
         await _set_status(text)
     last_text = text
+
+
+async def trigger(type: str, data: Any = None):
+    app = web.app
+    output = to_bytes(type, await process(type, data))
+    for ws in app.get_websockets("/bmcl/"):
+        await ws.send(output.io.getvalue())
 
 
 def to_bytes(type: str, data: Any):

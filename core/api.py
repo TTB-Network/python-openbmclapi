@@ -9,7 +9,6 @@ from typing import Optional
 import zlib
 
 import aiofiles
-from tqdm import tqdm
 
 from core.config import Config
 
@@ -28,7 +27,7 @@ class BMCLAPIFile:
     mtime: int = 0
 
     def __hash__(self):
-        return int.from_bytes(bytes.fromhex(self.hash))
+        return int.from_bytes(bytes.fromhex(self.hash), byteorder="big")
 
     def __eq__(self, other):
         if isinstance(other, BMCLAPIFile):
@@ -47,6 +46,7 @@ class File:
     size: int
     last_hit: float = 0
     last_access: float = 0
+    expiry: Optional[float] = None
     data: Optional[io.BytesIO] = None
     cache: bool = False
 
@@ -95,15 +95,6 @@ class Storage(metaclass=abc.ABCMeta):
     async def get_size(self, hash: str) -> int:
         """
         get file size
-        return File size
-        """
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    async def copy(self, origin: Path, hash: str) -> int:
-        """
-        origin: src path
-        hash: desc path (new path)
         return File size
         """
         raise NotImplementedError

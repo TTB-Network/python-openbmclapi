@@ -33,6 +33,12 @@ class CFG:
         self.cfg = {}
         if self.file.exists():
             self.load()
+        else:
+            logger.warn(
+                f'''The config file "{self.file.absolute()}" doesn't exist, creating a default config file...'''
+            )
+            for key, value in defaults.items():
+                self.set(key, value)
 
     def load(self):
         with open(self.file, "r", encoding="utf-8") as f:
