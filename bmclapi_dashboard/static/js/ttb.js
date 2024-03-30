@@ -69,17 +69,7 @@ class TTB {
         this._modal = new TTBModal()
         this._notifications = new TTBNotificationManager()
         this._response_handlers = {}
-        this._i18n_managers = {}
-        this._curLanaguage = "zh_cn"
         g_TTB = this
-    }
-    addLangauge(lang) {
-        if (!(lang in this._i18n_managers)) this._i18n_managers[lang] = new TTBI18N()
-        return this._i18n_managers[lang]
-    }
-    getI18n(key, params) {
-        if (!(this._curLanaguage in this._i18n_managers)) return key
-        return this._i18n_managers[this._curLanaguage].getValue(key, params)
     }
     init() {
         this._notifications.init()
@@ -264,40 +254,11 @@ class TTB {
         })
     }
 }  
-class TTBI18N {
-    constructor() {
-        this._tables = {}
-    }
-    add(key, value) {
-        this._tables[key] = value
-        return this
-    }
-    remove(key) {
-        delete this._tables[key]
-        return this
-    }
-    getValue(key, params) {
-        var value = this._tables[key] || key
-        for (const k in params) {
-            value = value.replaceAll(`%${k}%`, params[k])
-        }
-        return value
-    }
-    addAll(values) {
-        for (const key in values) {
-            this.add(key, values[key])
-        }
-        return this
-    }
-}
 class TTBElement {
     constructor(tag, isElement = false) {
         this.base = isElement ? tag : document.createElement(tag)
         this._resize_handler = []
-        this._i18n = null
-        this._childrens = []
         window.addEventListener("resize", (...event) => this._resize(...event))
-        window.addEventListener("i18n", (...event) => this.refreshI18n())
     }
     setHTML(content) {
         this.base.innerHTML = content;
@@ -305,22 +266,6 @@ class TTBElement {
     }
     setText(content) {
         this.base.innerText = content;
-        return this
-    }
-    refreshI18n() {
-        if (!this._i18n) return this
-        this.setText(g_TTB.getI18n(this._i18n.key, this._i18n.params))
-        return this
-    }
-    i18n(key, params) {
-        this._i18n = { key, params }
-        this.refreshI18n()
-        return this
-    }
-    i18nParams(params) {
-        if (!this._i18n) return
-        this._i18n = {key: this._i18n.key, params}
-        this.refreshI18n()
         return this
     }
     setValue(content) {
@@ -336,10 +281,9 @@ class TTBElement {
     append(...elements) {
         for (const element of elements) {
             if (element instanceof TTBElement) {
-                this._childrens.push(element)
                 this.base.append(element.valueOf())
             } else {
-                this._childrens.push(new TTBElement(g_TTB.isDOM(element) ? element : (new DOMParser()).parseFromString(element, 'text/html'), true))
+                this.base.append(element)
             }
         }
         return this
@@ -405,7 +349,11 @@ class TTBElement {
         return this
     }
     getChildrens() {
-        return this._childrens
+        [].findIndex
+        return new Array(...this.base.children).map(v => {
+            if (this.isDOM(v) && v.classList.contains("ttb-flex")) g_TTB._flexes.filter(val => val.valueOf() == v)[0]
+            return new TTBElement(v, true)
+        })
     }
 }
 class TTBElementFlex extends TTBElement {
@@ -562,11 +510,6 @@ class TTBModal extends TTBElement {
         document.body.style.overflow = ""
         document.body.removeChild(this.valueOf())
         window.dispatchEvent(new Event("resize"))
-    }
-}
-class TTBTable extends TTBElement {
-    constructor() {
-
     }
 }
 class TTBNotification extends TTBElement {
@@ -868,6 +811,7 @@ class DataInputStream extends BytesBuffer {
             k = this.read(1)[0];
             i |= (k & 0x7F) << j * 7;
             j += 1;
+            if (j > 5) throw new Error("VarInt too big");
             if ((k & 0x80) !== 128) break;
         }
         return i >= 2 ** 31 - 1 ? i - 2 ** 31 * 2 : i;

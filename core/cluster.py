@@ -1,5 +1,7 @@
 import asyncio
 import base64
+from dataclasses import dataclass
+from enum import Enum
 import hashlib
 import hmac
 import io
@@ -12,7 +14,7 @@ import time
 import traceback
 import aiofiles
 import aiohttp
-from typing import Any, Optional
+from typing import Any, Optional, Type
 import socketio
 from tqdm import tqdm
 from core.config import Config
@@ -28,6 +30,7 @@ import plugins
 from core.api import (
     File,
     BMCLAPIFile,
+    FileCheckType,
     StatsCache,
     Storage,
     get_hash,
@@ -41,7 +44,7 @@ if version_path.exists():
         f.close()
 else:
     VERSION = ""
-API_VERSION = "1.9.8"
+API_VERSION = "1.10.1"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
 BASE_URL = "https://openbmclapi.bangbang93.com/"
 CLUSTER_ID: str = Config.get("cluster.id")
@@ -107,13 +110,17 @@ class TokenManager:
 
 
 class ParseFileList:
-    def __init__(self, data) -> None:
+    async def __call__(self, data) -> list[BMCLAPIFile]:
         self.data = io.BytesIO(data)
         self.files = []
-        for _ in range(self.read_long()):
-            self.files.append(
-                BMCLAPIFile(self.read_string(), self.read_string(), self.read_long())
-            )
+        with tqdm(total=self.read_long(), desc="[ParseFileList]") as pbar:
+            for _ in range(pbar.total):
+                self.files.append(
+                    BMCLAPIFile(self.read_string(), self.read_string(), self.read_long(), self.read_long())
+                )
+                pbar.update(1)
+        return self.files
+                
 
     def read_long(self):
         b = ord(self.data.read(1))
@@ -134,6 +141,7 @@ class FileDownloader:
         self.files = []
         self.queues: asyncio.Queue[BMCLAPIFile] = asyncio.Queue()
         self.storages = []
+        self.last_modified: int = 0
 
     async def get_files(self) -> list[BMCLAPIFile]:
         async with aiohttp.ClientSession(
@@ -143,13 +151,19 @@ class FileDownloader:
                 "Authorization": f"Bearer {await token.getToken()}",
             },
         ) as session:
+            logger.debug("Created ClientSession")
             async with session.get(
-                "/openbmclapi/files", data={"responseType": "buffer", "cache": ""}
+                "/openbmclapi/files", data={"responseType": "buffer", "cache": "", "lastModified": self.last_modified}
             ) as req:
+                logger.debug(f"Filelist response status: {req.status}")
+                if req.status == 204:
+                    return []
                 req.raise_for_status()
                 logger.info("Requested filelist.")
-                return ParseFileList(zstd.decompress(await req.read())).files
-
+                files = await ParseFileList()(zstd.decompress(await req.read()))
+                self.last_modified = max(self.last_modified, *(file.mtime for file in files))
+                logger.debug(f"Filelist last modified: {self.last_modified}")
+                return files
     async def _download(self, pbar: tqdm, session: aiohttp.ClientSession):
         while not self.queues.empty():
             file = await self.queues.get()
@@ -178,10 +192,6 @@ class FileDownloader:
             except:
                 pbar.update(-size)
                 await self.queues.put(file)
-            if cluster:
-                await cluster._check_files_sync_status(
-                    "下载文件中", pbar, unit.format_more_bytes
-                )
         await session.close()
 
     async def _mount_file(self, file: BMCLAPIFile):
@@ -214,7 +224,7 @@ class FileDownloader:
             total=sum((file.size for file in miss)),
             unit_scale=True,
         ) as pbar:
-
+            await dashboard.set_status_by_tqdm("下载文件中", pbar, unit.format_more_bytes)
             self.storages = storages
             for file in miss:
                 await self.queues.put(file)
@@ -237,6 +247,168 @@ class FileDownloader:
             # pbar.set_postfix_str(" " * 40)
         logger.info("All files have been downloaded.")
 
+
+class FileCheck:
+    def __init__(self, downloader: FileDownloader) -> None:
+        self.checked = False
+        self.downloader = downloader
+        self.check_type = FileCheckType.EXISTS
+        self.files = []
+        self.pbar: Optional[tqdm] = None
+        self.check_files_timer: Optional[Task] = None
+    async def __call__(self, ) -> Any:
+        if not self.checked:
+            await dashboard.set_status("拉取最新文件列表")
+        files = await self.downloader.get_files()
+        sorted(files, key=lambda x: x.hash)
+        if not self.checked:
+            await dashboard.set_status("正在检查缺失文件")
+        with tqdm(
+            total=len(files) * len(storages.get_storages()), unit=" file(s)", unit_scale=True
+        ) as pbar:
+            self.pbar = pbar
+            self.files = files
+            await dashboard.set_status_by_tqdm("文件完整性", pbar)
+            pbar.set_description(f"[Storage] Checking files")
+
+            miss_storage: list[list[BMCLAPIFile]] = await asyncio.gather(
+                *[self.check_missing_files(storage) for storage in storages.get_storages()]
+            )
+            missing_files_by_storage: dict[Storage, set[BMCLAPIFile]] = {}
+            total_missing_bytes = 0
+
+            for storage, missing_files in zip(storages.get_storages(), miss_storage):
+                missing_files_by_storage[storage] = set(missing_files)
+                total_missing_bytes += sum(
+                    (file.size for file in missing_files_by_storage[storage])
+                )
+            
+            self.pbar = None
+        if not self.checked:
+            self.checked = True
+            more_files = {storage: [] for storage in storages.get_storages()}
+            prefix_files = {
+                prefix: [] for prefix in (prefix.to_bytes().hex() for prefix in range(256))
+            }
+            prefix_hash = {
+                prefix: [] for prefix in (prefix.to_bytes().hex() for prefix in range(256))
+            }
+
+            for file in files:
+                prefix_files[file.hash[:2]].append(file)
+                prefix_hash[file.hash[:2]].append(file.hash)
+            for more, more_storage in more_files.items():
+                for prefix, filelist in prefix_files.items():
+                    size = await more.get_files_size(prefix)
+                    if size != sum((file.size for file in filelist)):
+                        for file in await more.get_files(prefix):
+                            if file in prefix_hash[prefix]:
+                                continue
+                            more_storage.append(file)
+            more_total = sum(len(storage) for storage in more_files.values())
+            if more_total != 0:
+                with tqdm(
+                    total=more_total, desc="Delete old files", unit="file", unit_scale=True
+                ) as pbar:
+                    await dashboard.set_status_by_tqdm("删除旧文件中", pbar)
+                    for storage, filelist in more_files.items():
+                        removed = await storage.removes(filelist)
+                        if removed != (total := len(filelist)):
+                            logger.warn(
+                                f"Unable to delete all files! Success: {removed}, Total: {total}"
+                            )
+                        pbar.update(total)
+            if total_missing_bytes != 0 and len(miss_storage) >= 2:
+                with tqdm(
+                    total=total_missing_bytes,
+                    desc="Copying local storage files",
+                    unit="bytes",
+                    unit_divisor=1024,
+                    unit_scale=True,
+                ) as pbar:
+                    await dashboard.set_status_by_tqdm("复制缺失文件中", pbar)
+                    for storage, files in missing_files_by_storage.items():
+                        for file in files:
+                            for other_storage in storages.get_storages():
+                                if other_storage == storage:
+                                    continue
+                                if (
+                                    await other_storage.exists(file.hash)
+                                    and await other_storage.get_size(file.hash) == file.size
+                                ):
+                                    size = await storage.write(
+                                        file.hash,
+                                        (await other_storage.get(file.hash)).get_data(),
+                                    )
+                                    if size == -1:
+                                        logger.warn(
+                                            f"Failed to copy file: {file.hash}({unit.format_bytes(file.size)}) => {file.hash}({unit.format_bytes(size)})"
+                                        )
+                                    else:
+                                        missing_files_by_storage[storage].remove(file)
+                                        pbar.update(size)
+        miss = set().union(*missing_files_by_storage.values())
+        if not miss:
+            logger.info(f"Checked all files, total: {len(files) * len(storages.get_storages())}!")
+        else:
+            logger.info(
+                f"Total number of missing files: {unit.format_number(len(miss))}."
+            )
+            await self.downloader.download(storages.get_storages(), list(miss))
+        if os.path.exists("./cache/download"):
+            paths = []
+            dir = []
+            for root, dirs, files in os.walk("./cache/download"):
+                for file in files:
+                    paths.append(os.path.join(root, file))
+                if dirs:
+                    for d in dirs:
+                        dir.append(d)
+            with tqdm(
+                desc="Clean cache files",
+                total=len(paths) + len(dir),
+                unit="file",
+                unit_scale=True,
+            ) as pbar:
+                await dashboard.set_status_by_tqdm("清理缓存文件中", pbar)
+                if paths:
+                    for path in paths:
+                        os.remove(path)
+                        pbar.update(1)
+                if dir:
+                    for d in dir:
+                        os.removedirs(f"./cache/download/{d}")
+                        pbar.update(1)
+        if self.check_files_timer:
+            self.check_files_timer.block()
+        self.check_files_timer = Timer.repeat(self, (), 1800, 1800)
+
+    async def _exists(self, file: BMCLAPIFile, storage: Storage):
+        return await storage.exists(file.hash)
+    async def _size(self, file: BMCLAPIFile, storage: Storage):
+        return await storage.exists(file.hash) and await storage.get_size(file.hash) == file.size
+    async def _hash(self, file: BMCLAPIFile, storage: Storage):
+        return await storage.exists(file.hash) and await storage.get_hash(file.hash) == file.hash
+
+    async def check_missing_files(self, storage: Storage):
+        if not self.pbar:
+            raise 
+        miss = []
+        handler = None
+        if self.check_type == FileCheckType.EXISTS:
+            handler = self._exists
+        if self.check_type == FileCheckType.SIZE:
+            handler = self._size
+        if self.check_type == FileCheckType.HASH:
+            handler = self._hash
+        if handler is None:
+            raise KeyError(f"Not found handler {self.check_type}")
+        for file in self.files:
+            if not await handler(file, storage):
+                miss.append(file)
+            self.pbar.update(1)
+            await asyncio.sleep(0)
+        return miss
 
 class FileStorage(Storage):
     def __init__(self, dir: Path) -> None:
@@ -289,27 +461,15 @@ class FileStorage(Storage):
             await w.write(io.getbuffer())
             return len(io.getbuffer())
 
-    async def check_missing_files(self, pbar, files: list[BMCLAPIFile]):
-        miss = []
-        for file in files:
-            filepath = str(self.dir) + f"/{file.hash[:2]}/{file.hash}"
-            if not os.path.exists(filepath) or os.path.getsize(filepath) != file.size:
-                miss.append(file)
-            pbar.update(1)
-            # pbar.set_postfix_str(file.hash.ljust(40))
-            await asyncio.sleep(0)
-        return miss
-
-    async def _get_missing_file(
-        self, queue: asyncio.Queue[BMCLAPIFile], miss: list[BMCLAPIFile], pbar: tqdm
-    ):
-        while not queue.empty():
-            file = await queue.get()
-            filepath = str(self.dir) + f"/{file.hash[:2]}/{file.hash}"
-            if not os.path.exists(filepath) or os.path.getsize(filepath) != file.size:
-                miss.append(file)
-            pbar.update(1)
-            await asyncio.sleep(0)
+    async def get_hash(self, hash: str) -> str:
+        h = get_hash(hash)
+        async with aiofiles.open(str(self.dir) + f"/{hash[:2]}/{hash}", "rb") as r:
+            while data := await r.read(Config.get("advanced.io_buffer")):
+                if not data:
+                    break
+                h.update(data)
+                await asyncio.sleep(0.001)
+        return h.hexdigest()
 
     async def clear_cache(self):
         size: int = 0
@@ -364,189 +524,88 @@ class FileStorage(Storage):
 
 
 class WebDav(Storage):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, username: str, password: str, endpoint: str) -> None:
+        self.username = username
+        self.password = password
+        self.endpoint = endpoint
 
+class TypeStorage(Enum):
+    FILE = "file"
+    WEBDAV = "webdav"
+
+class StorageManager:
+    def __init__(self) -> None:
+        self._storages: list[Storage] = []
+        self._interface_storage: dict[TypeStorage, Type[Storage]] = {}
+        self._storage_stats: dict[Storage, stats.StorageStats] = {}
+    def add_storage(self, storage):
+        self._storages.append(storage)
+        type = "Unknown"
+        key = time.time()
+        if isinstance(storage, FileStorage):
+            type = "File"
+            key = storage.dir
+        self._storage_stats[storage] = stats.get_storage(f"{type}_{key}")
+    def remove_storage(self, storage):
+        self._storages.remove(storage)
+    def add_interface(self, type: TypeStorage, storage: Type[Storage]):
+        self._interface_storage[type] = storage
+    def create_storage(self, type: TypeStorage, *args, **kwargs):
+        self.add_storage(self._interface_storage[type](*args, **kwargs))
+    def get_storages(self):
+        return self._storages
+    def get_storage_stats(self):
+        return self._storage_stats
+    async def get(self, hash: str, offset: int) -> File:
+        storage = self.get_storages()[0]
+        file = await storage.get(hash)
+        self._storage_stats[storage].hit(file, offset)
+        return file
+    
+    async def exists(self, hash: str) -> bool:
+        return await self.get_storages()[0].exists(hash)
+    def get_storage_stat(self, storage):
+        return self._storage_stats[storage]
+
+class ClusterState(Enum):
+    ENABLE = "enable"
+    SERIVCE = "service"
+    DISABLE = "disabled"
+    KEEPALIVE = "keepalive"
+    TRUST = "trust"
+    START = "start"
+    INIT = "init"
+    @staticmethod
+    def is_enable(value):
+        return value == ClusterState.ENABLE or value == ClusterState.KEEPALIVE  or value == ClusterState.TRUST
 
 class Cluster:
     def __init__(self) -> None:
         self.sio = socketio.AsyncClient()
-        self.storages: list[Storage] = []
-        self.storage_stats: dict[Storage, stats.StorageStats] = {}
-        self.started = False
         self.sio.on("message", self._message)
-        self.cur_storage: Optional[stats.SyncStorage] = None
+        self.stats_storage: Optional[stats.SyncStorage] = None
         self.keepaliveTimer: Optional[Task] = None
         self.keepaliveTimeoutTimer: Optional[Task] = None
         self.keepalive_lock = asyncio.Lock()
         self.connected = False
         self.check_files_timer: Optional[Task] = None
         self.trusted = True
-
+        self.state = ClusterState.INIT
+        self.downloader = FileDownloader()
+        self.file_check = FileCheck(self.downloader)
+        self._enable_timer: Optional[Task] = None
     def _message(self, message):
         logger.info(f"[Remote] {message}")
         if "信任度过低" in message:
             self.trusted = False
-
-    def get_storages(self):
-        return self.storages.copy()
-
-    def add_storage(self, storage):
-        self.storages.append(storage)
-        type = "Unknown"
-        key = time.time()
-        if isinstance(storage, FileStorage):
-            type = "File"
-            key = storage.dir
-        self.storage_stats[storage] = stats.get_storage(f"{type}_{key}")
-
-    async def _check_files_sync_status(
-        self, text: str, pbar: tqdm, format=unit.format_numbers
-    ):
-        if self.check_files_timer:
-            return
-        n, total = format(pbar.n, pbar.total)
-        await dashboard.set_status(f"{text} ({n}/{total})")
-
-    async def check_files(self):
-        downloader = FileDownloader()
-        files = await downloader.get_files()
-        sorted(files, key=lambda x: x.hash)
-        with tqdm(
-            total=len(files) * len(self.storages), unit=" file(s)", unit_scale=True
-        ) as pbar:
-            pbar.set_description(f"[Storage] Checking files")
-            task = Timer.repeat(
-                self._check_files_sync_status,
-                (
-                    "检查文件完整性",
-                    pbar,
-                ),
-                0,
-                1,
-            )
-            miss_storage: list[list[BMCLAPIFile]] = await asyncio.gather(
-                *[storage.check_missing_files(pbar, files) for storage in self.storages]
-            )
-            task.block()
-            missing_files_by_storage: dict[Storage, set[BMCLAPIFile]] = {}
-            total_missing_bytes = 0
-
-            for storage, missing_files in zip(self.storages, miss_storage):
-                missing_files_by_storage[storage] = set(missing_files)
-                total_missing_bytes += sum(
-                    (file.size for file in missing_files_by_storage[storage])
-                )
-            await self._check_files_sync_status("检查文件完整性", pbar)
-        more_files = {storage: [] for storage in self.storages}
-        prefix_files = {
-            prefix: [] for prefix in (prefix.to_bytes().hex() for prefix in range(256))
-        }
-        prefix_hash = {
-            prefix: [] for prefix in (prefix.to_bytes().hex() for prefix in range(256))
-        }
-
-        for file in files:
-            prefix_files[file.hash[:2]].append(file)
-            prefix_hash[file.hash[:2]].append(file.hash)
-        for more, more_storage in more_files.items():
-            for prefix, filelist in prefix_files.items():
-                size = await more.get_files_size(prefix)
-                if size != sum((file.size for file in filelist)):
-                    for file in await more.get_files(prefix):
-                        if file in prefix_hash[prefix]:
-                            continue
-                        more_storage.append(file)
-        more_total = sum(len(storage) for storage in more_files.values())
-        if more_total != 0:
-            with tqdm(
-                total=more_total, desc="Delete old files", unit="file", unit_scale=True
-            ) as pbar:
-                for storage, filelist in more_files.items():
-                    removed = await storage.removes(filelist)
-                    if removed != (total := len(filelist)):
-                        logger.warn(
-                            f"Unable to delete all files! Success: {removed}, Total: {total}"
-                        )
-                    pbar.update(total)
-        if total_missing_bytes != 0 and len(miss_storage) >= 2:
-            with tqdm(
-                total=total_missing_bytes,
-                desc="Copying local storage files",
-                unit="bytes",
-                unit_divisor=1024,
-                unit_scale=True,
-            ) as pbar:
-                task = Timer.repeat(
-                    self._check_files_sync_status,
-                    (
-                        "复制缺失文件中",
-                        pbar,
-                    ),
-                    0,
-                    1,
-                )
-                for storage, files in missing_files_by_storage.items():
-                    for file in files:
-                        for other_storage in self.storages:
-                            if other_storage == storage:
-                                continue
-                            if (
-                                await other_storage.exists(file.hash)
-                                and await other_storage.get_size(file.hash) == file.size
-                            ):
-                                size = await storage.write(
-                                    file.hash,
-                                    (await other_storage.get(file.hash)).get_data(),
-                                )
-                                if size == -1:
-                                    logger.warn(
-                                        f"Failed to copy file: {file.hash}({unit.format_bytes(file.size)}) => {file.hash}({unit.format_bytes(size)})"
-                                    )
-                                else:
-                                    missing_files_by_storage[storage].remove(file)
-                                    pbar.update(size)
-                await self._check_files_sync_status("复制缺失文件中", pbar)
-                task.block()
-        miss = set().union(*missing_files_by_storage.values())
-        if not miss:
-            logger.success(f"Checked all files: {len(files) * len(self.storages)}!")
-        else:
-            logger.info(f"File missing: {unit.format_number(len(miss))}.")
-            await downloader.download(self.storages, list(miss))
-        if os.path.exists("./cache/download"):
-            paths = []
-            dir = []
-            for root, dirs, files in os.walk("./cache/download"):
-                for file in files:
-                    paths.append(os.path.join(root, file))
-                if dirs:
-                    for d in dirs:
-                        dir.append(d)
-            with tqdm(
-                desc="Cleaning cache files",
-                total=len(paths) + len(dir),
-                unit="file",
-                unit_scale=True,
-            ) as pbar:
-                if paths:
-                    for path in paths:
-                        os.remove(path)
-                        pbar.update(1)
-                if dir:
-                    for d in dir:
-                        os.removedirs(f"./cache/download/{d}")
-                        pbar.update(1)
-        if self.check_files_timer:
-            self.check_files_timer.block()
-        self.check_files_timer = Timer.repeat(self.check_files, (), 1800, 1800)
-
-    async def start(
-        self,
-    ):
-        if self.started:
-            return
-        logger.info(f"Starting cluster version {VERSION}.")
+    async def init(self):
+        await dashboard.set_status("初始化节点中")
+        await self.file_check()
+        await dashboard.set_status("初始化节点成功")
+        await self.start()
+    async def start(self):
+        self.state = ClusterState.START
+        logger.info(f"Starting cluster version {API_VERSION}.")
         await dashboard.set_status("启动节点中")
         try:
             await self.sio.connect(
@@ -557,37 +616,15 @@ class Cluster:
         except:
             logger.warn("Failed to connect to the main server. Retrying after 5s.")
             Timer.delay(self.start, (), 5)
-        await dashboard.set_status("请求证书")
+            return
         await self.cert()
-        await dashboard.set_status("检查文件完整性")
-        await self.check_files()
-        await dashboard.set_status("启动服务")
-        await self.enable()
-
-    async def get(self, hash, offset: int = 0) -> File:
-        storage = self.storages[0]
-        stat = self.storage_stats[storage]
-        file = await storage.get(hash)
-        stat.hit(file, offset)
-        return file
-
-    async def get_cache_stats(self) -> StatsCache:
-        stat = StatsCache()
-        for storage in self.storages:
-            t = await storage.get_cache_stats()
-            stat.total += t.total
-            stat.bytes += t.bytes
-        return stat
-
-    async def exists(self, hash):
-        return await self.storages[0].exists(hash)
-
+        await self.reconnect()
     async def enable(self) -> None:
-        storages = {"file": 0, "webdav": 0}
+        storage_str = {"file": 0, "webdav": 0}
         self.trusted = True
-        for storage in self.storages:
+        for storage in storages.get_storages():
             if isinstance(storage, FileStorage):
-                storages["file"] += 1
+                storage_str["file"] += 1
         await self.emit(
             "enable",
             {
@@ -599,13 +636,15 @@ class Cluster:
                 "flavor": {
                     "runtime": f"python/{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
                     "storage": "+".join(
-                        sorted((key for key, value in storages.items() if value))
+                        sorted((key for key, value in storage_str.items() if value))
                     ),
                 },
             },
         )
+        self._enable_timer = Timer.delay(self._enable_task, (), 30, )
         await dashboard.set_status("巡检中")
-
+    async def _enable_task(self):
+        await self.reconnect()
     async def message(self, type, data: list[Any]):
         if len(data) == 1:
             data.append(None)
@@ -620,14 +659,18 @@ class Cluster:
         elif type == "enable":
             err, ack = data
             if err:
-                logger.error(f"Unable to start service: {err['message']}.")
-                await self._keepalive_timeout()
+                logger.error(f"Unable to start service: {err['message']} Retry in 5s to reconnect.")
+                await asyncio.sleep(5)
+                await self.reconnect()
                 return
             self.connected = True
             logger.success(f"Connected to the main server! Starting service...")
             logger.info(
                 f"Hosting on {CLUSTER_ID}.openbmclapi.933.moe:{PUBLIC_PORT or PORT}."
             )
+            if self._enable_timer != None:
+                self._enable_timer.block()
+                self._enable_timer = None
             await self.start_keepalive()
             await dashboard.set_status(
                 "正常工作" + ("" if self.trusted else "（节点信任度过低）")
@@ -635,7 +678,8 @@ class Cluster:
         elif type == "keep-alive":
             if err:
                 logger.error(f"Unable to keep alive! Reconnecting...")
-                await self.disable()
+                await self.reconnect()
+                return
             if self.cur_storage:
                 storage = self.cur_storage
                 logger.success(
@@ -679,7 +723,7 @@ class Cluster:
                     "bytes": storage.get_total_bytes() - storage.get_last_bytes(),
                 },
             )
-        await self.start_keepalive(300)
+        await self.start_keepalive(60)
 
     async def reconnect(self):
         try:
@@ -715,10 +759,18 @@ class Cluster:
             await self.emit("disable")
             logger.info("Disconnected from the main server...")
 
+    async def get_cache_stats(self) -> StatsCache:
+        stat = StatsCache()
+        for storage in storages.get_storages():
+            t = await storage.get_cache_stats()
+            stat.total += t.total
+            stat.bytes += t.bytes
+        return stat
 
 token = TokenManager()
 cluster: Optional[Cluster] = None
 last_status: str = "-"
+storages = StorageManager()
 github_api = "https://api.github.com"
 
 
@@ -746,12 +798,12 @@ async def init():
     for plugin in plugins.get_plugins():
         await plugin.init()
         await plugin.enable()
-    cluster.add_storage(FileStorage(Path("bmclapi")))
-    Timer.delay(cluster.start)
+    storages.add_storage(FileStorage(Path("bmclapi")))
+    Timer.delay(cluster.init)
     app = web.app
 
     @app.get("/measure/{size}")
-    async def _(request: web.Request, size: int):
+    async def _(request: web.Request, size: int, config: web.ResponseConfiguration):
         if not SIGN_SKIP and not utils.check_sign(
             request.get_url(),
             CLUSTER_SECERT,
@@ -760,9 +812,9 @@ async def init():
         ):
             yield web.Response(status_code=403)
             return
+        config.length = size * 1024 * 1024
         for _ in range(size):
             yield b"\x00" * 1024 * 1024
-
         return
 
     @app.get("/download/{hash}")
@@ -778,7 +830,7 @@ async def init():
             or not cluster
         ):
             return web.Response(status_code=403)
-        if not await cluster.exists(hash):
+        if not await storages.exists(hash):
             return web.Response(status_code=404)
         start_bytes = 0
         range_str = await request.get_headers("range", "")
@@ -787,7 +839,7 @@ async def init():
         )
         if range_match:
             start_bytes = int(range_match.group(1)) if range_match else 0
-        data = await cluster.get(hash, start_bytes)
+        data = await storages.get(hash, start_bytes)
         if data.is_url() and isinstance(data.get_path(), str):
             return web.RedirectResponse(str(data.get_path()))
         return data.get_data()
@@ -799,16 +851,12 @@ async def init():
 
     @router.websocket("/")
     async def _(request: web.Request, ws: web.WebSocket):
-        auth = False
-        for cookie in await request.get_cookies():
-            if cookie.name == "auth" and dashboard.token_isvaild(cookie.value):
-                await ws.send(
-                    dashboard.to_bytes("auth", DASHBOARD_USERNAME).io.getbuffer()
-                )
-                auth = True
-                break
+        auth_cookie = (await request.get_cookies()).get("auth") or None
+        auth = dashboard.token_isvaild(auth_cookie.value if auth_cookie else None)
         if not auth:
             await ws.send(dashboard.to_bytes("auth", None).io.getbuffer())
+        else:
+            await ws.send(dashboard.to_bytes("auth", DASHBOARD_USERNAME).io.getbuffer())
         async for raw_data in ws:
             if isinstance(raw_data, str):
                 return
@@ -836,10 +884,46 @@ async def init():
         ):
             return web.Response(status_code=401)
         token = dashboard.generate_token(request)
-        return web.Response(
-            DASHBOARD_USERNAME,
-            cookies=[web.Cookie("auth", token.value, expires=int(time.time() + 86400))],
-        )
+        return web.Response(DASHBOARD_USERNAME, cookies=[web.Cookie("auth", token.value, expires=int(time.time() + 86400))])
+    
+    @router.get("/measure")
+    async def _(request: web.Request, config: web.ResponseConfiguration, size: int = 32):
+        auth_cookie = (await request.get_cookies()).get("auth") or None
+        auth = dashboard.token_isvaild(auth_cookie.value if auth_cookie else None)
+        if not auth:
+            yield b''
+            return
+        config.length = size * 1024 * 1024
+        for _ in range(min(1024, max(0, size))):
+            yield b'\x00' * 1024 * 1024
+
+    @router.post("/measure")
+    async def _(request: web.Request, config: web.ResponseConfiguration, size: int = 32):
+        auth_cookie = (await request.get_cookies()).get("auth") or None
+        auth = dashboard.token_isvaild(auth_cookie.value if auth_cookie else None)
+        if not auth:
+            return web.Response(status_code=401)
+        if auth:
+            print(await request.get_headers("Content-Length"))
+            await request.skip()
+
+    @router.post("/api/{name}")
+    async def _(request: web.Request, name: str):
+        if name == "auth":
+            auth_cookie = (await request.get_cookies()).get("auth") or None
+            auth = dashboard.token_isvaild(auth_cookie.value if auth_cookie else None)
+            if not auth:
+                return None
+            else:
+                return DASHBOARD_USERNAME
+        data = {"content": ""}
+        try:
+            data = (await request.json()) or {}
+            if "content" not in data:
+                data = {"content": ""}
+        except:
+            ...
+        return await dashboard.process(name, data.get("content"))
 
     app.mount(router)
     app.redirect("/bmcl", "/bmcl/")

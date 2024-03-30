@@ -1,16 +1,18 @@
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 import hashlib
 import os
 import time
-from typing import Any
+from typing import Any, Optional
 import zlib
 
 import aiohttp
+from tqdm import tqdm
 
-from core import stats, system, utils, web
+from core import stats, system, unit, utils, web
 from core import cluster
 from core.api import StatsCache
 from core.config import Config
+from core.timer import Task, Timer
 
 
 @dataclass
@@ -23,6 +25,12 @@ BASE_URL = "https://openbmclapi.bangbang93.com/"
 CLUSTER_ID: str = Config.get("cluster.id")
 CLUSTER_SECERT: str = Config.get("cluster.secret")
 last_status = ""
+last_text = ""
+last_tqdm: float = 0
+cur_tqdm: Optional[tqdm] = None
+cur_tqdm_unit = None
+cur_tqdm_text = None
+task_tqdm: Optional[Task] = None
 tokens: list[Token] = []
 
 
@@ -67,28 +75,32 @@ def serialize(data: Any):
     elif isinstance(data, dict):
         buf.writeVarInt(5)
         buf.writeVarInt(len(data.keys()))
-        buf.write(
-            b"".join(
-                (
-                    serialize(k).io.getvalue() + serialize(v).io.getvalue()
-                    for k, v in data.items()
-                )
-            )
-        )
+        buf.write(b''.join((serialize(k).io.getvalue() + serialize(v).io.getvalue() for k, v in data.items())))
+    elif is_dataclass(data):
+        buf.write(serialize(asdict(data)).io.getvalue())
     elif data == None:
         buf.writeVarInt(6)
     return buf
 
+def _format_time(k: float):
+    local = time.localtime(k)
+    return f"{local.tm_hour:02d}:{local.tm_min:02d}:{local.tm_sec:02d}"
 
 async def process(type: str, data: Any):
-    if type == "runtime":
+    if type == "uptime":
         return float(os.getenv("STARTUP") or 0)
     if type == "dashboard":
         return {"hourly": stats.hourly(), "days": stats.daily()}
     if type == "qps":
         c = web.statistics.get_time()
-        c -= 610
-        return {k: v for k, v in web.statistics.get_all_qps().items() if k > c}
+        c -= c % 5
+        raw_data = {k: v for k, v in web.statistics.get_all_qps().items() if k > c - 300}
+        resp_data: dict = {}
+        for _ in range(c - 300, c, 5):
+            resp_data[_] = 0
+            for __ in range(5):
+                resp_data[_] += raw_data.get(__ + _, 0)
+        return {_format_time(k): v for k, v in resp_data.items()}
     if type == "status":
         return last_status
     if type == "master":
@@ -106,10 +118,37 @@ async def process(type: str, data: Any):
                 else StatsCache()
             ),
         }
+    if type == "storage":
+        return stats.get_storage_stats()
+    
+async def set_status_by_tqdm(
+    text: str, pbar: tqdm, format=unit.format_numbers
+):
+    global cur_tqdm_text, cur_tqdm, cur_tqdm_unit, task_tqdm
+    cur_tqdm_text = text
+    cur_tqdm = pbar
+    cur_tqdm_unit = format
+    if task_tqdm:
+        return
+    task_tqdm = Timer.repeat(_set_status_by_tqdm, (), 0, 1)
 
+async def _set_status_by_tqdm():
+    global cur_tqdm_text, cur_tqdm, cur_tqdm_unit, last_tqdm
+    if last_tqdm > time.time():
+        return
+    if not cur_tqdm_text or cur_tqdm is None or not cur_tqdm_unit or cur_tqdm is not None and cur_tqdm.disable:
+        if cur_tqdm is not None:
+            await _set_status()
+        cur_tqdm = None
+        return
+    n, total = cur_tqdm_unit(cur_tqdm.n, cur_tqdm.total)
+    await _set_status(f"{cur_tqdm_text} ({n}/{total})")
+    last_tqdm = time.time() + 1
 
-async def set_status(text):
-    global last_status
+async def _set_status(text: Optional[str] = None):
+    global last_text, last_status
+    if not text:
+        text = last_text
     if last_status != text:
         app = web.app
         output = to_bytes("status", text)
@@ -117,6 +156,11 @@ async def set_status(text):
             await ws.send(output.io.getvalue())
     last_status = text
 
+async def set_status(text):
+    global last_text 
+    if last_text != text:
+        await _set_status(text)
+    last_text = text
 
 def to_bytes(type: str, data: Any):
     output = utils.DataOutputStream()

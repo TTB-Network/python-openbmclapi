@@ -207,7 +207,8 @@ class Router:
             if route.is_params() and route.regexp.match(url) or route._path == url:
                 return route
         return None
-
+    def get_prefix(self) -> str:
+        return self.prefix
     def get_redirect(self, url: str) -> Optional[str]:
         if not url.startswith(self.prefix):
             return None
@@ -585,12 +586,13 @@ class Application:
         for route in self._routes:
             cur_route = route.get_route(method, url)
             if cur_route:
+                prefix = route.get_prefix()
                 break
         if cur_route != None:
             handler = cur_route.handler
             url_params: dict[str, Any] = {}
             if cur_route.is_params():
-                r = cur_route.regexp.match(request.get_url())
+                r = cur_route.regexp.match(request.get_url().removeprefix(prefix))
                 if r:
                     url_params.update({name: r.group(name) for name in cur_route.param})
             annotations = inspect.get_annotations(handler)
@@ -605,6 +607,7 @@ class Application:
             is_json = await request.is_json()
             json = await request.json() or {} if is_json else {}
             ws = WebSocket(request.client)
+            response_configuration = None
             for include_name, include_type in annotations.items():
                 if include_type == Request:
                     params[include_name] = request
@@ -614,6 +617,9 @@ class Application:
                     sets.append(include_name)
                 elif include_type == WebSocket and method == "WebSocket":
                     params[include_name] = ws
+                    sets.append(include_name)
+                elif include_type == ResponseConfiguration:
+                    params[include_name] = (response_configuration := ResponseConfiguration())
                     sets.append(include_name)
                 else:
                     if include_name in url_params:
@@ -755,6 +761,10 @@ class Header:
     def __len__(self) -> int:
         return self._headers.keys().__len__()
 
+@dataclass
+class ResponseConfiguration:
+    length: Optional[int] = None
+
 
 class Response:
     def __init__(
@@ -783,6 +793,8 @@ class Response:
     def _get_content_type(self, content):
         if isinstance(content, (AsyncGenerator, Iterator, AsyncIterator, Generator)):
             return "bytes"
+        if isinstance(content, str):
+            return "text/plain; charset=utf-8"
         content = (
             self.content_type
             or filetype.guess_mime(content)
@@ -813,7 +825,7 @@ class Response:
         else:
             yield b""
 
-    async def __call__(self, request: "Request", client: Client) -> Any:
+    async def __call__(self, request: "Request", client: Client, response_configuration: Optional[ResponseConfiguration] = None) -> Any:
         content, length = io.BytesIO(), 0
         if isinstance(self.content, Coroutine):
             self.content = await self.content
@@ -833,12 +845,14 @@ class Response:
             self.content_type = "bytes"
         elif isinstance(self.content, io.BytesIO):
             content = self.content
-        else:
+        elif response_configuration == None or response_configuration.length == None:
             async for data in self._iter():
                 content.write(data)
+        else:
+            content = self.content
         if isinstance(content, Path):
             length = content.stat().st_size
-        else:
+        elif isinstance(content, io.BytesIO):
             length = len(content.getbuffer())
         start_bytes, end_bytes = 0, 0
         range_str = await request.get_headers("range", "")
@@ -895,9 +909,9 @@ class Response:
         client.write(header)
         if length != 0:
             if isinstance(content, io.BytesIO):
-                client.write(content.getbuffer()[start_bytes:])
+                client.write(content.getbuffer()[start_bytes:length])
                 await client.writer.drain()
-            else:
+            elif isinstance(content, Path):
                 async with aiofiles.open(content, "rb") as r:
                     cur_length: int = 0
                     await r.seek(start_bytes, os.SEEK_SET)
@@ -905,6 +919,18 @@ class Response:
                         cur_length += len(data)
                         client.write(data)
                         await client.writer.drain()
+            else:
+                cur_length: int = 0
+                bound: bool = False
+                async for data in self._iter():
+                    cur_length = len(data)
+                    if cur_length >= length:
+                        data = data[:cur_length - length]
+                        bound = True
+                    client.write(data)
+                    await client.writer.drain()
+                    if bound:
+                        break
         if (self._headers.get("Connection") or "Closed").lower() == "closed":
             client.close()
 
@@ -932,7 +958,7 @@ class Request:
         self.params = {k: v[-1] for k, v in urlparse.parse_qs(url.query).items()}
         self.parameters: dict[str, str] = {}
         self._headers = {}
-        self._cookies: Optional[list[Cookie]] = None
+        self._cookies: Optional[dict[str, Cookie]] = None
         self._read_content = False
         self._length = 0
         self._read_length = 0
@@ -977,9 +1003,7 @@ class Request:
 
     async def get_cookies(self):
         if not self._cookies:
-            self._cookies = Cookie.from_request_string(
-                await self.get_headers("cookie", "")
-            )
+            self._cookies = {cookie.name: cookie for cookie in Cookie.from_request_string(await self.get_headers("cookie", ""))}
         return self._cookies
 
     async def length(self):
@@ -1062,7 +1086,10 @@ class Request:
         async for data in self.content_iter():
             buf.write(data)
         if content_type.startswith("application/json"):
-            self._json = json.load(buf)
+            try:
+                self._json = json.load(buf)
+            except:
+                self._json = None
         elif content_type.startswith("application/x-www-form-urlencoded"):
             self._json = {
                 k.decode("utf-8"): v[-1].decode("utf-8")
