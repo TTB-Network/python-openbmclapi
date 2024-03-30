@@ -43,7 +43,6 @@ else:
     VERSION = ""
 API_VERSION = "1.9.8"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
-logger.info(USER_AGENT)
 BASE_URL = "https://openbmclapi.bangbang93.com/"
 CLUSTER_ID: str = Config.get("cluster.id")
 CLUSTER_SECERT: str = Config.get("cluster.secret")
