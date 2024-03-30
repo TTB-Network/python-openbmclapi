@@ -36,7 +36,14 @@ from core.api import (
     get_hash,
 )
 
-VERSION = "1.10.1"
+VERSION = ""
+version_path = Path("VERSION")
+if version_path.exists():
+    with open(Path("VERSION"), "r", encoding="utf-8") as f:
+        VERSION = f.read().split('\n')[0]
+        f.close()
+else:
+    VERSION = ""
 API_VERSION = "1.10.1"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
 BASE_URL = "https://openbmclapi.bangbang93.com/"
@@ -647,7 +654,7 @@ class Cluster:
             if err:
                 logger.error(f"Unable to request cert. {ack}.")
                 return
-            logger.info("Requested cert!")
+            logger.success("Requested cert!")
             certificate.load_text(ack["cert"], ack["key"])
         elif type == "enable":
             err, ack = data
@@ -657,7 +664,7 @@ class Cluster:
                 await self.reconnect()
                 return
             self.connected = True
-            logger.info(f"Connected to the main server! Starting service...")
+            logger.success(f"Connected to the main server! Starting service...")
             logger.info(
                 f"Hosting on {CLUSTER_ID}.openbmclapi.933.moe:{PUBLIC_PORT or PORT}."
             )
@@ -665,7 +672,9 @@ class Cluster:
                 self._enable_timer.block()
                 self._enable_timer = None
             await self.start_keepalive()
-            await dashboard.set_status("正常工作" + ("" if self.trusted else "（节点信任度过低）"))
+            await dashboard.set_status(
+                "正常工作" + ("" if self.trusted else "（节点信任度过低）")
+            )
         elif type == "keep-alive":
             if err:
                 logger.error(f"Unable to keep alive! Reconnecting...")
@@ -673,8 +682,8 @@ class Cluster:
                 return
             if self.cur_storage:
                 storage = self.cur_storage
-                logger.info(
-                    f"Successfully keep alive, served {unit.format_number(storage.sync_hits)}({unit.format_bytes(storage.sync_bytes)})."
+                logger.success(
+                    f"Successfully keep alive, serving {unit.format_number(storage.sync_hits)}({unit.format_bytes(storage.sync_bytes)})."
                 )
                 storage.object.add_last_hits(storage.sync_hits)
                 storage.object.add_last_bytes(storage.sync_bytes)
@@ -762,8 +771,26 @@ token = TokenManager()
 cluster: Optional[Cluster] = None
 last_status: str = "-"
 storages = StorageManager()
+github_api = "https://api.github.com"
+
+
+async def check_update():
+    async with aiohttp.ClientSession(base_url=github_api) as session:
+        logger.info("Checking update...")
+        try:
+            async with session.get("/repos/TTB-Network/python-openbmclapi/releases/latest") as req:
+                req.raise_for_status()
+                fetched_version: str = (await req.json())["tag_name"]
+            if fetched_version != VERSION:
+                logger.success(f"New version found: {fetched_version}!")
+            else:
+                logger.info(f"Already up to date.")
+        except aiohttp.ClientError as e:
+            logger.error(f"An error occured whilst checking update: {e}.")
+
 
 async def init():
+    await check_update()
     global cluster
     cluster = Cluster()
     system.init()
@@ -806,8 +833,10 @@ async def init():
         if not await storages.exists(hash):
             return web.Response(status_code=404)
         start_bytes = 0
-        range_str = await request.get_headers('range', '')
-        range_match = re.search(r'bytes=(\d+)-(\d+)', range_str, re.S) or re.search(r'bytes=(\d+)-', range_str, re.S)
+        range_str = await request.get_headers("range", "")
+        range_match = re.search(r"bytes=(\d+)-(\d+)", range_str, re.S) or re.search(
+            r"bytes=(\d+)-", range_str, re.S
+        )
         if range_match:
             start_bytes = int(range_match.group(1)) if range_match else 0
         data = await storages.get(hash, start_bytes)
@@ -836,7 +865,12 @@ async def init():
             input = utils.DataInputStream(raw_data)
             type = input.readString()
             data = dashboard.deserialize(input)
-            await ws.send(dashboard.to_bytes(type, await dashboard.process(type, data)).io.getbuffer())
+            await ws.send(
+                dashboard.to_bytes(
+                    type, await dashboard.process(type, data)
+                ).io.getbuffer()
+            )
+
     @router.get("/auth")
     async def _(request: web.Request):
         auth = (await request.get_headers("Authorization")).split(" ", 1)[1]
@@ -844,7 +878,10 @@ async def init():
             info = json.loads(base64.b64decode(auth))
         except:
             return web.Response(status_code=401)
-        if info["username"] != DASHBOARD_USERNAME or info["password"] != DASHBOARD_PASSWORD:
+        if (
+            info["username"] != DASHBOARD_USERNAME
+            or info["password"] != DASHBOARD_PASSWORD
+        ):
             return web.Response(status_code=401)
         token = dashboard.generate_token(request)
         return web.Response(DASHBOARD_USERNAME, cookies=[web.Cookie("auth", token.value, expires=int(time.time() + 86400))])

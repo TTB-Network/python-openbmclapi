@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 import yaml
 import os
 from core.logger import logger
@@ -21,6 +21,8 @@ defaults = {
     "advanced.request_buffer": 8192,
     "advanced.io_buffer": 16777216,
     "advanced.header_bytes": 4096,
+    "dashboard.username": "admin",
+    "dashboard.password": "",
 }
 
 

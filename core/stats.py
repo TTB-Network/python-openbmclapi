@@ -87,6 +87,7 @@ class SyncStorage:
     sync_bytes: int
     object: StorageStats
 
+
 storages: dict[str, StorageStats] = {}
 cache: Path = Path("./cache")
 cache.mkdir(exist_ok=True, parents=True)
@@ -108,6 +109,7 @@ CREATE TABLE IF NOT EXISTS access (
 );"""
 )
 db.commit()
+
 
 def read_storage():
     global storages, last_hour

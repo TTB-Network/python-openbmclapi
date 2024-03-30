@@ -13,6 +13,9 @@ cluster:
   secret: ''
 download:
   threads: 64
+dashboard:
+  password: ''
+  username: admin
 web:
   port: 8080
   server_name: TTB-Network

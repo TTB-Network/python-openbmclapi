@@ -241,11 +241,14 @@ async def main():
     os.environ["ASYNCIO_STARTUP"] = str(0)
     os.kill(os.getpid(), signal.SIGINT)
 
+
 def init():
     asyncio.run(main())
 
+
 async def close():
     await web.close()
+
 
 def kill(_, __):
     if int(os.environ["ASYNCIO_STARTUP"]) and server:
