@@ -726,9 +726,9 @@ async def check_update():
     async with aiohttp.ClientSession(base_url=github_api) as session:
         logger.info("Checking update...")
         try:
-            async with session.get("/repos/TTB-Network/python-openbmclapi/tags") as req:
+            async with session.get("/repos/TTB-Network/python-openbmclapi/releases/latest") as req:
                 req.raise_for_status()
-                fetched_version: str = (await req.json())[0]["name"]
+                fetched_version: str = (await req.json())["tag_name"]
             if fetched_version != VERSION:
                 logger.success(f"New version found: {fetched_version}!")
             else:
