@@ -207,8 +207,10 @@ class Router:
             if route.is_params() and route.regexp.match(url) or route._path == url:
                 return route
         return None
+
     def get_prefix(self) -> str:
         return self.prefix
+
     def get_redirect(self, url: str) -> Optional[str]:
         if not url.startswith(self.prefix):
             return None
@@ -619,7 +621,9 @@ class Application:
                     params[include_name] = ws
                     sets.append(include_name)
                 elif include_type == ResponseConfiguration:
-                    params[include_name] = (response_configuration := ResponseConfiguration())
+                    params[include_name] = (
+                        response_configuration := ResponseConfiguration()
+                    )
                     sets.append(include_name)
                 else:
                     if include_name in url_params:
@@ -761,6 +765,7 @@ class Header:
     def __len__(self) -> int:
         return self._headers.keys().__len__()
 
+
 @dataclass
 class ResponseConfiguration:
     length: Optional[int] = None
@@ -825,7 +830,12 @@ class Response:
         else:
             yield b""
 
-    async def __call__(self, request: "Request", client: Client, response_configuration: Optional[ResponseConfiguration] = None) -> Any:
+    async def __call__(
+        self,
+        request: "Request",
+        client: Client,
+        response_configuration: Optional[ResponseConfiguration] = None,
+    ) -> Any:
         content, length = io.BytesIO(), 0
         if isinstance(self.content, Coroutine):
             self.content = await self.content
@@ -925,7 +935,7 @@ class Response:
                 async for data in self._iter():
                     cur_length = len(data)
                     if cur_length >= length:
-                        data = data[:cur_length - length]
+                        data = data[: cur_length - length]
                         bound = True
                     client.write(data)
                     await client.writer.drain()
@@ -1003,7 +1013,12 @@ class Request:
 
     async def get_cookies(self):
         if not self._cookies:
-            self._cookies = {cookie.name: cookie for cookie in Cookie.from_request_string(await self.get_headers("cookie", ""))}
+            self._cookies = {
+                cookie.name: cookie
+                for cookie in Cookie.from_request_string(
+                    await self.get_headers("cookie", "")
+                )
+            }
         return self._cookies
 
     async def length(self):

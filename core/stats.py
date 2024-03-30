@@ -256,6 +256,7 @@ def addColumns(table, params, data, default=None):
         if default is not None:
             execute(f"UPDATE {table} SET {params}={default}")
 
+
 def get_storage_stats():
     storage: dict[str, dict[str, int]] = {}
     t = get_timestamp_from_day_tohour(30)
@@ -273,13 +274,13 @@ def get_storage_stats():
                 "last_bytes": 0,
                 "failed": 0,
             }
-        storage[r[0]]["cache_hits"]     = r[4]
-        storage[r[0]]["cache_bytes"]    = r[5]
-        storage[r[0]]["hits"]           = r[2]
-        storage[r[0]]["bytes"]          = r[3]
-        storage[r[0]]["last_hits"]      = r[6]
-        storage[r[0]]["last_bytes"]     = r[7]
-        storage[r[0]]["failed"]         = r[8]
+        storage[r[0]]["cache_hits"] = r[4]
+        storage[r[0]]["cache_bytes"] = r[5]
+        storage[r[0]]["hits"] = r[2]
+        storage[r[0]]["bytes"] = r[3]
+        storage[r[0]]["last_hits"] = r[6]
+        storage[r[0]]["last_bytes"] = r[7]
+        storage[r[0]]["failed"] = r[8]
     return storage
 
 
