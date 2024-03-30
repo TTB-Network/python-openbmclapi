@@ -15,6 +15,7 @@ def _cpu():
             cpus.pop(0)
         cpus.append(process.cpu_percent(1))
 
+
 def get_cpus():
     global cpus
     if not cpus:

@@ -16,7 +16,7 @@ import struct
 import tempfile
 import time
 import traceback
-import core.cluster as cluster
+from core import cluster
 import zlib
 from typing import (
     Any,
@@ -113,42 +113,46 @@ STATUS_CODES: dict[int, str] = {
 }
 IO_BUFFER: int = Config.get("advanced.io_buffer")
 REQUEST_TIME_UNITS = ["ns", "ms", "s", "m", "h"]
-@dataclass  
-class Cookie:  
-    name: str  
-    value: str  
-    domain: Optional[str] = None  
-    path: Optional[str] = None  
-    expires: Optional[int] = None  
-    max_age: Optional[int] = None  
-    size: Optional[int] = None  
-    http_only: Optional[bool] = None  
-    secure: Optional[bool] = None  
-    same_site: Optional[str] = None  # 根据RFC6265，应为"Strict", "Lax", "None"  
-    priority: Optional[str] = None  # 根据某些浏览器实现，可能为"Low", "Medium", "High"  
-  
-    def __str__(self) -> str:  
-        # 格式化Cookie为字符串  
-        cookie_str = f"{self.name}={self.value}"  
-        for attr, value in asdict(self).items():  
-            if attr in ["name", "value"] or value is None:  
-                continue  
-            if attr == "http_only" or attr == "secure":  
-                if value:  
-                    cookie_str += f"; {attr.capitalize()}"  
-            else:  
-                cookie_str += f"; {attr}={urlparse.quote(str(value))}"  
-        return cookie_str  
-  
-    @classmethod  
-    def from_request_string(cls, cookie_str: str) -> list['Cookie']:  
+
+
+@dataclass
+class Cookie:
+    name: str
+    value: str
+    domain: Optional[str] = None
+    path: Optional[str] = None
+    expires: Optional[int] = None
+    max_age: Optional[int] = None
+    size: Optional[int] = None
+    http_only: Optional[bool] = None
+    secure: Optional[bool] = None
+    same_site: Optional[str] = None  # 根据RFC6265，应为"Strict", "Lax", "None"
+    priority: Optional[str] = None  # 根据某些浏览器实现，可能为"Low", "Medium", "High"
+
+    def __str__(self) -> str:
+        # 格式化Cookie为字符串
+        cookie_str = f"{self.name}={self.value}"
+        for attr, value in asdict(self).items():
+            if attr in ["name", "value"] or value is None:
+                continue
+            if attr == "http_only" or attr == "secure":
+                if value:
+                    cookie_str += f"; {attr.capitalize()}"
+            else:
+                cookie_str += f"; {attr}={urlparse.quote(str(value))}"
+        return cookie_str
+
+    @classmethod
+    def from_request_string(cls, cookie_str: str) -> list["Cookie"]:
         cookies: list = []
         for cookie in cookie_str.split("; "):
             key, value = None, None
-            if '=' in cookie:
+            if "=" in cookie:
                 key, value = cookie.split("=", 1)
                 cookies.append(Cookie(key, urlparse.unquote(value)))
         return cookies
+
+
 class Route:
     def __init__(
         self, path: str, method: Optional[str], handler: Callable[..., Coroutine]
@@ -209,6 +213,7 @@ class Router:
         if not url.startswith(self.prefix):
             return None
         return self._redirects.get(url.removeprefix(self.prefix), None)
+
     def route(self, path: str, method):
         def decorator(f):
             self._add_route(Route(path, method, f))
@@ -233,9 +238,9 @@ class Router:
     def websocket(self, path):
         return self.route(path, "WebSocket")
 
-
     def redierct(self, path: str, redirect_to: str):
         self._redirects[path] = redirect_to
+
 
 class Resource:
     def __init__(self, url: str, path: Path, show_dir: bool = False) -> None:
@@ -560,10 +565,12 @@ class Application:
         return self.route(path, "POST")
 
     def websocket(self, path):
-        return self.route(path, 'WebSocket')
+        return self.route(path, "WebSocket")
+
     def redirect(self, path: str, redirect_to: str):
         return self._routes[0].redierct(path, redirect_to)
-    async def handle(self, request: 'Request'):
+
+    async def handle(self, request: "Request"):
         url = request.get_url()
         redirect = None
         for route in self._routes:
@@ -699,6 +706,7 @@ class Application:
     def get_websockets(self, path) -> list[WebSocket]:
         return self._ws.get(path, [])
 
+
 class Header:
     def __init__(self, header: dict[str, Any] | bytes | str | None = None) -> None:
         self._headers = {}
@@ -777,7 +785,7 @@ class Response:
 
     def set_headers(self, header: Header | dict[str, Any]):
         self._headers.update(header)
-    
+
     def set_cookies(self, cookies: tuple[Cookie, ...]):
         for cookie in cookies:
             self._cookies.append(cookie)
@@ -856,11 +864,19 @@ class Response:
             start_bytes = int(range_match.group(1)) if range_match else 0
             if range_match.lastindex == 2:
                 end_bytes = int(range_match.group(2))
-            length = length - start_bytes if isinstance(self.content, Path) and self.content.is_file() and stat.S_ISREG(self.content.stat().st_mode) else length
-            self.set_headers({
-                'Accept-ranges': 'bytes',
-                'Content-Range': f'bytes {start_bytes}-{end_bytes}/{length}'
-            })
+            length = (
+                length - start_bytes
+                if isinstance(self.content, Path)
+                and self.content.is_file()
+                and stat.S_ISREG(self.content.stat().st_mode)
+                else length
+            )
+            self.set_headers(
+                {
+                    "Accept-ranges": "bytes",
+                    "Content-Range": f"bytes {start_bytes}-{end_bytes}/{length}",
+                }
+            )
             self.status_code = 206 if start_bytes > 0 else 200
             length = length - start_bytes
         self.set_headers(
@@ -881,7 +897,9 @@ class Response:
         headers, cookie = "", ""
         if self._headers:
             headers = str(self._headers) + "\r\n"
-        cookies = [f"Set-Cookie: {cookie}" for cookie in self._cookies if cookie.name != None]
+        cookies = [
+            f"Set-Cookie: {cookie}" for cookie in self._cookies if cookie.name != None
+        ]
         if cookies:
             cookie = "\r\n".join(cookies) + "\r\n"
         request._end_request_time(self.status_code)
@@ -982,10 +1000,12 @@ class Request:
             self._headers = Header(data)
             self._user_agent = self._headers.get("user-agent")
         return self._headers.get(key.lower(), def_)
+
     async def get_cookies(self):
         if not self._cookies:
             self._cookies = {cookie.name: cookie for cookie in Cookie.from_request_string(await self.get_headers("cookie", ""))}
         return self._cookies
+
     async def length(self):
         return int(await self.get_headers("content-length", "0") or "0")
 
@@ -1279,4 +1299,3 @@ async def init():
 
 async def close():
     await cluster.close()
-

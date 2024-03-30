@@ -37,6 +37,8 @@
 
 ## 从源码运行
 
+建议 Python 版本：3.12+。
+
 1. 克隆仓库或从 [Releases](https://github.com/TTB-Network/python-openbmclapi/releases) 中下载代码：
 
     ```sh
@@ -130,6 +132,11 @@ cluster:
 download:
   # 最高下载线程
   threads: 64
+dashboard:
+  # 仪表盘密码
+  password: ''
+  # 仪表盘用户名
+  username: admin
 web:
   # 要监听的本地端口, 同 CLUSTER_PORT
   port: 80

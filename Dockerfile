@@ -10,7 +10,6 @@ WORKDIR /opt/python-openbmclapi
 ADD . .
 
 RUN pip install -r requirements.txt --no-deps
-VOLUME /opt/python-openbmclapi/bmclapi
 ENV port=80
 EXPOSE $port
 CMD ["python", "./main.py"]
