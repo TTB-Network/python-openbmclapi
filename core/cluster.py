@@ -974,16 +974,17 @@ class Cluster:
                         "bytes": storage.object.get_total_bytes() - storage.object.get_last_bytes(),
                     },
                 )
-            if not storages:
-                            await self.emit(
-                    "keep-alive",
-                    {
-                        "time": int(time.time() * 1000),
-                        "hits": 0,
-                        "bytes": 0,
-                    },
-                )
+        if not storages:
+            await self.emit(
+                "keep-alive",
+                {
+                    "time": int(time.time() * 1000),
+                    "hits": 0,
+                    "bytes": 0,
+                },
+            )
         self.keepaliving = False
+        logger.debug("Next keep alive")
         await self.start_keepalive(60)
 
     async def disable(self):
