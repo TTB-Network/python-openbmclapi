@@ -14,6 +14,7 @@ from core.api import StatsCache
 from core.config import Config
 from core.timer import Task, Timer
 
+from core.const import *
 
 @dataclass
 class Token:
@@ -29,9 +30,6 @@ class StorageInfo:
     size: int
     free: int
 
-BASE_URL = "https://openbmclapi.bangbang93.com/"
-CLUSTER_ID: str = Config.get("cluster.id")
-CLUSTER_SECERT: str = Config.get("cluster.secret")
 last_status = ""
 last_text = ""
 last_tqdm: float = 0

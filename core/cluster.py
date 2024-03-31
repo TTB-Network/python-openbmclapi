@@ -27,6 +27,7 @@ from core.logger import logger
 import plugins
 import aiowebdav.client as webdav3_client
 
+from core.const import *
 
 from core.api import (
     File,
@@ -36,32 +37,6 @@ from core.api import (
     Storage,
     get_hash,
 )
-
-VERSION = ""
-version_path = Path("VERSION")
-if version_path.exists():
-    with open(Path("VERSION"), "r", encoding="utf-8") as f:
-        VERSION = f.read().split("\n")[0]
-        f.close()
-else:
-    VERSION = "Unknown"
-API_VERSION = "1.10.1"
-USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
-BASE_URL = "https://openbmclapi.bangbang93.com/"
-CLUSTER_ID: str = Config.get("cluster.id")
-CLUSTER_SECERT: str = Config.get("cluster.secret")
-IO_BUFFER: int = Config.get("advanced.io_buffer")
-MAX_DOWNLOAD: int = max(1, Config.get("download.threads"))
-BYOC: bool = Config.get("cluster.byoc")
-PUBLIC_HOST: str = Config.get("cluster.public_host")
-PUBLIC_PORT: int = Config.get("cluster.public_port")
-PORT: int = Config.get("web.port")
-CACHE_BUFFER: int = 1024 * 1024 * 512
-CACHE_TIME: int = 1800
-CHECK_CACHE: int = 60
-SIGN_SKIP: bool = True
-DASHBOARD_USERNAME: str = Config.get("dashboard.username")
-DASHBOARD_PASSWORD: str = Config.get("dashboard.password")
 
 
 class TokenManager:
@@ -1002,6 +977,7 @@ class Cluster:
                         "bytes": 0,
                     },
                 )
+        self.keepaliving = False
         await self.start_keepalive(60)
 
     async def disable(self):
