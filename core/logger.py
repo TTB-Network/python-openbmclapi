@@ -4,6 +4,10 @@ import sys
 
 basic_logger_format = "<green>[{time:YYYY-MM-DD HH:mm:ss}]</green> <level>[{level}] <yellow>[{name}:{function}:{line}]</yellow>: {message}</level>"
 
+class LoggingMessage:
+    def __init__(self) -> None:
+        self.data = []
+
 
 def log(*values):
     data = []
