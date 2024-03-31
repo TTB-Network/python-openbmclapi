@@ -10,6 +10,7 @@ import zlib
 
 import aiofiles
 
+from core import web
 from core.config import Config
 
 
@@ -49,6 +50,7 @@ class File:
     expiry: Optional[float] = None
     data: Optional[io.BytesIO] = None
     cache: bool = False
+    headers: Optional['web.Header'] = None
 
     def is_url(self):
         if not isinstance(self.path, str):
@@ -77,7 +79,7 @@ class StatsCache:
 
 class Storage(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def get(self, file: str) -> File:
+    async def get(self, file: str, request: 'web.Request') -> File:
         """
         get file metadata.
         return File

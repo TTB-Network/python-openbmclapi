@@ -478,7 +478,6 @@ class FileStorage(Storage):
         if hash in self.cache:
             file = self.cache[hash]
             file.last_access = time.time()
-            file.expiry = file.last_access + CACHE_TIME
             file.cache = True
             return file
         path = Path(str(self.dir) + f"/{hash[:2]}/{hash}")
@@ -490,7 +489,6 @@ class FileStorage(Storage):
         file.set_data(buf.getbuffer())
         self.cache[hash] = file
         file.cache = False
-        file.expiry = file.last_access + CACHE_TIME
         return file
 
     async def exists(self, hash: str) -> bool:
@@ -537,7 +535,7 @@ class FileStorage(Storage):
         for key, file in sorted(
             self.cache.items(), key=lambda x: x[1].expiry, reverse=True
         ):
-            if size <= CACHE_BUFFER and time.time() >= file.expiry:
+            if size <= CACHE_BUFFER and file.last_access + CACHE_TIME <= time.time():
                 continue
             old_keys.append(key)
             old_size += file.size
@@ -590,46 +588,49 @@ class WebDav(Storage):
         hostname: str,
         endpoint: str,
         token: Optional[str] = None,
-        dav: str = "/dav",
     ) -> None:
         self.username = username
         self.password = password
         self.hostname = hostname
         self.endpoint = endpoint
-        self.dav = dav
         self.files: dict[str, File] = {}
         self.token = token
         self.fetch = False
         self.cache: dict[str, File] = {}
         self.empty = File("", "", 0)
+        self.lock = None
         Timer.delay(self._list_all)
 
     def _endpoint(self, file: str):
         return f"{self.endpoint}/{file.removeprefix('/')}"
 
     def _client(self):
+        token = {}
+        if self.token != None:
+            token["webdav_token"] = self.token
         return webdav3_client.Client(
             {
                 "webdav_username": self.username,
                 "webdav_password": self.password,
-                "webdav_hostname": self.hostname + self.dav,
-                "webdav_token": self.token,
+                "webdav_hostname": self.hostname,
+                **token
             }
         )
 
     async def get(self, file: str) -> File:
+        await self._wait_lock()
         if file in self.cache and self.cache[file].expiry - 10 > time.time():
             self.cache[file].cache = True
             self.cache[file].last_hit = time.time()
             return self.cache[file]
         async with aiohttp.ClientSession(
-            self.hostname, auth=aiohttp.BasicAuth(self.username, self.password)
+            auth=aiohttp.BasicAuth(self.username, self.password)
         ) as session:
             async with session.get(
-                self.dav + self._endpoint(file[:2] + "/" + file), allow_redirects=False
+                self.hostname + self._endpoint(file[:2] + "/" + file), allow_redirects=False
             ) as resp:
                 f = File(
-                    self.dav + self._endpoint(file[:2] + "/" + file),
+                    self.hostname + self._endpoint(file[:2] + "/" + file),
                     file,
                     size=int(resp.headers.get("Content-Length", 0)),
                 )
@@ -643,14 +644,16 @@ class WebDav(Storage):
     async def _list_all(self, force=False):
         if self.fetch and not force:
             return
+        if not self.fetch:
+            self.lock = asyncio.get_running_loop().create_future()
         self.fetch = True
-        self.files = {}
         async with self._client() as client:
             dirs = (await client.list(self.endpoint))[1:]
-            with tqdm(total=len(dirs), desc="[WebDav List Files]") as pbar:
+            with tqdm(total=len(dirs), desc=f"[WebDav List Files <endpoint: '{self.endpoint}'>]") as pbar:
                 await dashboard.set_status_by_tqdm("正在获取 WebDav 文件列表中", pbar)
                 for dir in (await client.list(self.endpoint))[1:]:
                     pbar.update(1)
+                    files: dict[str, File] = {}
                     for file in (
                         await client.list(
                             self._endpoint(
@@ -659,21 +662,32 @@ class WebDav(Storage):
                             get_info=True,
                         )
                     )[1:]:
-                        self.files[file["name"]] = File(
+                        files[file["name"]] = File(
                             file["path"].removeprefix(f"/dav/{self.endpoint}/"),
                             file["name"],
                             int(file["size"]),
                         )
                         await asyncio.sleep(0)
+                    for remove in set(file for file in self.files.keys() if file.startswith(dir)) - set(files.keys()):
+                        self.files.pop(remove)
+                    self.files.update(files)
+        if self.lock != None:
+            self.lock.cancel()
         return self.files
 
+    async def _wait_lock(self):
+        if self.lock:
+            await asyncio.wait_for(self.lock, timeout = None)
+
     async def exists(self, hash: str) -> bool:
+        await self._wait_lock()
         if not self.fetch:
             self.fetch = True
             await self._list_all()
         return hash in self.files
 
     async def get_size(self, hash: str) -> int:
+        await self._wait_lock()
         return self.files.get(hash, self.empty).size
 
     async def write(self, hash: str, io: io.BytesIO) -> int:
@@ -684,6 +698,7 @@ class WebDav(Storage):
             return self.files[hash].size
 
     async def get_files(self, dir: str) -> list[str]:
+        await self._wait_lock()
         return list((hash for hash in self.files.keys() if hash.startswith(dir)))
 
     async def get_hash(self, hash: str) -> str:
@@ -696,6 +711,7 @@ class WebDav(Storage):
             return h.hexdigest()
 
     async def get_files_size(self, dir: str) -> int:
+        await self._wait_lock()
         return sum(
             (file.size for hash, file in self.files.items() if hash.startswith(dir))
         )
@@ -760,24 +776,6 @@ class StorageManager:
         return self._storage_stats[storage]
 
 
-class ClusterState(Enum):
-    ENABLE = "enable"
-    SERIVCE = "service"
-    DISABLE = "disabled"
-    KEEPALIVE = "keepalive"
-    TRUST = "trust"
-    START = "start"
-    INIT = "init"
-
-    @staticmethod
-    def is_enable(value):
-        return (
-            value == ClusterState.ENABLE
-            or value == ClusterState.KEEPALIVE
-            or value == ClusterState.TRUST
-        )
-
-
 class Cluster:
     def __init__(self) -> None:
         self.connected = False
@@ -817,8 +815,21 @@ class Cluster:
 
     async def start(self):
         await self.cert()
+        if len(storages.get_storages()) == 0:
+            logger.warn("There is currently no Storage, the enabled nodes are blocked.")
+            return
+        await self.start_storage()
+
+    async def start_storage(self):
+        if len(storages.get_storages()) == 0:
+            if self.connected:
+                self.disable()
+            logger.warn("There is currently no Storage, the enabled nodes are blocked.")
+            return
         await self.file_check()
-        await self.enable()
+        if not self.connected:
+            await self.enable()
+
 
     async def cert(self):
         await self.emit("request-cert")
@@ -1009,7 +1020,8 @@ async def init():
     for plugin in plugins.get_plugins():
         await plugin.init()
         await plugin.enable()
-    storages.add_storage(FileStorage(Path("bmclapi")))
+    #storages.add_storage(FileStorage(Path("bmclapi")))
+    storages.add_storage(WebDav("admin", "123456", "http://127.0.0.1:5244/dav", "/bmclapi", "alist-06e39e3a-d195-44a1-8f8f-296928308922Z84AuS5ttoA7hAW1Wy0jT2N40xpUrA2WeHQrJVum1WcmVmy3bv92zB5NrWbOpp96"))
     Timer.delay(cluster.init)
     app = web.app
 
