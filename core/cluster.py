@@ -153,6 +153,8 @@ class FileDownloader:
         self.last_modified: int = 0
 
     async def get_files(self) -> list[BMCLAPIFile]:
+        with open("debug.bin", "rb") as r:
+            return await ParseFileList()(r.read())
         async with aiohttp.ClientSession(
             base_url=BASE_URL,
             headers={
@@ -650,38 +652,44 @@ class WebDav(Storage):
         if not self.fetch:
             self.lock = asyncio.get_running_loop().create_future()
         self.fetch = True
-        async with self._client() as client:
-            dirs = (await client.list(self.endpoint))[1:]
-            with tqdm(total=len(dirs), desc=f"[WebDav List Files <endpoint: '{self.endpoint}'>]") as pbar:
-                await dashboard.set_status_by_tqdm("正在获取 WebDav 文件列表中", pbar)
-                for dir in (await client.list(self.endpoint))[1:]:
-                    pbar.update(1)
-                    files: dict[str, File] = {}
-                    for file in (
-                        await client.list(
-                            self._endpoint(
-                                dir,
-                            ),
-                            get_info=True,
-                        )
-                    )[1:]:
-                        files[file["name"]] = File(
-                            file["path"].removeprefix(f"/dav/{self.endpoint}/"),
-                            file["name"],
-                            int(file["size"]),
-                        )
-                        await asyncio.sleep(0)
-                    for remove in set(file for file in self.files.keys() if file.startswith(dir)) - set(files.keys()):
-                        self.files.pop(remove)
-                    self.files.update(files)
+        try:
+            async with self._client() as client:
+                dirs = (await client.list(self.endpoint))[1:]
+                with tqdm(total=len(dirs), desc=f"[WebDav List Files <endpoint: '{self.endpoint}'>]") as pbar:
+                    await dashboard.set_status_by_tqdm("正在获取 WebDav 文件列表中", pbar)
+                    for dir in (await client.list(self.endpoint))[1:]:
+                        pbar.update(1)
+                        files: dict[str, File] = {}
+                        for file in (
+                            await client.list(
+                                self._endpoint(
+                                    dir,
+                                ),
+                                get_info=True,
+                            )
+                        )[1:]:
+                            files[file["name"]] = File(
+                                file["path"].removeprefix(f"/dav/{self.endpoint}/"),
+                                file["name"],
+                                int(file["size"]),
+                            )
+                            await asyncio.sleep(0)
+                        for remove in set(file for file in self.files.keys() if file.startswith(dir)) - set(files.keys()):
+                            self.files.pop(remove)
+                        self.files.update(files)
+        except:
+            logger.error(traceback.format_exc())
         if self.lock != None:
             self.lock.cancel()
             self.lock = None
         return self.files
 
     async def _wait_lock(self):
-        if self.lock:
-            await asyncio.wait_for(self.lock, timeout = None)
+        while self.lock:
+            try:
+                await asyncio.wait_for(self.lock, timeout = 1)
+            except:
+                ...
 
     async def exists(self, hash: str) -> bool:
         await self._wait_lock()
