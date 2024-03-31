@@ -153,8 +153,6 @@ class FileDownloader:
         self.last_modified: int = 0
 
     async def get_files(self) -> list[BMCLAPIFile]:
-        with open("debug.bin", "rb") as r:
-            return await ParseFileList()(r.read())
         async with aiohttp.ClientSession(
             base_url=BASE_URL,
             headers={
