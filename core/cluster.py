@@ -280,6 +280,7 @@ class FileCheck:
         self.files = []
         self.pbar: Optional[tqdm] = None
         self.check_files_timer: Optional[Task] = None
+        logger.info(f"The current file check type: {self.check_type.name}")
 
     async def __call__(
         self,
@@ -467,6 +468,7 @@ class FileCheck:
 
 class FileStorage(Storage):
     def __init__(self, dir: Path) -> None:
+        super().__init__("Local Storage")
         self.dir = dir
         if self.dir.is_file():
             raise FileExistsError("The path is file.")
@@ -589,6 +591,7 @@ class WebDav(Storage):
         endpoint: str,
         token: Optional[str] = None,
     ) -> None:
+        super().__init__("Webdav")
         self.username = username
         self.password = password
         self.hostname = hostname
@@ -673,6 +676,7 @@ class WebDav(Storage):
                     self.files.update(files)
         if self.lock != None:
             self.lock.cancel()
+            self.lock = None
         return self.files
 
     async def _wait_lock(self):
@@ -1020,7 +1024,8 @@ async def init():
     for plugin in plugins.get_plugins():
         await plugin.init()
         await plugin.enable()
-    storages.add_storage(FileStorage(Path("bmclapi")))
+    #storages.add_storage(FileStorage(Path("bmclapi")))
+    storages.add_storage(WebDav("admin", "123456", "http://127.0.0.1:5244/dav", "/bmclapi", "alist-06e39e3a-d195-44a1-8f8f-296928308922Z84AuS5ttoA7hAW1Wy0jT2N40xpUrA2WeHQrJVum1WcmVmy3bv92zB5NrWbOpp96"))
     Timer.delay(cluster.init)
     app = web.app
 

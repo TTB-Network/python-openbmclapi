@@ -21,6 +21,14 @@ class Token:
     create_at: float
 
 
+@dataclass
+class StorageInfo:
+    name: str
+    type: str
+    endpoint: str
+    size: int
+    free: int
+
 BASE_URL = "https://openbmclapi.bangbang93.com/"
 CLUSTER_ID: str = Config.get("cluster.id")
 CLUSTER_SECERT: str = Config.get("cluster.secret")
@@ -131,6 +139,28 @@ async def process(type: str, data: Any):
         }
     if type == "version":
         return {"cur": cluster.VERSION, "latest": cluster.fetched_version}
+    if type == "storage":
+        data: list = []
+        for storage in cluster.storages.get_storages():
+            if isinstance(storage, cluster.FileStorage):
+                data.append(
+                    StorageInfo(
+                        storage.get_name(),
+                        "file",
+                        str(storage.dir),
+                        -1, -1
+                    )
+                )
+            elif isinstance(storage, cluster.WebDav):
+                data.append(
+                    StorageInfo(
+                        storage.get_name(),
+                        "webdav",
+                        storage.hostname + storage.endpoint,
+                        -1, -1
+                    )
+                )
+        return data
 
 
 async def set_status_by_tqdm(text: str, pbar: tqdm, format=unit.format_numbers):

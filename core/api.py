@@ -78,6 +78,11 @@ class StatsCache:
 
 
 class Storage(metaclass=abc.ABCMeta):
+    @abc.abstractclassmethod
+    def __init__(self, name) -> None:
+        self.name = name
+    def get_name(self):
+        return self.name
     @abc.abstractmethod
     async def get(self, file: str, request: 'web.Request') -> File:
         """

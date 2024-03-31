@@ -19,19 +19,23 @@ class LoggingLogger:
     def __init__(self):
         self.log = Logger.opt(depth=2)
         self.log.remove()
-        self.log.add(
-            sys.stderr,
-            format=basic_logger_format,
-            level="DEBUG",
-            colorize=True,
-        )
+        self.cur_handler = None
         self.log.add(
             Path("./logs/{time:YYYY-MM-DD}.log"),
             format=basic_logger_format,
             retention="10 days",
             encoding="utf-8",
         )
-
+        self.add_log("DEBUG")
+    def add_log(self, level: str):
+        if self.cur_handler:
+            self.log.remove(self.cur_handler)
+        self.cur_handler = self.log.add(
+            sys.stderr,
+            format=basic_logger_format,
+            level=level,
+            colorize=True,
+        )
     def _log_with_args(self, level, *args, **kwargs):
         message = log(*args) if args else ""
         self.log.log(level, message, **kwargs)
