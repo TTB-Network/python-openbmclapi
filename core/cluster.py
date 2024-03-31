@@ -830,7 +830,9 @@ class Cluster:
                 self.disable()
             logger.warn("There is currently no Storage, the enabled nodes are blocked.")
             return
+        start = time.time()
         await self.file_check()
+        logger.success(f"File check completed, time: {time.time() - start:.2f}s")
         if not self.connected:
             await self.enable()
 
@@ -938,6 +940,10 @@ class Cluster:
         if self.keepaliving:
             logger.warn("The keepalive task has already been performed and is ignored for this turn-on")
             return
+        if self.keepaliveTimer != None:
+            self.keepaliveTimer.block()
+        if self.keepaliveTimeoutTimer != None:
+            self.keepaliveTimeoutTimer.block()
         self.keepaliveTimer = Timer.delay(self._keepalive, (), delay)
         self.keepaliveTimeoutTimer = Timer.delay(
             self._keepalive_timeout, (), delay + 300
