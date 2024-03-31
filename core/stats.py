@@ -165,6 +165,21 @@ def write_storage():
         w.write(f.io.getbuffer())
 
 
+def get_offset_storages() -> list[SyncStorage]:
+    sync_storages = []
+    for storage in storages.values():
+        sync_storage = SyncStorage(
+            storage.get_total_hits() - storage.get_last_hits(),
+            storage.get_total_bytes() - storage.get_last_bytes(),
+            storage,
+        )
+        if sync_storage.sync_hits == 0 and sync_storage.sync_bytes == 0:
+            continue
+        sync_storages.append(sync_storage)
+    return sync_storages
+
+
+
 def get_storage(name):
     global storages
     if name not in storages:

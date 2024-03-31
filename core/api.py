@@ -84,7 +84,7 @@ class Storage(metaclass=abc.ABCMeta):
     def get_name(self):
         return self.name
     @abc.abstractmethod
-    async def get(self, file: str, request: 'web.Request') -> File:
+    async def get(self, file: str, offset: int = 0) -> File:
         """
         get file metadata.
         return File

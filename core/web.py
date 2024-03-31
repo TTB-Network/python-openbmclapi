@@ -714,7 +714,9 @@ class Application:
 class Header:
     def __init__(self, header: dict[str, Any] | bytes | str | None = None) -> None:
         self._headers = {}
-        if isinstance(header, bytes):
+        if isinstance(header, Header):
+            self._headers = header._headers
+        elif isinstance(header, bytes):
             self._headers.update(
                 {
                     v[0]: v[1]
@@ -753,7 +755,7 @@ class Header:
 
     def update(self, value: Any):
         if isinstance(value, Header):
-            value = value._headers
+            self.update(value._headers)
         if not isinstance(value, dict):
             return
         for k, v in value.items():
@@ -775,7 +777,7 @@ class Response:
     def __init__(
         self,
         content: CONTENT_ACCEPT = None,
-        headers: Header = Header(),
+        headers: Header | dict[str, Any] = {},
         cookies: list[Cookie] = [],
         content_type: Optional[str] = None,
         compress=None,
@@ -783,17 +785,19 @@ class Response:
     ) -> None:
         self.status_code = status_code
         self.content: CONTENT_ACCEPT = content
-        self._headers = headers
+        self._headers = Header(headers)
         self._cookies = cookies
         self.content_type = content_type
         self._compress = compress
 
     def set_headers(self, header: Header | dict[str, Any]):
         self._headers.update(header)
+        return self
 
     def set_cookies(self, cookies: tuple[Cookie, ...]):
         for cookie in cookies:
             self._cookies.append(cookie)
+        return self
 
     def _get_content_type(self, content):
         if isinstance(content, (AsyncGenerator, Iterator, AsyncIterator, Generator)):
@@ -830,13 +834,7 @@ class Response:
         else:
             yield b""
 
-    async def __call__(
-        self,
-        request: "Request",
-        client: Client,
-        response_configuration: Optional[ResponseConfiguration] = None,
-    ) -> Any:
-        content, length = io.BytesIO(), 0
+    async def raw(self):
         if isinstance(self.content, Coroutine):
             self.content = await self.content
         if isinstance(self.content, Response):
@@ -845,6 +843,17 @@ class Response:
             self._headers = self.content._headers
             self._cookies = self.content._cookies
             self.content = self.content.content
+        if isinstance(self.content, (Coroutine, Response)):
+            await self.raw()
+
+    async def __call__(
+        self,
+        request: "Request",
+        client: Client,
+        response_configuration: Optional[ResponseConfiguration] = None,
+    ) -> Any:
+        content, length = io.BytesIO(), 0
+        await self.raw()
         if isinstance(self.content, Path):
             if self.content.exists() and self.content.is_file():
                 content = self.content
@@ -946,8 +955,11 @@ class Response:
 
 
 class RedirectResponse(Response):
-    def __init__(self, location: str) -> None:
-        super().__init__(headers=Header({"Location": location}), status_code=307)
+    def __init__(self, location: str, headers: Header | dict[str, Any] | None = None) -> None:
+        header = Header()
+        header.update(headers)
+        header.update({"Location": location})
+        super().__init__(headers=header, status_code=307)
 
 
 class Request:

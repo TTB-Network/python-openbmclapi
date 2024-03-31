@@ -118,7 +118,7 @@ class ParseFileList:
     async def __call__(self, data) -> list[BMCLAPIFile]:
         self.data = io.BytesIO(data)
         self.files = []
-        with tqdm(total=self.read_long(), desc="[ParseFileList]") as pbar:
+        with tqdm(total=self.read_long(), desc="[ParseFileList]", unit_scale=True, unit="file") as pbar:
             for _ in range(pbar.total):
                 self.files.append(
                     BMCLAPIFile(
@@ -476,7 +476,7 @@ class FileStorage(Storage):
         self.cache: dict[str, File] = {}
         self.timer = Timer.repeat(self.clear_cache, (), CHECK_CACHE, CHECK_CACHE)
 
-    async def get(self, hash: str) -> File:
+    async def get(self, hash: str, offset: int = 0) -> File:
         if hash in self.cache:
             file = self.cache[hash]
             file.last_access = time.time()
@@ -535,9 +535,9 @@ class FileStorage(Storage):
         file: File
         key: str
         for key, file in sorted(
-            self.cache.items(), key=lambda x: x[1].expiry, reverse=True
+            self.cache.items(), key=lambda x: x[1].last_access, reverse=True
         ):
-            if size <= CACHE_BUFFER and file.last_access + CACHE_TIME <= time.time():
+            if size <= CACHE_BUFFER and file.last_access + CACHE_TIME >= time.time():
                 continue
             old_keys.append(key)
             old_size += file.size
@@ -620,8 +620,7 @@ class WebDav(Storage):
             }
         )
 
-    async def get(self, file: str) -> File:
-        await self._wait_lock()
+    async def get(self, file: str, offset: int = 0) -> File:
         if file in self.cache and self.cache[file].expiry - 10 > time.time():
             self.cache[file].cache = True
             self.cache[file].last_hit = time.time()
@@ -633,14 +632,26 @@ class WebDav(Storage):
                 self.hostname + self._endpoint(file[:2] + "/" + file), allow_redirects=False
             ) as resp:
                 f = File(
-                    self.hostname + self._endpoint(file[:2] + "/" + file),
+                    file,
                     file,
                     size=int(resp.headers.get("Content-Length", 0)),
                 )
+                f.headers = {}
+                f.expiry = time.time() + 36000
+                for field in (
+                    "ETag", 
+                    "Last-Modified",
+                    "Content-Length",
+                    "Content-Range"
+                ):
+                    if field not in resp.headers:
+                        continue
+                    f.headers[field] = resp.headers.get(field)
                 if resp.status == 200:
                     f.set_data(await resp.read())
                 elif resp.status // 100 == 3:
                     f.path = resp.headers.get("Location")
+                    cache_control = resp.headers.get("Cache-Control", "")
                 self.cache[file] = f
         return self.cache[file]
 
@@ -703,7 +714,7 @@ class WebDav(Storage):
     async def write(self, hash: str, io: io.BytesIO) -> int:
         async with self._client() as client:
             path = self._endpoint(f"{hash[:2]}/{hash}")
-            await client.upload_to(io, path)
+            await client.upload_to(io.getbuffer(), path)
             self.files[hash] = File(path, hash, len(io.getbuffer()))
             return self.files[hash].size
 
@@ -735,7 +746,11 @@ class WebDav(Storage):
         return success
 
     async def get_cache_stats(self) -> StatsCache:
-        return StatsCache()
+        stat = StatsCache()
+        for file in self.cache.values():
+            stat.total += 1
+            stat.bytes += file.size
+        return stat
 
 
 class TypeStorage(Enum):
@@ -756,6 +771,9 @@ class StorageManager:
         if isinstance(storage, FileStorage):
             type = "File"
             key = storage.dir
+        elif isinstance(storage, WebDav):
+            type = "Webdav"
+            key = storage.endpoint
         self._storage_stats[storage] = stats.get_storage(f"{type}_{key}")
 
     def remove_storage(self, storage):
@@ -775,7 +793,7 @@ class StorageManager:
 
     async def get(self, hash: str, offset: int) -> File:
         storage = self.get_storages()[0]
-        file = await storage.get(hash)
+        file = await storage.get(hash, offset)
         self._storage_stats[storage].hit(file, offset)
         return file
 
@@ -795,6 +813,7 @@ class Cluster:
         self.downloader = FileDownloader()
         self.file_check = FileCheck(self.downloader)
         self._enable_timer: Optional[Task] = None
+        self.keepaliving = False
         self.keepaliveTimer: Optional[Task] = None
         self.keepaliveTimeoutTimer: Optional[Task] = None
         self.keepalive_lock = asyncio.Lock()
@@ -940,41 +959,50 @@ class Cluster:
         if type != "request-cert":
             logger.debug(type, data)
 
-    async def start_keepalive(self, delay=0):
-        if self.keepaliveTimer:
-            self.keepaliveTimer.block()
-        if self.keepaliveTimeoutTimer:
-            self.keepaliveTimeoutTimer.block()
+    async def start_keepalive(self, delay: int = 0):
+        if self.keepaliving:
+            logger.warn("The keepalive task has already been performed and is ignored for this turn-on")
+            return
         self.keepaliveTimer = Timer.delay(self._keepalive, (), delay)
         self.keepaliveTimeoutTimer = Timer.delay(
             self._keepalive_timeout, (), delay + 300
         )
-
+        self.keepaliving = True
+    async def _keepalive_timeout(self):
+        if self.keepaliveTimer != None:
+            self.keepaliveTimer.block()
+        if self.keepaliveTimeoutTimer != None:
+            self.keepaliveTimeoutTimer.block()
+        self.keepaliving = False
+        logger.warn("Failed to keepalive! Reconnecting the main server...")
+        await self.reconnect()
     async def _keepalive(self):
-        for storage in stats.storages.values():
+        storages = stats.get_offset_storages()
+        for storage in storages:
             if not self.connected:
                 return
             await self.keepalive_lock.acquire()
             if not self.connected:
                 return
-            self.cur_storage = stats.SyncStorage(
-                storage.get_total_hits() - storage.get_last_hits(),
-                storage.get_total_bytes() - storage.get_last_bytes(),
-                storage,
-            )
+            self.cur_storage = storage
             await self.emit(
-                "keep-alive",
-                {
-                    "time": int(time.time() * 1000),
-                    "hits": storage.get_total_hits() - storage.get_last_hits(),
-                    "bytes": storage.get_total_bytes() - storage.get_last_bytes(),
-                },
-            )
+                    "keep-alive",
+                    {
+                        "time": int(time.time() * 1000),
+                        "hits": storage.object.get_total_hits() - storage.object.get_last_hits(),
+                        "bytes": storage.object.get_total_bytes() - storage.object.get_last_bytes(),
+                    },
+                )
+            if not storages:
+                            await self.emit(
+                    "keep-alive",
+                    {
+                        "time": int(time.time() * 1000),
+                        "hits": 0,
+                        "bytes": 0,
+                    },
+                )
         await self.start_keepalive(60)
-
-    async def _keepalive_timeout(self):
-        logger.warn("Failed to keepalive! Reconnecting the main server...")
-        await self.reconnect()
 
     async def disable(self):
         if self.sio.connected:
@@ -1031,6 +1059,7 @@ async def init():
         await plugin.init()
         await plugin.enable()
     storages.add_storage(FileStorage(Path("bmclapi")))
+    #storages.add_storage(WebDav("admin", "123456", "http://127.0.0.1:5244/dav", "/bmclapi", "alist-06e39e3a-d195-44a1-8f8f-296928308922Z84AuS5ttoA7hAW1Wy0jT2N40xpUrA2WeHQrJVum1WcmVmy3bv92zB5NrWbOpp96"))
     Timer.delay(cluster.init)
     app = web.app
 
@@ -1071,10 +1100,13 @@ async def init():
         )
         if range_match:
             start_bytes = int(range_match.group(1)) if range_match else 0
+        name = {}
+        if request.get_url_params().get("name"):
+            name["Content-Disposition"] = f"attachment; filename={request.get_url_params().get('name')}"
         data = await storages.get(hash, start_bytes)
         if data.is_url() and isinstance(data.get_path(), str):
-            return web.RedirectResponse(str(data.get_path()))
-        return data.get_data()
+            return web.RedirectResponse(str(data.get_path())).set_headers(name)
+        return web.Response(data.get_data().getbuffer(), headers = data.headers or {}).set_headers(name)
 
     router: web.Router = web.Router("/bmcl")
     dir = Path("./bmclapi_dashboard/")
