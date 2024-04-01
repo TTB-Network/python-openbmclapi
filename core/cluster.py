@@ -257,7 +257,10 @@ class FileCheck:
         self.pbar: Optional[tqdm] = None
         self.check_files_timer: Optional[Task] = None
         logger.info(f"The current file check type: {self.check_type.name}")
-
+    def start_task(self):
+        if self.check_files_timer:
+            self.check_files_timer.block()
+        self.check_files_timer = Timer.repeat(self.__call__, delay=1800, interval=1800)
     async def __call__(
         self,
     ) -> Any:
@@ -269,9 +272,7 @@ class FileCheck:
             await dashboard.set_status("正在检查缺失文件")
         if not files:
             logger.warn("File check skipped as there are currently no files available.")
-            if self.check_files_timer:
-                self.check_files_timer.block()
-            self.check_files_timer = Timer.repeat(self, delay=1800, interval=1800)
+            self.start_task()
             return
         with tqdm(
             total=len(files) * len(storages.get_storages()),
@@ -402,9 +403,7 @@ class FileCheck:
                     for d in dir:
                         os.removedirs(f"./cache/download/{d}")
                         pbar.update(1)
-        if self.check_files_timer:
-            self.check_files_timer.block()
-        self.check_files_timer = Timer.repeat(self, delay=1800, interval=1800)
+        self.start_task()
 
     async def _exists(self, file: BMCLAPIFile, storage: Storage):
         return await storage.exists(file.hash)
@@ -850,7 +849,7 @@ class Cluster:
         self.connected = True
         if self._enable_timer != None:
             self._enable_timer.block()
-        self._enable_timer = Timer.delay(self.reconnect, delay=30)
+        self._enable_timer = Timer.delay(self.reconnect, delay=300)
         await self._enable()
 
     async def reconnect(self):
@@ -878,7 +877,7 @@ class Cluster:
                 "byoc": BYOC,
                 "noFastEnable": False,
                 "flavor": {
-                    "runtime": f"python/{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+                    "runtime": f"python/{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} {VERSION}",
                     "storage": "+".join(
                         sorted((key for key, value in storage_str.items() if value))
                     ),

@@ -4,7 +4,10 @@ import os
 import time
 import traceback
 from typing import Any, Callable, Optional, Coroutine
-from core.logger import logger
+from core.logger import logger as log
+from core.const import *
+
+logger = log.depth(2)
 
 
 class Task:
@@ -19,13 +22,21 @@ class Task:
         self._called = False
         self._blocked = False
         self._task = None
+        self._frame = inspect.stack()[2]
+        self._frame_name = f"{parse_filename(self._frame.filename)}:{self._frame.function}:{self._frame.lineno}"
     def is_called(self):
         return self._called
     def get_create_at(self):
         return self._cur_task
     def is_blocked(self):
         return self._blocked
+    def _get_function_name(self):
+        return self._frame_name
     def block(self):
+        if self._blocked:
+            logger.debug(f"The task <{self._get_function_name()}> is blocked.")
+        else:
+            logger.debug(f"The task <{self._get_function_name()}> is blocking.")
         self._blocked = True
         if self._cur_task != None:
             self._cur_task.cancel()
@@ -44,19 +55,30 @@ class Task:
                 self.run(), asyncio.get_event_loop()
             ),
         )
+        #logger.debug(f"The task <{self._get_function_name()}> is next called in {interval:.2f} seconds.")
     async def run(self):
+        start = time.monotonic_ns()
         try:
             if inspect.iscoroutinefunction(self._handler):
                 self._task = asyncio.create_task(self._handler(*self._args, **self._kwargs))
             elif inspect.iscoroutine(self._handler):
-                self._task = asyncio.create_task(self._handler)
+                self._task = asyncio.create_task(self._handler(*self._args, **self._kwargs))
             else:
                 self._task = await asyncio.get_event_loop().run_in_executor(
                     None, lambda: self._handler(*self._args, **self._kwargs)
                 )
         except:
             logger.error(traceback.format_exc())
+        #logger.debug(f"The task <{self._get_function_name()}> takes {((time.monotonic_ns() - start) // 10000000.0):.2f} seconds to execute")
         self._run()
+
+def parse_filename(filename: str):
+    name = filename.lower().removeprefix(ROOT.lower())
+    if name != filename:
+        name = name.replace("\\", "/").replace("/", ".").lstrip(".").rstrip(".py")
+    else:
+        name = filename
+    return name
 
 
 """class Task:

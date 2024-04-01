@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from core.config import Config
 
@@ -9,6 +10,7 @@ if version_path.exists():
         f.close()
 else:
     VERSION = "Unknown"
+ROOT = os.getcwd()
 API_VERSION = "1.10.1"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
 BASE_URL = "https://openbmclapi.bangbang93.com/"

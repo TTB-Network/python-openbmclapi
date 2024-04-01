@@ -168,6 +168,8 @@ async def set_status_by_tqdm(text: str, pbar: tqdm, format=unit.format_numbers):
     cur_tqdm = pbar
     cur_tqdm_unit = format
     if task_tqdm:
+        if cur_tqdm is None:
+            task_tqdm.block()
         return
     task_tqdm = Timer.repeat(_set_status_by_tqdm, delay=0, interval=1)
 
@@ -184,6 +186,8 @@ async def _set_status_by_tqdm():
         and cur_tqdm.disable
     ):
         if cur_tqdm is not None:
+            if task_tqdm:
+                task_tqdm.block()
             await _set_status()
         cur_tqdm = None
         return

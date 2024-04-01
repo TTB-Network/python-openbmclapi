@@ -9,7 +9,7 @@ class LoggingMessage:
         self.data = []
 
 
-def log(*values):
+def _log(*values):
     data = []
     for v in values:
         try:
@@ -20,8 +20,8 @@ def log(*values):
 
 
 class LoggingLogger:
-    def __init__(self):
-        self.log = Logger.opt(depth=2)
+    def __init__(self, depth: int = 0):
+        self.log = Logger.opt(depth = 2 + depth)
         self.log.remove()
         self.cur_handler = None
         self.log.add(
@@ -41,7 +41,7 @@ class LoggingLogger:
             colorize=True,
         )
     def _log_with_args(self, level, *args, **kwargs):
-        message = log(*args) if args else ""
+        message = _log(*args) if args else ""
         self.log.log(level, message, **kwargs)
 
     def info(self, *args, **kwargs):
@@ -62,5 +62,7 @@ class LoggingLogger:
     def success(self, *args, **kwargs):
         self._log_with_args("SUCCESS", *args, **kwargs)
 
+    def depth(self, depth):
+        return LoggingLogger(depth)
 
 logger = LoggingLogger()
