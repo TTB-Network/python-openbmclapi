@@ -784,6 +784,7 @@ class Cluster:
         self.connected = False
         self.sio = socketio.AsyncClient()
         self.sio.on("message", self._message)
+        self.sio.on("exception", self._message)
         self.stats_storage: Optional[stats.SyncStorage] = None
         self.downloader = FileDownloader()
         self.file_check = FileCheck(self.downloader)
@@ -797,6 +798,9 @@ class Cluster:
         logger.info(f"[Remote] {message}")
         if "信任度过低" in message:
             self.trusted = False
+    
+    def _message(self, message):
+        logger.error(f"[Remote] {message}")
 
     async def emit(self, channel, data=None):
         await self.sio.emit(
