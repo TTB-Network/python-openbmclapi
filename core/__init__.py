@@ -4,7 +4,7 @@ import os
 import signal
 import traceback
 from .config import Config
-from .timer import Timer
+from . import timer as Timer
 from .utils import Client
 from .certificate import *
 from . import web
@@ -38,8 +38,8 @@ class ProxyClient:
     closed: bool = False
 
     def start(self):
-        self._task_origin = Timer.delay(self.process_origin, (), 0)
-        self._task_target = Timer.delay(self.process_target, (), 0)
+        self._task_origin = Timer.delay(self.process_origin,)
+        self._task_target = Timer.delay(self.process_target,)
 
     async def process_origin(self):
         try:
@@ -210,7 +210,7 @@ async def main():
     os.environ["ASYNCIO_STARTUP"] = str(1)
     await web.init()
     certificate.load_cert(Path(".ssl/cert"), Path(".ssl/key"))
-    Timer.delay(check_ports, (), 5)
+    Timer.delay(check_ports, delay=5)
     while 1:
         try:
             server = await asyncio.start_server(_handle, port=PORT)

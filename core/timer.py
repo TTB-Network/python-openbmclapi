@@ -3,10 +3,63 @@ import inspect
 import os
 import time
 import traceback
+from typing import Any, Callable, Optional, Coroutine
 from core.logger import logger
 
 
 class Task:
+    def __init__(self, handler: Callable, args: Optional[tuple] = (), kwargs: Optional[dict[str, Any]] = {}, delay: float = 1, interval: Optional[float] = None) -> None:
+        self._handler = handler
+        self._args = args
+        self._kwargs = kwargs
+        self._delay = delay
+        self._interval = interval
+        self._create_at = time.monotonic()
+        self._cur_task = None
+        self._called = False
+        self._blocked = False
+        self._task = None
+    def is_called(self):
+        return self._called
+    def get_create_at(self):
+        return self._cur_task
+    def is_blocked(self):
+        return self._blocked
+    def block(self):
+        self._blocked = True
+        if self._cur_task != None:
+            self._cur_task.cancel()
+            self._cur_task = None
+        if self._task != None:
+            self._task.cancel()
+            self._task = None
+    def _run(self):
+        if self._blocked or not int(os.environ["ASYNCIO_STARTUP"]):
+            return
+        interval = self._interval if self._called else self._delay
+        self._called = True
+        self._cur_task = asyncio.get_event_loop().call_later(
+            interval,
+            lambda: asyncio.run_coroutine_threadsafe(
+                self.run(), asyncio.get_event_loop()
+            ),
+        )
+    async def run(self):
+        try:
+            if inspect.iscoroutinefunction(self._handler):
+                self._task = asyncio.create_task(self._handler(*self._args, **self._kwargs))
+            elif inspect.iscoroutine(self._handler):
+                self._task = asyncio.create_task(self._handler)
+            else:
+                self._task = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: self._handler(*self._args, **self._kwargs)
+                )
+        except:
+            logger.error(traceback.format_exc())
+        self._run()
+
+
+"""class Task:
     def __init__(
         self,
         target,
@@ -123,4 +176,14 @@ class TimerManager:
         asyncio.get_event_loop().call_later(task.interval, lambda: self._repeat(task))
 
 
-Timer: TimerManager = TimerManager()
+Timer: TimerManager = TimerManager()"""
+
+def delay(handler: Callable, args: Optional[tuple] = (), kwargs: Optional[dict[str, Any]] = {}, delay: float = 1):
+    task = Task(handler=handler, args=args, kwargs=kwargs, delay=delay)
+    task._run()
+    return task
+
+def repeat(handler: Callable, args: Optional[tuple] = (), kwargs: Optional[dict[str, Any]] = {}, delay: float = 1, interval: float = 1):
+    task = Task(handler=handler, args=args, kwargs=kwargs, delay=delay, interval=interval)
+    task._run()
+    return task

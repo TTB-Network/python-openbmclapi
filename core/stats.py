@@ -12,7 +12,7 @@ from core.utils import (
     get_timestamp_from_hour_tohour,
 )
 from core.api import File
-from core.timer import Timer
+from core import timer as Timer
 
 
 class StorageStats:
@@ -360,7 +360,7 @@ _write_database()
 
 
 def init():
-    Timer.delay(write_database, (), time.time() % 1)
+    Timer.delay(write_database, delay=time.time() % 1)
 
 
 def write_database():

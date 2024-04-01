@@ -43,10 +43,10 @@ from core.utils import (
 )
 import filetype
 import urllib.parse as urlparse
+from core import timer as Timer
 from core.logger import logger
 from core.config import Config
 from core.utils import Client
-from core.timer import Timer
 from core import cluster
 from core.const import *
 
@@ -1184,7 +1184,7 @@ class FormParse:
 class Statistics:
     def __init__(self) -> None:
         self.qps = {}
-        Timer.repeat(self._clear, (), 1, 1)
+        Timer.repeat(self._clear, delay=1, interval=1)
 
     def _clear(self):
         t = self.get_time()

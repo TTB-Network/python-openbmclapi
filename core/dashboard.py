@@ -12,7 +12,8 @@ from core import stats, system, unit, utils, web
 from core import cluster
 from core.api import StatsCache
 from core.config import Config
-from core.timer import Task, Timer
+from core import timer as Timer
+from core.timer import Task
 
 from core.const import *
 
@@ -168,7 +169,7 @@ async def set_status_by_tqdm(text: str, pbar: tqdm, format=unit.format_numbers):
     cur_tqdm_unit = format
     if task_tqdm:
         return
-    task_tqdm = Timer.repeat(_set_status_by_tqdm, (), 0, 1)
+    task_tqdm = Timer.repeat(_set_status_by_tqdm, delay=0, interval=1)
 
 
 async def _set_status_by_tqdm():

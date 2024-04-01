@@ -18,7 +18,8 @@ import socketio
 from tqdm import tqdm
 from core.config import Config
 from core import certificate, dashboard, system, unit
-from core.timer import Task, Timer
+from core import timer as Timer
+from core.timer import Task
 import pyzstd as zstd
 import core.utils as utils
 import core.stats as stats
@@ -270,7 +271,7 @@ class FileCheck:
             logger.warn("File check skipped as there are currently no files available.")
             if self.check_files_timer:
                 self.check_files_timer.block()
-            self.check_files_timer = Timer.repeat(self, (), 1800, 1800)
+            self.check_files_timer = Timer.repeat(self, delay=1800, interval=1800)
             return
         with tqdm(
             total=len(files) * len(storages.get_storages()),
@@ -403,7 +404,7 @@ class FileCheck:
                         pbar.update(1)
         if self.check_files_timer:
             self.check_files_timer.block()
-        self.check_files_timer = Timer.repeat(self, (), 1800, 1800)
+        self.check_files_timer = Timer.repeat(self, delay=1800, interval=1800)
 
     async def _exists(self, file: BMCLAPIFile, storage: Storage):
         return await storage.exists(file.hash)
@@ -449,7 +450,7 @@ class FileStorage(Storage):
             raise FileExistsError("The path is file.")
         self.dir.mkdir(exist_ok=True, parents=True)
         self.cache: dict[str, File] = {}
-        self.timer = Timer.repeat(self.clear_cache, (), CHECK_CACHE, CHECK_CACHE)
+        self.timer = Timer.repeat(self.clear_cache, delay=CHECK_CACHE, interval=CHECK_CACHE)
 
     async def get(self, hash: str, offset: int = 0) -> File:
         if hash in self.cache:
@@ -813,7 +814,7 @@ class Cluster:
                 )
             except:
                 logger.warn("Failed to connect to the main server, retrying after 5s.")
-                Timer.delay(self.init, (), 5)
+                Timer.delay(self.init, delay=5)
                 return
         await self.start()
 
@@ -849,7 +850,7 @@ class Cluster:
         self.connected = True
         if self._enable_timer != None:
             self._enable_timer.block()
-        self._enable_timer = Timer.delay(self.reconnect, (), 30)
+        self._enable_timer = Timer.delay(self.reconnect, delay=30)
         await self._enable()
 
     async def reconnect(self):
@@ -944,9 +945,9 @@ class Cluster:
             self.keepaliveTimer.block()
         if self.keepaliveTimeoutTimer != None:
             self.keepaliveTimeoutTimer.block()
-        self.keepaliveTimer = Timer.delay(self._keepalive, (), delay)
+        self.keepaliveTimer = Timer.delay(self._keepalive, delay=delay)
         self.keepaliveTimeoutTimer = Timer.delay(
-            self._keepalive_timeout, (), delay + 300
+            self._keepalive_timeout, delay=delay + 300
         )
         self.keepaliving = True
     async def _keepalive_timeout(self):
@@ -1029,7 +1030,7 @@ async def check_update():
                 logger.info(f"Already up to date.")
         except aiohttp.ClientError as e:
             logger.error(f"An error occured whilst checking update: {e}.")
-    Timer.delay(check_update, (), 3600)
+    Timer.delay(check_update, delay=3600)
 
 
 async def init():
