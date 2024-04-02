@@ -12,8 +12,10 @@ from core import stats, system, unit, utils, web
 from core import cluster
 from core.api import StatsCache
 from core.config import Config
-from core.timer import Task, Timer
+from core import timer as Timer
+from core.timer import Task
 
+from core.const import *
 
 @dataclass
 class Token:
@@ -21,9 +23,14 @@ class Token:
     create_at: float
 
 
-BASE_URL = "https://openbmclapi.bangbang93.com/"
-CLUSTER_ID: str = Config.get("cluster.id")
-CLUSTER_SECERT: str = Config.get("cluster.secret")
+@dataclass
+class StorageInfo:
+    name: str
+    type: str
+    endpoint: str
+    size: int
+    free: int
+
 last_status = ""
 last_text = ""
 last_tqdm: float = 0
@@ -131,6 +138,28 @@ async def process(type: str, data: Any):
         }
     if type == "version":
         return {"cur": cluster.VERSION, "latest": cluster.fetched_version}
+    if type == "storage":
+        data: list = []
+        for storage in cluster.storages.get_storages():
+            if isinstance(storage, cluster.FileStorage):
+                data.append(
+                    StorageInfo(
+                        storage.get_name(),
+                        "file",
+                        str(storage.dir),
+                        -1, -1
+                    )
+                )
+            elif isinstance(storage, cluster.WebDav):
+                data.append(
+                    StorageInfo(
+                        storage.get_name(),
+                        "webdav",
+                        storage.hostname + storage.endpoint,
+                        -1, -1
+                    )
+                )
+        return data
 
 
 async def set_status_by_tqdm(text: str, pbar: tqdm, format=unit.format_numbers):
@@ -139,8 +168,10 @@ async def set_status_by_tqdm(text: str, pbar: tqdm, format=unit.format_numbers):
     cur_tqdm = pbar
     cur_tqdm_unit = format
     if task_tqdm:
+        if cur_tqdm is None:
+            task_tqdm.block()
         return
-    task_tqdm = Timer.repeat(_set_status_by_tqdm, (), 0, 1)
+    task_tqdm = Timer.repeat(_set_status_by_tqdm, delay=0, interval=1)
 
 
 async def _set_status_by_tqdm():
@@ -155,6 +186,8 @@ async def _set_status_by_tqdm():
         and cur_tqdm.disable
     ):
         if cur_tqdm is not None:
+            if task_tqdm:
+                task_tqdm.block()
             await _set_status()
         cur_tqdm = None
         return

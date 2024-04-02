@@ -12,7 +12,7 @@ from core.utils import (
     get_timestamp_from_hour_tohour,
 )
 from core.api import File
-from core.timer import Timer
+from core import timer as Timer
 
 
 class StorageStats:
@@ -163,6 +163,21 @@ def write_storage():
             f.writeVarInt(field)
     with open("./cache/storage.bin", "wb") as w:
         w.write(f.io.getbuffer())
+
+
+def get_offset_storages() -> list[SyncStorage]:
+    sync_storages = []
+    for storage in storages.values():
+        sync_storage = SyncStorage(
+            storage.get_total_hits() - storage.get_last_hits(),
+            storage.get_total_bytes() - storage.get_last_bytes(),
+            storage,
+        )
+        if sync_storage.sync_hits == 0 and sync_storage.sync_bytes == 0:
+            continue
+        sync_storages.append(sync_storage)
+    return sync_storages
+
 
 
 def get_storage(name):
@@ -345,7 +360,7 @@ _write_database()
 
 
 def init():
-    Timer.delay(write_database, (), time.time() % 1)
+    Timer.delay(write_database, delay=time.time() % 1)
 
 
 def write_database():

@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass, is_dataclass
 import hashlib
 import inspect
 import io
+import re
 import time
 from typing import (
     Any,
@@ -378,6 +379,18 @@ def format_time(n):
     minutes = int(n / 60 % 60)
     second = int(n % 60)
     return f"{hour:02d}:{minutes:02d}:{second:02d}"
+
+
+def parse_cache_control(cache_control_header: str):  
+    directives = {}  
+    # 使用正则表达式匹配指令和值  
+    matches = re.findall(r'(\w+)\s*=\s*(".*?"|[^,;]+)?', cache_control_header)  
+    for directive, value in matches:  
+        # 去除引号（如果有的话）  
+        if value and value.startswith('"') and value.endswith('"'):  
+            value = value[1:-1]  
+        directives[directive.lower()] = value  
+    return directives  
 
 
 def check_sign(hash: str, secret: str, s: str, e: str) -> bool:
