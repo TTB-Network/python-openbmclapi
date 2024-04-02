@@ -10,7 +10,7 @@ defaults = {
     "cluster.public_port": 8800,
     "cluster.public_host": "",
     "cluster.byoc": False,
-    "cluster.enable": False,
+    "cluster.enable": True,
     "cluster.timeout.enable": 60,
     "cluster.timeout.keepalive": 300,
     "cluster.reconnect.delay": 5,
