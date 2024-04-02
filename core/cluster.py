@@ -953,6 +953,7 @@ class Cluster:
             logger.success(
                 f"Successfully keep alive, serving {unit.format_number(storage_data['hits'])}({unit.format_bytes(storage_data['bytes'])}, {len(self._cur_storages)} Storage(s)) at {utils.parse_datetime_to_gmt(keepalive_time.timetuple())}, Ping: {int((time.time() - keepalive_time.timestamp()) * 1000)}ms."
             )
+            self._cur_storages = []
         if type != "request-cert":
             logger.debug(type, data)
 
