@@ -21,6 +21,7 @@ defaults = {
     "advanced.request_buffer": 8192,
     "advanced.io_buffer": 16777216,
     "advanced.header_bytes": 4096,
+    "advanced.debug": False,
     "dashboard.username": "admin",
     "dashboard.password": "",
 }
@@ -29,7 +30,7 @@ defaults = {
 class CFG:
     def __init__(self, path: str) -> None:
         self.file = Path(path)
-        logger.debug(f"Loading config: {self.file.absolute()}.")
+        logger.info(f"Loading config: {self.file.absolute()}.")
         self.cfg = {}
         if self.file.exists():
             self.load()
@@ -39,6 +40,9 @@ class CFG:
             )
             for key, value in defaults.items():
                 self.set(key, value)
+        logger.add_log(
+            "DEBUG" if self.get("advanced.debug") else "INFO"
+        )
 
     def load(self):
         with open(self.file, "r", encoding="utf-8") as f:

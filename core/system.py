@@ -2,7 +2,7 @@ import os
 
 import psutil
 
-from core.timer import Timer
+from core import timer as Timer
 
 process: psutil.Process = psutil.Process(os.getpid())
 cpus: list[float] = []

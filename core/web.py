@@ -43,76 +43,12 @@ from core.utils import (
 )
 import filetype
 import urllib.parse as urlparse
+from core import timer as Timer
 from core.logger import logger
 from core.config import Config
 from core.utils import Client
-from core.timer import Timer
 from core import cluster
-
-
-TIMEOUT: int = Config.get("advanced.timeout")
-REQUEST_BUFFER: int = Config.get("advanced.request_buffer")
-FILE_REDIRECTS = ["index.html", "index.htm", "default.html", "default.htm"]
-RESPONSE_HEADERS = {
-    "Server": Config.get("web.server_name"),
-}
-RESPONSE_DATE = "%a, %d %b %Y %H:%M:%S GMT"
-STATUS_CODES: dict[int, str] = {
-    100: "Continue",
-    101: "Switching Protocols",
-    200: "OK",
-    201: "Created",
-    202: "Accepted",
-    203: "Non-Authoritative Information",
-    204: "No Content",
-    205: "Reset Content",
-    206: "Partial Content",
-    300: "Multiple Choices",
-    301: "Moved Pemanently",
-    302: "Found",
-    303: "See Other",
-    304: "Not Modified",
-    305: "Use Proxy",
-    306: "Unused",
-    307: "Temporary Redirect",
-    400: "Bad Request",
-    401: "Unauthorized",
-    402: "Payment Required",
-    403: "Forbidden",
-    404: "Not Found",
-    405: "Method Not Allowed",
-    406: "Not Acceptable",
-    407: "Proxy Authentication Required",
-    408: "Request Time-out",
-    409: "Conflict",
-    410: "Gone",
-    411: "Length Required",
-    412: "Precondition Failed",
-    413: "Request Entity Too Large",
-    414: "Request-URI Too Large",
-    415: "Unsupported Media Type",
-    416: "Requested range not satisfiable",
-    417: "Expectation Failed",
-    418: "I'm a teapot",
-    421: "Misdirected Request",
-    422: "Unprocessable Entity",
-    423: "Locked",
-    424: "Failed Dependency",
-    425: "Too Early",
-    426: "Upgrade Required",
-    428: "Precondition Required",
-    429: "Too Many Requests",
-    431: "Request Header Fields Too Large",
-    451: "Unavailable For Legal Reasons",
-    500: "Internal Server Eror",
-    501: "Not Implemented",
-    502: "Bad Gateway",
-    503: "Service Unavailable",
-    504: "Gateway Time-out",
-    505: "HTTP Version not supported",
-}
-IO_BUFFER: int = Config.get("advanced.io_buffer")
-REQUEST_TIME_UNITS = ["ns", "ms", "s", "m", "h"]
+from core.const import *
 
 
 @dataclass
@@ -714,7 +650,9 @@ class Application:
 class Header:
     def __init__(self, header: dict[str, Any] | bytes | str | None = None) -> None:
         self._headers = {}
-        if isinstance(header, bytes):
+        if isinstance(header, Header):
+            self._headers = header._headers
+        elif isinstance(header, bytes):
             self._headers.update(
                 {
                     v[0]: v[1]
@@ -753,7 +691,7 @@ class Header:
 
     def update(self, value: Any):
         if isinstance(value, Header):
-            value = value._headers
+            self.update(value._headers)
         if not isinstance(value, dict):
             return
         for k, v in value.items():
@@ -775,7 +713,7 @@ class Response:
     def __init__(
         self,
         content: CONTENT_ACCEPT = None,
-        headers: Header = Header(),
+        headers: Header | dict[str, Any] = {},
         cookies: list[Cookie] = [],
         content_type: Optional[str] = None,
         compress=None,
@@ -783,17 +721,19 @@ class Response:
     ) -> None:
         self.status_code = status_code
         self.content: CONTENT_ACCEPT = content
-        self._headers = headers
+        self._headers = Header(headers)
         self._cookies = cookies
         self.content_type = content_type
         self._compress = compress
 
     def set_headers(self, header: Header | dict[str, Any]):
         self._headers.update(header)
+        return self
 
     def set_cookies(self, cookies: tuple[Cookie, ...]):
         for cookie in cookies:
             self._cookies.append(cookie)
+        return self
 
     def _get_content_type(self, content):
         if isinstance(content, (AsyncGenerator, Iterator, AsyncIterator, Generator)):
@@ -830,13 +770,7 @@ class Response:
         else:
             yield b""
 
-    async def __call__(
-        self,
-        request: "Request",
-        client: Client,
-        response_configuration: Optional[ResponseConfiguration] = None,
-    ) -> Any:
-        content, length = io.BytesIO(), 0
+    async def raw(self):
         if isinstance(self.content, Coroutine):
             self.content = await self.content
         if isinstance(self.content, Response):
@@ -845,6 +779,17 @@ class Response:
             self._headers = self.content._headers
             self._cookies = self.content._cookies
             self.content = self.content.content
+        if isinstance(self.content, (Coroutine, Response)):
+            await self.raw()
+
+    async def __call__(
+        self,
+        request: "Request",
+        client: Client,
+        response_configuration: Optional[ResponseConfiguration] = None,
+    ) -> Any:
+        content, length = io.BytesIO(), 0
+        await self.raw()
         if isinstance(self.content, Path):
             if self.content.exists() and self.content.is_file():
                 content = self.content
@@ -946,8 +891,11 @@ class Response:
 
 
 class RedirectResponse(Response):
-    def __init__(self, location: str) -> None:
-        super().__init__(headers=Header({"Location": location}), status_code=307)
+    def __init__(self, location: str, headers: Header | dict[str, Any] | None = None) -> None:
+        header = Header()
+        header.update(headers)
+        header.update({"Location": location})
+        super().__init__(headers=header, status_code=307)
 
 
 class Request:
@@ -1236,7 +1184,7 @@ class FormParse:
 class Statistics:
     def __init__(self) -> None:
         self.qps = {}
-        Timer.repeat(self._clear, (), 1, 1)
+        Timer.repeat(self._clear, delay=1, interval=1)
 
     def _clear(self):
         t = self.get_time()
