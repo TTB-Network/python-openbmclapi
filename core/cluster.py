@@ -349,8 +349,8 @@ class FileCheck:
             if more_total != 0:
                 with tqdm(
                     total=more_total,
-                    desc="Delete old files",
-                    unit="file",
+                    desc="Deleting old files",
+                    unit=" file(s)",
                     unit_scale=True,
                 ) as pbar:
                     await dashboard.set_status_by_tqdm("删除旧文件中", pbar)
@@ -394,11 +394,11 @@ class FileCheck:
         miss = set().union(*missing_files_by_storage.values())
         if not miss:
             logger.info(
-                f"Checked all files, total: {len(files) * len(storages.get_storages())}!"
+                f"Checked all files: {len(files) * len(storages.get_storages())}!"
             )
         else:
             logger.info(
-                f"Total number of missing files: {unit.format_number(len(miss))}."
+                f"File missing: {unit.format_number(len(miss))}."
             )
             await self.downloader.download(storages.get_storages(), list(miss))
         if os.path.exists("./cache/download"):
