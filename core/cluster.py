@@ -949,8 +949,9 @@ class Cluster:
                 storage.object.add_last_bytes(storage.sync_bytes)
                 storage_data["hits"] += storage.sync_hits
                 storage_data["bytes"] += storage.sync_bytes
+            keepalive_time = utils.parse_iso_time(ack)
             logger.success(
-                f"Successfully keep alive, serving {unit.format_number(storage_data['hits'])}({unit.format_bytes(storage_data['bytes'])}, {len(self._cur_storages)} Storage(s)) at {utils.parse_datetime_to_gmt(utils.parse_iso_time(ack).timetuple())}."
+                f"Successfully keep alive, serving {unit.format_number(storage_data['hits'])}({unit.format_bytes(storage_data['bytes'])}, {len(self._cur_storages)} Storage(s)) at {utils.parse_datetime_to_gmt(keepalive_time.timetuple())}, Ping: {int((time.time() - keepalive_time.timestamp()) * 1000)}ms."
             )
         if type != "request-cert":
             logger.debug(type, data)
