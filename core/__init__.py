@@ -186,8 +186,7 @@ async def check_ports():
                             asyncio.open_connection(
                                 "127.0.0.1",
                                 port[0].sockets[0].getsockname()[1],
-                                ssl=port[1],
-                                ssl_handshake_timeout=5
+                                ssl=port[1]
                             ),
                             timeout = 5
                         )

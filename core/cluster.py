@@ -875,6 +875,11 @@ class Cluster:
         await self.enable()
 
     async def _enable(self):
+        if not ENABLE:
+            logger.warn(
+                "Disabled cluster."
+            )
+            return
         storage_str = {"file": 0, "webdav": 0}
         self.trusted = True
         for storage in storages.get_storages():
@@ -1100,6 +1105,28 @@ async def init():
         if data.is_url() and isinstance(data.get_path(), str):
             return web.RedirectResponse(str(data.get_path())).set_headers(name)
         return web.Response(data.get_data().getbuffer(), headers = data.headers or {}).set_headers(name)
+
+    cache = io.BytesIO()
+    @app.get("/files")
+    async def _(request: web.Request):
+        if len(cache.getbuffer()) != 0:
+            return cache.getbuffer()
+        total = 0
+        buf = utils.DataOutputStream()
+        for root, dirs, files in os.walk("./bmclapi"):  
+            for file in files:
+                total += 1
+                buf.writeString(file)
+                buf.writeVarInt(os.path.getsize(os.path.join(root, file)))
+        data = utils.DataOutputStream()
+        data.writeVarInt(total)
+        data.write(buf.io.getvalue())
+        cache.write(zstd.compress(data.io.getbuffer()))
+        return cache
+    @app.get("/sync_download/{hash}")
+    async def _(request: web.Request, hash: str):
+        return Path(f"./bmclapi/{hash[:2]}/{hash}")
+        
 
     router: web.Router = web.Router("/bmcl")
     dir = Path("./bmclapi_dashboard/")
