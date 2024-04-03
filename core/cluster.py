@@ -75,7 +75,7 @@ class TokenManager:
                     Timer.delay(
                         self.fetchToken, delay=float(content["ttl"]) / 1000.0 - 600
                     )
-                    logger.info("Fetched token.")
+                    logger.info(f"Fetched token. TTL: {utils.format_time(content['ttl'] / 1000.0)}")
 
             except aiohttp.ClientError as e:
                 logger.error(
@@ -1071,7 +1071,7 @@ async def init():
             yield b"\x00" * 1024 * 1024
         return
 
-    @app.get("/download/{hash}")
+    @app.get("/download/{hash}", access_logs = False)
     async def _(request: web.Request, hash: str):
         if (
             not SIGN_SKIP
