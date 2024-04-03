@@ -11,7 +11,7 @@ if version_path.exists():
 else:
     VERSION = "Unknown"
 ROOT = os.getcwd()
-API_VERSION = "1.10.2"
+API_VERSION = "1.10.3"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
 BASE_URL = "https://openbmclapi.bangbang93.com/"
 CLUSTER_ID: str = Config.get("cluster.id")
