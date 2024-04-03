@@ -3,7 +3,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://d.kstore.space/download/7507/logo_dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="https://d.kstore.space/download/7507/logo_light.svg">
-  <img alt="logo" src="https://d.kstore.space/download/7507/logo_light.svg" height=300>
+  <img alt="logo" src="https://d.kstore.space/download/7507/logo_light.svg" height=400>
 </picture>
 
 # OpenBMCLAPI for Python
