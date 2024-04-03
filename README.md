@@ -91,8 +91,9 @@
     -v ${/path/to/your/cache}:/opt/python-openbmclapi/bmclapi \
     -e cluster.id=${cluster.id} \
     -e cluster.secret=${cluster.secret} \
-    -e web.public_port=${web.public_port} \
-    -p ${web.public_port}:8080 \
+    -e cluster.public_port=${cluster.public_port} \
+    -e web.ssl_port=${cluster.public_port}
+    -p ${cluster.public_port}:8080 \
     --restart always \
     --name python-openbmclapi \
     silianz/python-openbmclapi 
