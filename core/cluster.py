@@ -863,12 +863,13 @@ class Cluster:
         await self._enable()
 
     async def retry(self):
-        if RECONNECT_DELAY != -1 and self._retry >= RECONNECT_RETRY:
+        if RECONNECT_RETRY != -1 and self._retry >= RECONNECT_RETRY:
             logger.error(f"The number of retries has reached {RECONNECT_RETRY} and the enabled node has been disabled")
             return
         if self.connected:
             await self.disable()
             self.connected = False
+        self._retry += 1
         logger.info(f"Retrying after {RECONNECT_DELAY}s.")
         await asyncio.sleep(RECONNECT_DELAY)
         await self.enable()
@@ -922,6 +923,7 @@ class Cluster:
                 )
                 await self.retry()
                 return
+            self._retry = 0
             self.connected = True
             logger.success(f"Connected to the main server! Starting service...")
             logger.info(
