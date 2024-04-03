@@ -79,9 +79,9 @@ class TokenManager:
 
             except aiohttp.ClientError as e:
                 logger.error(
-                    f"An error occured whilst fetching token, retrying in 5s: {e}."
+                    f"An error occured whilst fetching token, retrying in {RECONNECT_DELAY}s: {e}."
                 )
-                await asyncio.sleep(5)
+                await asyncio.sleep(RECONNECT_DELAY)
                 return self.fetchToken()
 
     async def getToken(self) -> str:
@@ -159,7 +159,7 @@ class FileDownloader:
                 self.last_modified = max(
                     self.last_modified, *(file.mtime for file in files)
                 )
-                logger.debug(f"Filelist last modified: {self.last_modified}")
+                logger.debug(f"Filelist last modified: {utils.parse_time_to_gmt(self.last_modified / 1000)}")
                 return files
 
     async def _download(self, pbar: tqdm, session: aiohttp.ClientSession):
@@ -372,7 +372,7 @@ class FileCheck:
         miss = set().union(*missing_files_by_storage.values())
         if not miss:
             logger.info(
-                f"Checked all files: {len(files) * len(storages.get_storages())}!"
+                f"Checked all files: {len(files) * len(storages.get_storages())}({unit.format_bytes(sum(file.size for file in files) * len(storages.get_storages()))})!"
             )
         else:
             logger.info(
@@ -784,7 +784,7 @@ class Cluster:
         self.connected = False
         self.sio = socketio.AsyncClient()
         self.sio.on("message", self._message)
-        self.sio.on("exception", self._message)
+        self.sio.on("exception", self._exception)
         self.stats_storage: Optional[stats.SyncStorage] = None
         self.downloader = FileDownloader()
         self.file_check = FileCheck(self.downloader)
@@ -792,14 +792,15 @@ class Cluster:
         self.keepaliving = False
         self.keepaliveTimer: Optional[Task] = None
         self.keepaliveTimeoutTimer: Optional[Task] = None
-        self.keepalive_lock = asyncio.Lock()
+        self._cur_storages: list[stats.SyncStorage] = []
+        self._retry = 0
 
     def _message(self, message):
         logger.info(f"[Remote] {message}")
         if "信任度过低" in message:
             self.trusted = False
     
-    def _message(self, message):
+    def _exception(self, message):
         logger.error(f"[Remote] {message}")
 
     async def emit(self, channel, data=None):
@@ -850,18 +851,27 @@ class Cluster:
                 "Still trying to enable cluster? You has been blocked. (\nFrom bangbang93:\n 谁他妈\n 一秒钟发了好几百个enable请求\n ban了解一下等我回杭州再看\n ban了先\n\n > Timestamp at 2024/3/30 14:07 GMT+8\n)"
             )
             return
+        if not ENABLE:
+            logger.warn(
+                "Disabled cluster."
+            )
+            return
         self.connected = True
         if self._enable_timer != None:
             self._enable_timer.block()
-        self._enable_timer = Timer.delay(self.reconnect, delay=300)
+        self._enable_timer = Timer.delay(self.retry, delay=ENABLE_TIMEOUT)
         await self._enable()
 
-    async def reconnect(self):
+    async def retry(self):
+        if RECONNECT_RETRY != -1 and self._retry >= RECONNECT_RETRY:
+            logger.error(f"The number of retries has reached {RECONNECT_RETRY} and the enabled node has been disabled")
+            return
         if self.connected:
             await self.disable()
             self.connected = False
-            logger.info("Retrying after 5s.")
-            await asyncio.sleep(5)
+        self._retry += 1
+        logger.info(f"Retrying after {RECONNECT_DELAY}s.")
+        await asyncio.sleep(RECONNECT_DELAY)
         await self.enable()
 
     async def _enable(self):
@@ -872,6 +882,7 @@ class Cluster:
                 storage_str["file"] += 1
             elif isinstance(storage, WebDav):
                 storage_str["webdav"] += 1
+        logger.info(f"Total {len(storages.get_storages())} storage ({storage_str['file']} Local Storage, {storage_str['webdav']} Webdav Storage).")
         await self.emit(
             "enable",
             {
@@ -908,11 +919,11 @@ class Cluster:
                 self._enable_timer = None
             if err:
                 logger.error(
-                    f"Unable to start service: {err['message']} Retry in 5s to reconnect."
+                    f"Unable to start service: {err['message']}."
                 )
-                await asyncio.sleep(5)
-                await self.reconnect()
+                await self.retry()
                 return
+            self._retry = 0
             self.connected = True
             logger.success(f"Connected to the main server! Starting service...")
             logger.info(
@@ -925,32 +936,37 @@ class Cluster:
         elif type == "keep-alive":
             if err:
                 logger.error(f"Unable to keep alive! Reconnecting...")
-                await self.reconnect()
+                await self.retry()
                 return
-            if self.cur_storage:
-                storage = self.cur_storage
-                logger.success(
-                    f"Successfully keep alive, serving {unit.format_number(storage.sync_hits)}({unit.format_bytes(storage.sync_bytes)})."
-                )
+            if not ack:
+                await self.emit("disable")
+                logger.warn("The cluster is kicked by server.")
+                return
+            storage_data = {
+                "hits":  0,
+                "bytes": 0
+            }
+            for storage in self._cur_storages:
                 storage.object.add_last_hits(storage.sync_hits)
                 storage.object.add_last_bytes(storage.sync_bytes)
-                self.cur_storage = None
-                if self.keepalive_lock.locked():
-                    self.keepalive_lock.release()
+                storage_data["hits"] += storage.sync_hits
+                storage_data["bytes"] += storage.sync_bytes
+            keepalive_time = utils.parse_iso_time(ack)
+            logger.success(
+                f"Successfully keep alive, serving {unit.format_number(storage_data['hits'])}({unit.format_bytes(storage_data['bytes'])}, {len(self._cur_storages)} Storage(s)) at {utils.parse_datetime_to_gmt(keepalive_time.timetuple())}, Ping: {int((time.time() - keepalive_time.timestamp()) * 1000)}ms."
+            )
+            self._cur_storages = []
         if type != "request-cert":
             logger.debug(type, data)
 
     async def start_keepalive(self, delay: int = 0):
-        if self.keepaliving:
-            logger.warn("The keepalive task has already been performed and is ignored for this turn-on")
-            return
         if self.keepaliveTimer != None:
             self.keepaliveTimer.block()
         if self.keepaliveTimeoutTimer != None:
             self.keepaliveTimeoutTimer.block()
         self.keepaliveTimer = Timer.delay(self._keepalive, delay=delay)
         self.keepaliveTimeoutTimer = Timer.delay(
-            self._keepalive_timeout, delay=delay + 300
+            self._keepalive_timeout, delay=delay + KEEPALIVE_TIMEOUT
         )
         self.keepaliving = True
     async def _keepalive_timeout(self):
@@ -960,33 +976,23 @@ class Cluster:
             self.keepaliveTimeoutTimer.block()
         self.keepaliving = False
         logger.warn("Failed to keepalive! Reconnecting the main server...")
-        await self.reconnect()
+        await self.retry()
     async def _keepalive(self):
-        storages = stats.get_offset_storages()
-        for storage in storages:
-            if not self.connected:
-                return
-            await self.keepalive_lock.acquire()
-            if not self.connected:
-                return
-            self.cur_storage = storage
-            await self.emit(
-                    "keep-alive",
-                    {
-                        "time": int(time.time() * 1000),
-                        "hits": storage.object.get_total_hits() - storage.object.get_last_hits(),
-                        "bytes": storage.object.get_total_bytes() - storage.object.get_last_bytes(),
-                    },
-                )
-        if not storages:
-            await self.emit(
-                "keep-alive",
-                {
-                    "time": int(time.time() * 1000),
-                    "hits": 0,
-                    "bytes": 0,
-                },
-            )
+        self._cur_storages = stats.get_offset_storages().copy()
+        data = {
+            "hits":  0,
+            "bytes": 0
+        }
+        for storage in self._cur_storages:
+            data["hits"] += storage.sync_hits
+            data["bytes"] += storage.sync_bytes
+        await self.emit(
+            "keep-alive",
+            {
+                "time": int(time.time() * 1000),
+                **data
+            },
+        )
         self.keepaliving = False
         logger.debug("Next keep alive")
         await self.start_keepalive(60)

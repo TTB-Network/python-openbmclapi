@@ -1,6 +1,10 @@
 <div align="center">
 
-![](https://github.com/TTB-Network/python-openbmclapi/assets/113701655/5b554658-b057-4111-85c3-9d1eb5b32975)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://d.kstore.space/download/7507/logo_dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://d.kstore.space/download/7507/logo_light.svg">
+  <img alt="logo" src="https://d.kstore.space/download/7507/logo_light.svg" height=400>
+</picture>
 
 # OpenBMCLAPI for Python
 
@@ -87,8 +91,9 @@
     -v ${/path/to/your/cache}:/opt/python-openbmclapi/bmclapi \
     -e cluster.id=${cluster.id} \
     -e cluster.secret=${cluster.secret} \
-    -e web.public_port=${web.public_port} \
-    -p ${web.public_port}:8080 \
+    -e cluster.public_port=${cluster.public_port} \
+    -e web.ssl_port=${cluster.public_port}
+    -p ${cluster.public_port}:8080 \
     --restart always \
     --name python-openbmclapi \
     silianz/python-openbmclapi 

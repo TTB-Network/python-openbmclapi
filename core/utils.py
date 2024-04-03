@@ -1,6 +1,7 @@
 import asyncio
 import base64
 from dataclasses import asdict, dataclass, is_dataclass
+import datetime
 import hashlib
 import inspect
 import io
@@ -259,6 +260,16 @@ def parseObject(data: Any):
     elif is_dataclass(data):
         data = asdict(data)
     return data
+
+
+def parse_iso_time(text: str):
+    return datetime.datetime.fromisoformat(text)
+
+def parse_datetime_to_gmt(date: time.struct_time):
+    return f"{date.tm_year:04d}:{date.tm_mon:02d}:{date.tm_mday:02d} {date.tm_hour:02d}:{date.tm_min:02d}:{date.tm_sec:02d}"
+
+def parse_time_to_gmt(time_: float):
+    return parse_datetime_to_gmt(datetime.datetime.fromtimestamp(time_).utctimetuple())
 
 
 CONTENT_ACCEPT = Union[
