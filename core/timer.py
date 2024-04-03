@@ -56,20 +56,29 @@ class Task:
             ),
         )
         #logger.debug(f"The task <{self._get_function_name()}> is next called in {interval:.2f} seconds.")
-    async def run(self):
-        start = time.monotonic_ns()
+    async def _call_async(self):
         try:
             if inspect.iscoroutinefunction(self._handler):
-                self._task = asyncio.create_task(self._handler(*self._args, **self._kwargs))
+                await self._handler(*self._args, **self._kwargs)
             elif inspect.iscoroutine(self._handler):
-                self._task = asyncio.create_task(self._handler(*self._args, **self._kwargs))
+                await self._handler(*self._args, **self._kwargs)
+        except:
+            logger.error(traceback.format_exc())
+    def _call_sync(self):
+        try:
+            self._handler(*self._args, **self._kwargs)
+        except:
+            logger.error(traceback.format_exc())
+    async def run(self):
+        try:
+            if inspect.iscoroutinefunction(self._handler) or inspect.iscoroutine(self._handler):
+                self._task = asyncio.create_task(self._call_async())
             else:
                 self._task = await asyncio.get_event_loop().run_in_executor(
-                    None, lambda: self._handler(*self._args, **self._kwargs)
+                    None, self._call_sync
                 )
         except:
             logger.error(traceback.format_exc())
-        #logger.debug(f"The task <{self._get_function_name()}> takes {((time.monotonic_ns() - start) // 10000000.0):.2f} seconds to execute")
         self._run()
 
 def parse_filename(filename: str):

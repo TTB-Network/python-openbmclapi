@@ -157,7 +157,7 @@ async def _handle_process(client: Client, ssl: bool = False):
     except (
         TimeoutError,
         asyncio.exceptions.IncompleteReadError,
-        ConnectionResetError,
+        ConnectionResetError, OSError
     ):
         ...
     except:

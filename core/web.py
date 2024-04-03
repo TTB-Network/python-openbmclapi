@@ -91,7 +91,9 @@ class Cookie:
 
 class Route:
     def __init__(
-        self, path: str, method: Optional[str], handler: Callable[..., Coroutine]
+        self, path: str, method: Optional[str], handler: Callable[..., Coroutine],
+        access_logs: bool = True,
+        **kwargs
     ) -> None:
         self._path = path if path.startswith("/") else "/" + path
         self._params = path.count("{") == path.count("}") != 0
@@ -102,6 +104,8 @@ class Route:
             self.regexp: re.Pattern = re.compile(
                 rf"^{path.replace('{', '(?P<').replace('}', r'>[^/]*)')}$"
             )
+        self.access_logs = access_logs
+        self.kwargs = kwargs
 
     def is_params(self):
         return self._params
