@@ -1,6 +1,7 @@
 <div align="center">
 
-![](https://github.com/TTB-Network/python-openbmclapi/assets/113701655/5b554658-b057-4111-85c3-9d1eb5b32975)
+![](https://d.kstore.space/download/7507/logo_dark.svg#gh-dark-mode-only)
+![](https://d.kstore.space/download/7507/logo_light.svg#gh-light-mode-only)
 
 # OpenBMCLAPI for Python
 
