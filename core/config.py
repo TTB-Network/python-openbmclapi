@@ -16,7 +16,7 @@ defaults = {
     "cluster.timeout.keepalive": 300,
     "cluster.reconnect.delay": 5,
     "cluster.reconnect.retry": -1,
-    "cluster.sign_check": True,
+    "cluster.skip_sign": False,
     "file.check": "size",
     "cache.buffer": 536870912,
     "cache.time": 1800,
@@ -66,7 +66,7 @@ class CFG:
 
     def get(self, key: str, def_: Any = None) -> Any:
         value = os.environ.get(key, None) or self._get_value(self.cfg, key.split("."))
-        if value == None or value == "":
+        if value is None or value == "" and def_ is None:
             logger.warn(f"{key} is not set! Does it exist?")
             value = defaults[key] if key in defaults else def_
             self.set(key, value)

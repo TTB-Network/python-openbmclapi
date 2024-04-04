@@ -14,7 +14,7 @@ else:
 ROOT = os.getcwd()
 API_VERSION = "1.10.3"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
-BASE_URL = "https://openbmclapi.bangbang93.com/"
+BASE_URL = Config.get("cluster.url", "https://openbmclapi.bangbang93.com/")
 CLUSTER_ID: str = Config.get("cluster.id")
 CLUSTER_SECERT: str = Config.get("cluster.secret")
 IO_BUFFER: int = Config.get("advanced.io_buffer")

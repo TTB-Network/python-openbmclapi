@@ -38,10 +38,10 @@ class Task:
         else:
             logger.debug(f"The task <{self._get_function_name()}> is blocking.")
         self._blocked = True
-        if self._cur_task != None:
+        if self._cur_task is not None:
             self._cur_task.cancel()
             self._cur_task = None
-        if self._task != None:
+        if self._task is not None:
             self._task.cancel()
             self._task = None
     def _run(self):

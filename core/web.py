@@ -532,7 +532,7 @@ class Application:
                 access_logs = cur_route.access_logs
                 prefix = route.get_prefix()
                 break
-        if cur_route != None:
+        if cur_route is not None:
             handler = cur_route.handler
             url_params: dict[str, Any] = {}
             if cur_route.is_params():
@@ -631,7 +631,7 @@ class Application:
                 if request.url.startswith(resource.url):
                     result = await resource(request)
                     break
-        if result == None and cur_route == None:
+        if result is None and cur_route is None:
             result = (
                 ErrorResonse.not_found(request)
                 if method != "WebSocket"
@@ -811,7 +811,7 @@ class Response:
             self.content_type = "bytes"
         elif isinstance(self.content, io.BytesIO):
             content = self.content
-        elif response_configuration == None or response_configuration.length == None:
+        elif response_configuration is None or response_configuration.length is None:
             async for data in self._iter():
                 content.write(data)
         else:
@@ -864,7 +864,7 @@ class Response:
         if self._headers:
             headers = str(self._headers) + "\r\n"
         cookies = [
-            f"Set-Cookie: {cookie}" for cookie in self._cookies if cookie.name != None
+            f"Set-Cookie: {cookie}" for cookie in self._cookies if cookie.name is not None
         ]
         if cookies:
             cookie = "\r\n".join(cookies) + "\r\n"
@@ -1173,7 +1173,7 @@ class FormParse:
             buffer.append(chunk)
             while boundary in b"".join(buffer):
                 t = [t for t in (b"".join(buffer)).split(boundary) if t]
-                if temp_file != None:
+                if temp_file is not None:
                     process_part(boundary, files, fields, t[0], temp_file)
                     temp_file.seek(0)
                     temp_file = tempfile.TemporaryFile()
@@ -1182,7 +1182,7 @@ class FormParse:
                 buffer = [tm]
                 temp_file = tempfile.TemporaryFile()
                 process_part(boundary, files, fields, part, temp_file)
-            while len(buffer) >= 2 and temp_file != None:
+            while len(buffer) >= 2 and temp_file is not None:
                 temp_file.write(b"".join(buffer[:-1]))
                 buffer = buffer[-1:]
             await asyncio.sleep(0.001)

@@ -92,7 +92,7 @@ def serialize(data: Any):
         )
     elif is_dataclass(data):
         buf.write(serialize(asdict(data)).io.getvalue())
-    elif data == None:
+    elif data is None:
         buf.writeVarInt(6)
     return buf
 
