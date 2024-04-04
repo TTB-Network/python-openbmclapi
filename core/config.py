@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 import yaml
@@ -34,8 +35,13 @@ defaults = {
     "advanced.debug": False,
     "dashboard.username": "admin",
     "dashboard.password": "",
+    "storages": {
+        "bmclapi": {
+            "type": "file",
+            "path": "./bmclapi"
+        }
+    }
 }
-
 
 class CFG:
     def __init__(self, path: str) -> None:
@@ -88,6 +94,5 @@ class CFG:
                 dict_obj[key] = {}
             dict_obj = dict_obj[key]
         dict_obj[keys[-1]] = value
-
 
 Config: CFG = CFG("./config/config.yml")

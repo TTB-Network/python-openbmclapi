@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import os
 from pathlib import Path
 from core.config import Config
@@ -96,3 +97,22 @@ STATUS_CODES: dict[int, str] = {
 }
 REQUEST_TIME_UNITS = ["ns", "ms", "s", "m", "h"]
 FILECHECK = Config.get("file.check")
+STORAGES: list['StorageParse'] = []
+
+@dataclass
+class StorageParse:
+    name: str
+    type: str
+    path: str
+    kwargs: dict
+if Config.get("storages") is not None:
+    for name in Config.get("storages"):
+        storage = Config.get(f"storages.{name}")
+        STORAGES.append(
+            StorageParse(
+                name,
+                storage['type'],
+                storage['path'],
+                storage
+            )
+        )

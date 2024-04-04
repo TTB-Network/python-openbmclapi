@@ -1060,8 +1060,11 @@ async def init():
     for plugin in plugins.get_plugins():
         await plugin.init()
         await plugin.enable()
-    storages.add_storage(FileStorage(Path("bmclapi")))
-    #storages.add_storage(WebDav("admin", "123456", "http://127.0.0.1:5244/dav", "/bmclapi", "alist-06e39e3a-d195-44a1-8f8f-296928308922Z84AuS5ttoA7hAW1Wy0jT2N40xpUrA2WeHQrJVum1WcmVmy3bv92zB5NrWbOpp96"))
+    for storage in STORAGES:
+        if storage.type == "file":
+            storages.add_storage(FileStorage(Path(storage.path)))
+        elif storage.type == "webdav":
+            storages.add_storage(WebDav(storage.kwargs['username'], storage.kwargs['password'], storage.kwargs['endpoint'], storage.path, storage.kwargs.get("token", None)))
     Timer.delay(cluster.init)
     app = web.app
 
