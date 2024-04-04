@@ -16,6 +16,7 @@ defaults = {
     "cluster.reconnect.delay": 5,
     "cluster.reconnect.retry": -1,
     "cluster.sign_check": True,
+    "file.check": "size",
     "cache.buffer": 536870912,
     "cache.time": 1800,
     "cache.check": 360,

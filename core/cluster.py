@@ -253,6 +253,10 @@ class FileCheck:
         self.checked = False
         self.downloader = downloader
         self.check_type = FileCheckType.EXISTS
+        if FILECHECK == "size":
+            self.check_type = FileCheckType.SIZE
+        elif FILECHECK == "hash":
+            self.check_type = FileCheckType.HASH
         self.files = []
         self.pbar: Optional[tqdm] = None
         self.check_files_timer: Optional[Task] = None
