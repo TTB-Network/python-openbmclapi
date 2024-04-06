@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import os
 from pathlib import Path
 from core.config import Config
@@ -13,7 +14,7 @@ else:
 ROOT = os.getcwd()
 API_VERSION = "1.10.3"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
-BASE_URL = "https://openbmclapi.bangbang93.com/"
+BASE_URL = Config.get("cluster.url", "https://openbmclapi.bangbang93.com/")
 CLUSTER_ID: str = Config.get("cluster.id")
 CLUSTER_SECERT: str = Config.get("cluster.secret")
 IO_BUFFER: int = Config.get("advanced.io_buffer")
@@ -95,3 +96,23 @@ STATUS_CODES: dict[int, str] = {
     505: "HTTP Version not supported",
 }
 REQUEST_TIME_UNITS = ["ns", "ms", "s", "m", "h"]
+FILECHECK = Config.get("file.check")
+STORAGES: list['StorageParse'] = []
+
+@dataclass
+class StorageParse:
+    name: str
+    type: str
+    path: str
+    kwargs: dict
+if Config.get("storages") is not None:
+    for name in Config.get("storages"):
+        storage = Config.get(f"storages.{name}")
+        STORAGES.append(
+            StorageParse(
+                name,
+                storage['type'],
+                storage['path'],
+                storage
+            )
+        )

@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 import yaml
@@ -15,6 +16,7 @@ defaults = {
     "cluster.reconnect.delay": 5,
     "cluster.reconnect.retry": -1,
     "cluster.skip_sign": False,
+    "cluster.file_check_mode": "size",
     "cache.buffer": 536870912,
     "cache.time": 1800,
     "cache.check": 360,
@@ -33,8 +35,13 @@ defaults = {
     "advanced.language": "zh_cn",
     "dashboard.username": "admin",
     "dashboard.password": "123456",
+    "storages": {
+        "bmclapi": {
+            "type": "file",
+            "path": "./bmclapi"
+        }
+    }
 }
-
 
 class CFG:
     def __init__(self, path: str) -> None:

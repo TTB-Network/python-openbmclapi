@@ -491,9 +491,9 @@ class Application:
         self._resources: list[Resource] = []
         self._ws: dict[str, list[WebSocket]] = {}
 
-    def route(self, path: str, method):
+    def route(self, path: str, method, **kwargs):
         def decorator(f):
-            self._add_route(Route(path, method, f))
+            self._add_route(Route(path, method, f, **kwargs))
             return f
 
         return decorator
@@ -501,19 +501,20 @@ class Application:
     def _add_route(self, route: Route):
         self._routes[0].add(route)
 
-    def get(self, path):
-        return self.route(path, "GET")
+    def get(self, path, **kwargs):
+        return self.route(path, "GET", kwargs=kwargs)
 
-    def post(self, path):
-        return self.route(path, "POST")
+    def post(self, path, **kwargs):
+        return self.route(path, "POST", kwargs=kwargs)
 
-    def websocket(self, path):
-        return self.route(path, "WebSocket")
+    def websocket(self, path, **kwargs):
+        return self.route(path, "WebSocket", kwargs=kwargs)
 
     def redirect(self, path: str, redirect_to: str):
         return self._routes[0].redierct(path, redirect_to)
 
     async def handle(self, request: "Request"):
+        access_logs = True
         url = request.get_url()
         redirect = None
         for route in self._routes:
@@ -529,9 +530,10 @@ class Application:
         for route in self._routes:
             cur_route = route.get_route(method, url)
             if cur_route:
+                access_logs = cur_route.access_logs
                 prefix = route.get_prefix()
                 break
-        if cur_route != None:
+        if cur_route is not None:
             handler = cur_route.handler
             url_params: dict[str, Any] = {}
             if cur_route.is_params():
@@ -608,6 +610,7 @@ class Application:
                         }
                     ),
                     status_code=101,
+                    access_logs = access_logs
                 )
                 ws.start()
                 if request.get_url() not in self._ws:
@@ -629,7 +632,7 @@ class Application:
                 if request.url.startswith(resource.url):
                     result = await resource(request)
                     break
-        if result == None and cur_route == None:
+        if result is None and cur_route is None:
             result = (
                 ErrorResonse.not_found(request)
                 if method != "WebSocket"
@@ -638,6 +641,7 @@ class Application:
         yield Response(
             content=result or "",
             headers=Header({"Server": Config.get("web.server_name")}),
+            access_logs = access_logs
         )
 
     def mount(self, router: Router):
@@ -723,6 +727,7 @@ class Response:
         content_type: Optional[str] = None,
         compress=None,
         status_code: int = 200,
+        **kwargs
     ) -> None:
         self.status_code = status_code
         self.content: CONTENT_ACCEPT = content
@@ -730,6 +735,7 @@ class Response:
         self._cookies = cookies
         self.content_type = content_type
         self._compress = compress
+        self._kwargs = kwargs
 
     def set_headers(self, header: Header | dict[str, Any]):
         self._headers.update(header)
@@ -783,6 +789,7 @@ class Response:
             self.content_type = self.content.content_type
             self._headers = self.content._headers
             self._cookies = self.content._cookies
+            self._kwargs = self.content._kwargs
             self.content = self.content.content
         if isinstance(self.content, (Coroutine, Response)):
             await self.raw()
@@ -805,7 +812,7 @@ class Response:
             self.content_type = "bytes"
         elif isinstance(self.content, io.BytesIO):
             content = self.content
-        elif response_configuration == None or response_configuration.length == None:
+        elif response_configuration is None or response_configuration.length is None:
             async for data in self._iter():
                 content.write(data)
         else:
@@ -858,7 +865,7 @@ class Response:
         if self._headers:
             headers = str(self._headers) + "\r\n"
         cookies = [
-            f"Set-Cookie: {cookie}" for cookie in self._cookies if cookie.name != None
+            f"Set-Cookie: {cookie}" for cookie in self._cookies if cookie.name is not None
         ]
         if cookies:
             cookie = "\r\n".join(cookies) + "\r\n"
@@ -1167,7 +1174,7 @@ class FormParse:
             buffer.append(chunk)
             while boundary in b"".join(buffer):
                 t = [t for t in (b"".join(buffer)).split(boundary) if t]
-                if temp_file != None:
+                if temp_file is not None:
                     process_part(boundary, files, fields, t[0], temp_file)
                     temp_file.seek(0)
                     temp_file = tempfile.TemporaryFile()
@@ -1176,7 +1183,7 @@ class FormParse:
                 buffer = [tm]
                 temp_file = tempfile.TemporaryFile()
                 process_part(boundary, files, fields, part, temp_file)
-            while len(buffer) >= 2 and temp_file != None:
+            while len(buffer) >= 2 and temp_file is not None:
                 temp_file.write(b"".join(buffer[:-1]))
                 buffer = buffer[-1:]
             await asyncio.sleep(0.001)
@@ -1233,17 +1240,18 @@ async def handle(data, client: Client):
             await resp(request, client)
             if not log:
                 log = True
-                logger.info(
-                    request.get_request_time(),
-                    "|",
-                    (await request.get_method()).ljust(9),
-                    request.get_status_code(),
-                    "|",
-                    request.get_ip().ljust(16),
-                    "|",
-                    request.url,
-                    request.get_user_agent(),
-                )
+                if resp._kwargs.get("access_logs", True):
+                    logger.info(
+                        request.get_request_time(),
+                        "|",
+                        (await request.get_method()).ljust(9),
+                        request.get_status_code(),
+                        "|",
+                        request.get_ip().ljust(16),
+                        "|",
+                        request.url,
+                        request.get_user_agent(),
+                    )
         await request.skip()
         request.client.set_log_network(None)
     except TimeoutError:
