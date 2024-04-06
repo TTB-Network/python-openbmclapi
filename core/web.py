@@ -845,6 +845,12 @@ class Response:
             )
             self.status_code = 206 if start_bytes > 0 else 200
             length = length - start_bytes
+        if isinstance(content, io.BytesIO) and len(content.getbuffer()) != 0:
+            self.content_type = self.content_type or self._get_content_type(content)
+            compression: Compressor = compressor(await request.get_headers("Accept-Encoding", ""), content.getbuffer()[start_bytes:length])
+            if compression.type is None:
+                content = compression.data
+            content = compression
         self.set_headers(
             {
                 **RESPONSE_HEADERS,
@@ -860,6 +866,14 @@ class Response:
                 "Content-Type": self.content_type or self._get_content_type(content),
             }
         )
+        if isinstance(content, Compressor):
+            print()
+            self.set_headers(
+                {
+                    "Content-Encoding": compression.type,
+                    "Content-Length": len(compression.data),
+                }
+            )
         headers, cookie = "", ""
         if self._headers:
             headers = str(self._headers) + "\r\n"
@@ -874,7 +888,10 @@ class Response:
         )
         client.write(header)
         if length != 0:
-            if isinstance(content, io.BytesIO):
+            if isinstance(content, Compressor):
+                client.write(content.data)
+                await client.writer.drain()
+            elif isinstance(content, io.BytesIO):
                 client.write(content.getbuffer()[start_bytes:length])
                 await client.writer.drain()
             elif isinstance(content, Path):
@@ -1224,6 +1241,20 @@ class Statistics:
 
     def get_all_qps(self):
         return self.qps.copy()
+
+
+@dataclass
+class Compressor:
+    type: Optional[str]
+    data: io.BytesIO
+
+def compressor(header: str, data: io.BytesIO | bytes | memoryview) -> Compressor:
+    if isinstance(data, io.BytesIO):
+        data = data.getbuffer()
+    for key, compressor in COMPRESSOR.items():
+        if key in header:
+            return Compressor(key, compressor(data))
+    return Compressor(None, data)
 
 
 statistics: Statistics = Statistics()

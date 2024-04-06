@@ -1,6 +1,11 @@
 from dataclasses import dataclass
+import gzip
 import os
 from pathlib import Path
+from typing import Any
+import zlib
+
+import pyzstd
 from core.config import Config
 
 VERSION = ""
@@ -99,6 +104,11 @@ STATUS_CODES: dict[int, str] = {
 REQUEST_TIME_UNITS = ["ns", "ms", "s", "m", "h"]
 FILECHECK = Config.get("file.check")
 STORAGES: list['StorageParse'] = []
+COMPRESSOR: dict[str, Any] = {
+    "zstd": pyzstd.compress,
+    "gzip": gzip.compress,
+    "deflate": zlib.compress
+}
 
 @dataclass
 class StorageParse:

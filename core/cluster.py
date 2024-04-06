@@ -1097,11 +1097,11 @@ class Cluster:
         await self.start_keepalive(60)
 
     async def disable(self):
-        if self.sio.connected:
+        if self.sio.connected and self.connected:
             await self.emit("disable")
             logger.info("Disconnected from the main server...")
-            if token.token_expires <= time.time():
-                await self.sio.disconnect()
+        if self.sio.connected and token.token_expires <= time.time():
+            await self.sio.disconnect()
         await dashboard.set_status("已下线")
 
     async def get_cache_stats(self) -> StatsCache:
@@ -1244,13 +1244,16 @@ async def init():
     async def _(request: web.Request, hash: str):
         return Path(f"./bmclapi/{hash[:2]}/{hash}")
         
-
-    router: web.Router = web.Router("/bmcl")
     dir = Path("./bmclapi_dashboard/")
     dir.mkdir(exist_ok=True, parents=True)
-    app.mount_resource(web.Resource("/bmcl", dir, show_dir=False))
+    app.mount_resource(web.Resource("/", dir, show_dir=False))
 
-    @router.websocket("/")
+    @app.get("/dashboard/{name}/{sub}")
+    @app.get("/dashboard/{name}")
+    async def _(request: web.Request, name: str, sub: str = ""):
+        return Path(f"./bmclapi_dashboard/index.html")
+
+    @app.websocket("/")
     async def _(request: web.Request, ws: web.WebSocket):
         auth_cookie = (await request.get_cookies()).get("auth") or None
         auth = dashboard.token_isvaild(auth_cookie.value if auth_cookie else None)
@@ -1272,7 +1275,7 @@ async def init():
                 ).io.getbuffer()
             )
 
-    @router.get("/auth")
+    @app.get("/auth")
     async def _(request: web.Request):
         auth = (await request.get_headers("Authorization")).split(" ", 1)[1]
         try:
@@ -1290,32 +1293,8 @@ async def init():
             cookies=[web.Cookie("auth", token.value, expires=int(time.time() + 86400))],
         )
 
-    @router.get("/measure")
-    async def _(
-        request: web.Request, config: web.ResponseConfiguration, size: int = 32
-    ):
-        auth_cookie = (await request.get_cookies()).get("auth") or None
-        auth = dashboard.token_isvaild(auth_cookie.value if auth_cookie else None)
-        if not auth:
-            yield b""
-            return
-        config.length = size * 1024 * 1024
-        for _ in range(min(1024, max(0, size))):
-            yield b"\x00" * 1024 * 1024
 
-    @router.post("/measure")
-    async def _(
-        request: web.Request, config: web.ResponseConfiguration, size: int = 32
-    ):
-        auth_cookie = (await request.get_cookies()).get("auth") or None
-        auth = dashboard.token_isvaild(auth_cookie.value if auth_cookie else None)
-        if not auth:
-            return web.Response(status_code=401)
-        if auth:
-            print(await request.get_headers("Content-Length"))
-            await request.skip()
-
-    @router.post("/api/{name}")
+    @app.post("/api/{name}")
     async def _(request: web.Request, name: str):
         if name == "auth":
             auth_cookie = (await request.get_cookies()).get("auth") or None
@@ -1333,9 +1312,7 @@ async def init():
             ...
         return await dashboard.process(name, data.get("content"))
 
-    app.mount(router)
-    app.redirect("/bmcl", "/bmcl/")
-
+    app.redirect("/", "/dashboard/")
 
 async def close():
     global cluster
