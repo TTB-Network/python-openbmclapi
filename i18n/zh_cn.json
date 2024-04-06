@@ -39,7 +39,7 @@
   "cluster.warn.cluster.disabled": "已关闭节点。",
   "cluster.error.cluster.reached_maximum_retry_count": "重试次数已到达 $count 次，已关闭节点。",
   "cluster.info.cluster.retry": "将在 $t 秒后重试。",
-  "cluster.info.cluster.storage_count": "当前总计有 $total 个储存，$local 个本地储存，$webdab 个 WebDav 储存。",
+  "cluster.info.cluster.storage_count": "当前总计有 $total 个储存，$local 个本地储存，$webdav 个 WebDav 储存。",
   "cluster.error.cluster.failed_to_start_service": "无法启动服务：$e",
   "cluster.success.cluster.connected_to_center_server": "成功连接至主控，启动服务中……",
   "cluster.info.cluster.hosting": "服务器已在 $id.openbmclapi.933.moe:$port 开放。",
