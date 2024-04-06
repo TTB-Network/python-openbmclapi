@@ -283,7 +283,7 @@ class FileCheck:
         self.pbar: Optional[tqdm] = None
         self.check_files_timer: Optional[Task] = None
         logger.info(
-            locale.t("cluster.info.check.check_type", type=self.check_type.name)
+            locale.t("cluster.info.check_files.check_type", type=self.check_type.name)
         )
 
     def start_task(self):
@@ -301,7 +301,7 @@ class FileCheck:
         if not self.checked:
             await dashboard.set_status("正在检查缺失文件")
         if not files:
-            logger.warn(locale.t("cluster.warn.check.skipped"))
+            logger.warn(locale.t("cluster.warn.check_files.skipped"))
             self.start_task()
             return
         with tqdm(
@@ -367,7 +367,7 @@ class FileCheck:
                         if removed != (total := len(filelist)):
                             logger.warn(
                                 locale.t(
-                                    "cluster.warn.check.failed",
+                                    "cluster.warn.check_files.failed",
                                     cur=removed,
                                     total=total,
                                 )
@@ -419,9 +419,7 @@ class FileCheck:
             file_size = unit.format_bytes(
                 sum(file.size for file in files) * len(storages.get_storages())
             )
-            logger.success(
-                "cluster.success.check_files.finished", count=file_count, size=file_size
-            )
+            logger.success(locale.t("cluster.success.check.finished", count=file_count, size=file_size))
         else:
             logger.info(
                 locale.t(
