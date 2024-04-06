@@ -5,15 +5,16 @@ from core.config import Config
 
 lang = Config.get("advanced.language")
 
+
 class Locale:
     def __init__(self, lang: str):
         self.path = Path(f"./i18n/{lang}.json")
         self.data = {}
         self.load()
-    
+
     def __getitem__(self, key: str):
         return self.data[key]
-    
+
     def __contains__(self, key: str):
         return key in self.data
 
@@ -34,5 +35,6 @@ class Locale:
     def t(self, key: str, failed_prompt=True, *args, **kwargs):
         localized = self.get_string(key, failed_prompt)
         return Template(localized).safe_substitute(*args, **kwargs)
+
 
 locale: Locale = Locale(lang)

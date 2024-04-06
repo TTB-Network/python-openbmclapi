@@ -35,13 +35,9 @@ defaults = {
     "advanced.language": "zh_cn",
     "dashboard.username": "admin",
     "dashboard.password": "123456",
-    "storages": {
-        "bmclapi": {
-            "type": "file",
-            "path": "./bmclapi"
-        }
-    }
+    "storages": {"bmclapi": {"type": "file", "path": "./bmclapi"}},
 }
+
 
 class CFG:
     def __init__(self, path: str) -> None:
@@ -88,5 +84,6 @@ class CFG:
                 dict_obj[key] = {}
             dict_obj = dict_obj[key]
         dict_obj[keys[-1]] = value
+
 
 Config: CFG = CFG("./config/config.yml")

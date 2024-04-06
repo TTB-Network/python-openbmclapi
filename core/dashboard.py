@@ -16,6 +16,7 @@ from core.timer import Task
 
 from core.const import *
 
+
 @dataclass
 class Token:
     value: str
@@ -29,6 +30,7 @@ class StorageInfo:
     endpoint: str
     size: int
     free: int
+
 
 last_status = ""
 last_text = ""
@@ -142,12 +144,7 @@ async def process(type: str, data: Any):
         for storage in cluster.storages.get_storages():
             if isinstance(storage, cluster.FileStorage):
                 data.append(
-                    StorageInfo(
-                        storage.get_name(),
-                        "file",
-                        str(storage.dir),
-                        -1, -1
-                    )
+                    StorageInfo(storage.get_name(), "file", str(storage.dir), -1, -1)
                 )
             elif isinstance(storage, cluster.WebDav):
                 data.append(
@@ -155,7 +152,8 @@ async def process(type: str, data: Any):
                         storage.get_name(),
                         "webdav",
                         storage.hostname + storage.endpoint,
-                        -1, -1
+                        -1,
+                        -1,
                     )
                 )
         return data

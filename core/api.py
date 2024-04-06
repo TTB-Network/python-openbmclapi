@@ -49,7 +49,7 @@ class File:
     expiry: Optional[float] = None
     data: Optional[io.BytesIO] = None
     cache: bool = False
-    headers: Optional['web.Header'] = None
+    headers: Optional["web.Header"] = None
 
     def is_url(self):
         if not isinstance(self.path, str):
@@ -80,8 +80,10 @@ class Storage(metaclass=abc.ABCMeta):
     def __init__(self, name) -> None:
         self.name = name
         self.disabled = False
+
     def get_name(self):
         return self.name
+
     @abc.abstractmethod
     async def get(self, file: str, offset: int = 0) -> File:
         """

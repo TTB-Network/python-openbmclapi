@@ -28,7 +28,7 @@ RECONNECT_DELAY: bool = Config.get("cluster.reconnect.delay")
 RECONNECT_RETRY: bool = Config.get("cluster.reconnect.retry")
 ENABLE_TIMEOUT: bool = Config.get("cluster.timeout.enable")
 KEEPALIVE_TIMEOUT: bool = Config.get("cluster.timeout.keepalive")
-CACHE_BUFFER: int = Config.get("cache.buffer") # bytes
+CACHE_BUFFER: int = Config.get("cache.buffer")  # bytes
 CACHE_TIME: int = Config.get("cache.time")
 CHECK_CACHE: int = Config.get("cache.check")
 SIGN_SKIP: bool = Config.get("cluster.skip_sign")
@@ -97,7 +97,8 @@ STATUS_CODES: dict[int, str] = {
 }
 REQUEST_TIME_UNITS = ["ns", "ms", "s", "m", "h"]
 FILECHECK = Config.get("clueset.file_check_mode")
-STORAGES: list['StorageParse'] = []
+STORAGES: list["StorageParse"] = []
+
 
 @dataclass
 class StorageParse:
@@ -105,14 +106,9 @@ class StorageParse:
     type: str
     path: str
     kwargs: dict
+
+
 if Config.get("storages") is not None:
     for name in Config.get("storages"):
         storage = Config.get(f"storages.{name}")
-        STORAGES.append(
-            StorageParse(
-                name,
-                storage['type'],
-                storage['path'],
-                storage
-            )
-        )
+        STORAGES.append(StorageParse(name, storage["type"], storage["path"], storage))

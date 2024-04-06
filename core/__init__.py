@@ -38,8 +38,12 @@ class ProxyClient:
     closed: bool = False
 
     def start(self):
-        self._task_origin = Timer.delay(self.process_origin,)
-        self._task_target = Timer.delay(self.process_target,)
+        self._task_origin = Timer.delay(
+            self.process_origin,
+        )
+        self._task_target = Timer.delay(
+            self.process_target,
+        )
 
     async def process_origin(self):
         try:
@@ -157,7 +161,8 @@ async def _handle_process(client: Client, ssl: bool = False):
     except (
         TimeoutError,
         asyncio.exceptions.IncompleteReadError,
-        ConnectionResetError, OSError
+        ConnectionResetError,
+        OSError,
     ):
         ...
     except:
@@ -186,9 +191,9 @@ async def check_ports():
                             asyncio.open_connection(
                                 "127.0.0.1",
                                 port[0].sockets[0].getsockname()[1],
-                                ssl=port[1]
+                                ssl=port[1],
                             ),
-                            timeout = 5
+                            timeout=5,
                         )
                     )
                 )
@@ -196,7 +201,12 @@ async def check_ports():
                 await client.writer.drain()
                 key = await client.read(len(check_port_key), 5)
             except:
-                logger.warn(locale.t("core.warn.port_closed", port=port[0].sockets[0].getsockname()[1]))
+                logger.warn(
+                    locale.t(
+                        "core.warn.port_closed",
+                        port=port[0].sockets[0].getsockname()[1],
+                    )
+                )
                 logger.error(traceback.format_exc())
                 closed = True
         if closed:
@@ -221,7 +231,12 @@ async def main():
                 ssl=server_side_ssl if get_loaded() else None,
             )
             logger.info(locale.t("core.info.listening", port=PORT))
-            logger.info(locale.t("core.info.listening_ssl", port=ssl_server.sockets[0].getsockname()[1]))
+            logger.info(
+                locale.t(
+                    "core.info.listening_ssl",
+                    port=ssl_server.sockets[0].getsockname()[1],
+                )
+            )
             async with server, ssl_server:
                 await asyncio.gather(server.serve_forever(), ssl_server.serve_forever())
         except asyncio.CancelledError:

@@ -70,7 +70,14 @@ def load_plugins():
             logger.debug(locale.t("plugins.debug.loading", name=load))
             try:
                 plugin = Plugin(importlib.import_module("plugins." + load))
-                logger.info(locale.t("plugins.success.loaded", name=plugin.get_name(), version=plugin.get_version(), author=plugin.get_author()))
+                logger.info(
+                    locale.t(
+                        "plugins.success.loaded",
+                        name=plugin.get_name(),
+                        version=plugin.get_version(),
+                        author=plugin.get_author(),
+                    )
+                )
                 plugins.append(plugin)
             except:
                 logger.error(traceback.format_exc())
