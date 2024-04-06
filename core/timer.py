@@ -3,9 +3,10 @@ import inspect
 import os
 import time
 import traceback
-from typing import Any, Callable, Optional, Coroutine
+from typing import Any, Callable, Optional
 from core.logger import logger as log
 from core.const import *
+from core.i18n import locale
 
 logger = log.depth(2)
 
@@ -34,9 +35,9 @@ class Task:
         return self._frame_name
     def block(self):
         if self._blocked:
-            logger.debug(f"The task <{self._get_function_name()}> is blocked.")
+            logger.debug(locale.t("timer.info.task.freezed", task=self._get_function_name()))
         else:
-            logger.debug(f"The task <{self._get_function_name()}> is blocking.")
+            logger.debug(locale.t("timer.info.task.freezing", task=self._get_function_name()))
         self._blocked = True
         if self._cur_task is not None:
             self._cur_task.cancel()

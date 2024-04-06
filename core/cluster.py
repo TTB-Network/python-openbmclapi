@@ -96,9 +96,9 @@ class ParseFileList:
         self.files = []
         with tqdm(
             total=self.read_long(),
-            desc="Parsing Filelist",
+            desc=locale.t("cluster.tqdm.desc.parsing_file_list"),
             unit_scale=True,
-            unit=" file(s)",
+            unit=locale.t("cluster.tqdm.unit.file"),
         ) as pbar:
             for _ in range(pbar.total):
                 self.files.append(
@@ -813,12 +813,12 @@ class Cluster:
         self._retry = 0
 
     def _message(self, message):
-        logger.info(locale.t("cluster.info.remote_message", message=message))
+        logger.info(locale.t("cluster.info.cluster.remote_message", message=message))
         if "信任度过低" in message:
             self.trusted = False
 
     def _exception(self, message):
-        logger.error(locale.t("cluster.error.remote_message", message=message))
+        logger.error(locale.t("cluster.error.cluster.remote_message", message=message))
 
     async def emit(self, channel, data=None):
         await self.sio.emit(
@@ -834,7 +834,7 @@ class Cluster:
                     transports=["websocket"],
                 )
             except:
-                logger.warn(locale.t("cluster.warn.failed_to_connect"))
+                logger.warn(locale.t("cluster.warn.cluster.failed_to_connect"))
                 Timer.delay(self.init, delay=5)
                 return
         await self.start()
@@ -842,7 +842,7 @@ class Cluster:
     async def start(self):
         await self.cert()
         if len(storages.get_storages()) == 0:
-            logger.warn("There is currently no Storage, the enabled nodes are blocked.")
+            logger.warn(locale.t("cluster.warn.cluster.no_storage"))
             return
         await self.start_storage()
 
@@ -850,11 +850,12 @@ class Cluster:
         if len(storages.get_storages()) == 0:
             if self.connected:
                 self.disable()
-            logger.warn("There is currently no Storage, the enabled nodes are blocked.")
+            logger.warn(locale.t("cluster.warn.cluster.no_storage"))
             return
         start = time.time()
         await self.file_check()
-        logger.success(f"File check completed, time: {time.time() - start:.2f}s")
+        t = "%.2f" % start
+        logger.success(locale.t("cluster.success.cluster.finished_file_check", time=t))
         if not self.connected:
             await self.enable()
 
@@ -863,12 +864,10 @@ class Cluster:
 
     async def enable(self):
         if self.connected:
-            logger.debug(
-                "Still trying to enable cluster? You has been blocked. (\nFrom bangbang93:\n 谁他妈\n 一秒钟发了好几百个enable请求\n ban了解一下等我回杭州再看\n ban了先\n\n > Timestamp at 2024/3/30 14:07 GMT+8\n)"
-            )
+            logger.debug(locale.t("cluster.debug.cluster.blocked"))
             return
         if not ENABLE:
-            logger.warn("Disabled cluster.")
+            logger.warn(locale.t("cluster.warn.cluster.disabled"))
             return
         self.connected = True
         if self._enable_timer is not None:
@@ -878,23 +877,19 @@ class Cluster:
 
     async def retry(self):
         if RECONNECT_RETRY != -1 and self._retry >= RECONNECT_RETRY:
-            logger.error(
-                f"The number of retries has reached {RECONNECT_RETRY} and the enabled node has been disabled"
-            )
+            logger.error(locale.t("cluster.error.cluster.reached_maximum_retry_count", count=RECONNECT_RETRY))
             return
         if self.connected:
             await self.disable()
             self.connected = False
         self._retry += 1
-        logger.info(f"Retrying after {RECONNECT_DELAY}s.")
+        logger.info(locale.t("cluster.info.cluster.retry", t=RECONNECT_DELAY))
         await asyncio.sleep(RECONNECT_DELAY)
         await self.enable()
 
     async def _enable(self):
         if not ENABLE:
-            logger.warn(
-                "Disabled cluster."
-            )
+            logger.warn(locale.t("cluster.warn.cluster.disabled"))
             return
         storage_str = {"file": 0, "webdav": 0}
         self.trusted = True
@@ -903,9 +898,7 @@ class Cluster:
                 storage_str["file"] += 1
             elif isinstance(storage, WebDav):
                 storage_str["webdav"] += 1
-        logger.info(
-            f"Total {len(storages.get_storages())} storage ({storage_str['file']} Local Storage, {storage_str['webdav']} Webdav Storage)."
-        )
+        logger.info(locale.t("cluster.info.cluster.storage_count", total=len(storages.get_storages()), local=storage_str['file'], webdav=storage_str['webdav']))
         await self.emit(
             "enable",
             {
@@ -941,27 +934,25 @@ class Cluster:
                 self._enable_timer.block()
                 self._enable_timer = None
             if err:
-                logger.error(f"Unable to start service: {err['message']}.")
+                logger.error(locale.t("cluster.error.cluster.failed_to_start_service", e=err['message']))
                 await self.retry()
                 return
             self._retry = 0
             self.connected = True
-            logger.success(f"Connected to the main server! Starting service...")
-            logger.info(
-                f"Hosting on {CLUSTER_ID}.openbmclapi.933.moe:{PUBLIC_PORT or PORT}."
-            )
+            logger.success(locale.t("cluster.success.cluster.connected_to_center_server"))
+            logger.info(locale.t("cluster.info.cluster.hosting", id=CLUSTER_ID, port=PUBLIC_PORT or PORT))
             await self.start_keepalive()
             await dashboard.set_status(
                 "正常工作" + ("" if self.trusted else "（节点信任度过低）")
             )
         elif type == "keep-alive":
             if err:
-                logger.error(f"Unable to keep alive! Reconnecting...")
+                logger.error(locale.t("cluster.error.cluster.keepalive_failed"))
                 await self.retry()
                 return
             if not ack:
                 await self.emit("disable")
-                logger.warn("The cluster is kicked by server.")
+                logger.warn(locale.t("cluster.warn.cluster.kicked"))
                 return
             storage_data = {"hits": 0, "bytes": 0}
             for storage in self._cur_storages:
@@ -997,7 +988,7 @@ class Cluster:
         if self.keepaliveTimeoutTimer is not None:
             self.keepaliveTimeoutTimer.block()
         self.keepaliving = False
-        logger.warn("Failed to keepalive! Reconnecting the main server...")
+        logger.warn(locale.t("cluster.error.cluster.keepalive_failed"))
         await self.retry()
 
     async def _keepalive(self):
@@ -1011,13 +1002,13 @@ class Cluster:
             {"time": int(time.time() * 1000), **data},
         )
         self.keepaliving = False
-        logger.debug("Next keep alive")
+        logger.debug(locale.t("cluster.info.cluster.next_keepalive"))
         await self.start_keepalive(60)
 
     async def disable(self):
         if self.sio.connected:
             await self.emit("disable")
-            logger.info("Disconnected from the main server...")
+            logger.info(locale.t("cluster.info.cluster.disconnecting"))
         await dashboard.set_status("已下线")
 
     async def get_cache_stats(self) -> StatsCache:
@@ -1041,7 +1032,7 @@ async def check_update():
     global fetched_version
     fetched_version = "Unknown"
     async with aiohttp.ClientSession(base_url=github_api) as session:
-        logger.info("Checking update...")
+        logger.info(locale.t("cluster.info.check_update.checking"))
         try:
             async with session.get(
                 "/repos/TTB-Network/python-openbmclapi/releases/latest"
@@ -1050,12 +1041,12 @@ async def check_update():
                 data = await req.json()
                 fetched_version = data["tag_name"]
             if fetched_version != VERSION:
-                logger.success(f"New version found: {fetched_version}!")
+                logger.success(locale.t("cluster.success.check_update.new_version", latest=fetched_version))
                 await dashboard.trigger("version")
             else:
-                logger.info(f"Already up to date.")
+                logger.info(locale.t("cluster.info.check_update.already_up_to_date"))
         except aiohttp.ClientError as e:
-            logger.error(f"An error occured whilst checking update: {e}.")
+            logger.error(locale.t("cluster.error.check_update.failed", e=e))
     Timer.delay(check_update, delay=3600)
 
 

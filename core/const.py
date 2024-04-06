@@ -96,7 +96,7 @@ STATUS_CODES: dict[int, str] = {
     505: "HTTP Version not supported",
 }
 REQUEST_TIME_UNITS = ["ns", "ms", "s", "m", "h"]
-FILECHECK = Config.get("file.check")
+FILECHECK = Config.get("clueset.file_check_mode")
 STORAGES: list['StorageParse'] = []
 
 @dataclass

@@ -196,9 +196,7 @@ async def check_ports():
                 await client.writer.drain()
                 key = await client.read(len(check_port_key), 5)
             except:
-                logger.warn(
-                    f"Port {port[0].sockets[0].getsockname()[1]} has been closed! Reopening..."
-                )
+                logger.warn(locale.t("core.warn.port_closed", port=port[0].sockets[0].getsockname()[1]))
                 logger.error(traceback.format_exc())
                 closed = True
         if closed:
@@ -222,10 +220,8 @@ async def main():
                 port=0 if SSL_PORT == PORT else SSL_PORT,
                 ssl=server_side_ssl if get_loaded() else None,
             )
-            logger.info(f"Listening server on port {PORT}.")
-            logger.info(
-                f"Listening SSL server on {ssl_server.sockets[0].getsockname()[1]}."
-            )
+            logger.info(locale.t("core.info.listening", port=PORT))
+            logger.info(locale.t("core.info.listening_ssl", port=ssl_server.sockets[0].getsockname()[1]))
             async with server, ssl_server:
                 await asyncio.gather(server.serve_forever(), ssl_server.serve_forever())
         except asyncio.CancelledError:
@@ -240,7 +236,7 @@ async def main():
             logger.error(traceback.format_exc())
             await asyncio.sleep(2)
     await close()
-    logger.info("Shutting down web service...")
+    logger.info(locale.t("core.info.shutting_down_web_service"))
     os.environ["ASYNCIO_STARTUP"] = str(0)
     os.kill(os.getpid(), signal.SIGINT)
 

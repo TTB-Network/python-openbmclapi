@@ -23,11 +23,9 @@
 
 ✨ **Docker** 支持。通过 Docker 更加**快捷地**部署 python-openbmclapi ~~（更支持一键跑路）~~
 
-🌈 __*新增功能！*__ **插件拓展**支持。你可以更方便地为 python-openbmclapi 编写自己的插件。
+🎉 __*新增功能！*__ WebDav 支持（实验性）。
 
-🎉 __*新增功能！*__ 基于 Echart 的 OpenBMCLAPI 仪表盘（Dashboard）。
-
-🎉 __*新增功能！*__ 基于 loguru 的**日志器**。
+🎉 __*新增功能！*__ 多语言支持（实验性）。
 
 </div>
 

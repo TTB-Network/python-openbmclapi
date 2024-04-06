@@ -11,7 +11,6 @@ from tqdm import tqdm
 from core import stats, system, unit, utils, web
 from core import cluster
 from core.api import StatsCache
-from core.config import Config
 from core import timer as Timer
 from core.timer import Task
 
