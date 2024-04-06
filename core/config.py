@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 import yaml
@@ -15,6 +16,8 @@ defaults = {
     "cluster.timeout.keepalive": 300,
     "cluster.reconnect.delay": 5,
     "cluster.reconnect.retry": -1,
+    "cluster.skip_sign": False,
+    "file.check": "size",
     "cache.buffer": 536870912,
     "cache.time": 1800,
     "cache.check": 360,
@@ -32,8 +35,13 @@ defaults = {
     "advanced.debug": False,
     "dashboard.username": "admin",
     "dashboard.password": "",
+    "storages": {
+        "bmclapi": {
+            "type": "file",
+            "path": "./bmclapi"
+        }
+    }
 }
-
 
 class CFG:
     def __init__(self, path: str) -> None:
@@ -58,7 +66,7 @@ class CFG:
 
     def get(self, key: str, def_: Any = None) -> Any:
         value = os.environ.get(key, None) or self._get_value(self.cfg, key.split("."))
-        if value == None or value == "":
+        if value is None or value == "" and def_ is None:
             logger.warn(f"{key} is not set! Does it exist?")
             value = defaults[key] if key in defaults else def_
             self.set(key, value)
@@ -86,6 +94,5 @@ class CFG:
                 dict_obj[key] = {}
             dict_obj = dict_obj[key]
         dict_obj[keys[-1]] = value
-
 
 Config: CFG = CFG("./config/config.yml")

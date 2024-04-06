@@ -182,10 +182,13 @@ async def check_ports():
             try:
                 client = Client(
                     *(
-                        await asyncio.open_connection(
-                            "127.0.0.1",
-                            port[0].sockets[0].getsockname()[1],
-                            ssl=port[1],
+                        await asyncio.wait_for(
+                            asyncio.open_connection(
+                                "127.0.0.1",
+                                port[0].sockets[0].getsockname()[1],
+                                ssl=port[1]
+                            ),
+                            timeout = 5
                         )
                     )
                 )

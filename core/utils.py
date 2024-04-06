@@ -56,7 +56,7 @@ class Client:
         return self.server_port
 
     def invaild_ip(self):
-        return self.writer.get_extra_info("peername") == None
+        return self.writer.get_extra_info("peername") is None
 
     def _record_after(self, start_time: float, data) -> bytes:
         if self.unchecked:
@@ -537,7 +537,7 @@ class DataInputStream:
     ) -> str:
         return self.read(
             self.readVarInt()
-            if maximun == None
+            if maximun is None
             else min(self.readVarInt(), max(maximun, 0))
         ).decode(encoding or self.encoding)
 

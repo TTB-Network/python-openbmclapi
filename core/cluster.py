@@ -75,14 +75,14 @@ class TokenManager:
                     Timer.delay(
                         self.fetchToken, delay=float(content["ttl"]) / 1000.0 - 600
                     )
-                    logger.info("Fetched token.")
+                    logger.info(f"Fetched token. TTL: {utils.format_time(content['ttl'] / 1000.0)}")
 
             except aiohttp.ClientError as e:
                 logger.error(
                     f"An error occured whilst fetching token, retrying in {RECONNECT_DELAY}s: {e}."
                 )
                 await asyncio.sleep(RECONNECT_DELAY)
-                return self.fetchToken()
+                return await self.fetchToken()
 
     async def getToken(self) -> str:
         if not self.token:
@@ -253,6 +253,10 @@ class FileCheck:
         self.checked = False
         self.downloader = downloader
         self.check_type = FileCheckType.EXISTS
+        if FILECHECK == "size":
+            self.check_type = FileCheckType.SIZE
+        elif FILECHECK == "hash":
+            self.check_type = FileCheckType.HASH
         self.files = []
         self.pbar: Optional[tqdm] = None
         self.check_files_timer: Optional[Task] = None
@@ -442,8 +446,8 @@ class FileCheck:
 
 
 class FileStorage(Storage):
-    def __init__(self, dir: Path) -> None:
-        super().__init__("Local Storage")
+    def __init__(self, name: str, dir: Path) -> None:
+        super().__init__(name)
         self.dir = dir
         if self.dir.is_file():
             raise FileExistsError("The path is file.")
@@ -559,42 +563,90 @@ class FileStorage(Storage):
 
 class WebDav(Storage):
     def __init__(
-        self,
+        self, 
+        name: str,
         username: str,
         password: str,
         hostname: str,
-        endpoint: str,
-        token: Optional[str] = None,
+        endpoint: str
     ) -> None:
-        super().__init__("Webdav")
+        super().__init__(name)
         self.username = username
         self.password = password
         self.hostname = hostname
         self.endpoint = endpoint
         self.files: dict[str, File] = {}
-        self.token = token
-        self.fetch = False
+        self.dirs: list[str] = []
+        self.fetch: bool = False
         self.cache: dict[str, File] = {}
         self.empty = File("", "", 0)
         self.lock = None
-        Timer.delay(self._list_all)
-
-    def _endpoint(self, file: str):
-        return f"{self.endpoint}/{file.removeprefix('/')}"
-
-    def _client(self):
-        token = {}
-        if self.token != None:
-            token["webdav_token"] = self.token
-        return webdav3_client.Client(
+        self.session = webdav3_client.Client(
             {
-                "webdav_username": self.username,
+                "webdav_login": self.username,
                 "webdav_password": self.password,
                 "webdav_hostname": self.hostname,
-                **token
+                "User-Agent": USER_AGENT,
             }
         )
+        Timer.delay(self._list_all)
+    def _endpoint(self, file: str):
+        return f"{self.endpoint}/{file.removeprefix('/')}"
+    async def _mkdir(self, dirs: str):
+        if await self.session.check(dirs):
+            return
+        d = ""
+        for dir in dirs.split("/"):
+            d += dir
+            await self.session.mkdir(d)
+            d += "/"
+    async def _list_all(self, force=False):
+        if self.fetch and not force:
+            return
+        if not self.fetch:
+            self.lock = asyncio.get_running_loop().create_future()
+        self.fetch = True
+        try:
+            client = self.session
+            await self._mkdir(self.endpoint)
+            dirs = (await client.list(self.endpoint))[1:]
+            with tqdm(total=len(dirs), desc=f"[WebDav List Files <endpoint: '{self.endpoint}'>]") as pbar:
+                await dashboard.set_status_by_tqdm("正在获取 WebDav 文件列表中", pbar)
+                for dir in (await client.list(self.endpoint))[1:]:
+                    pbar.update(1)
+                    files: dict[str, File] = {}
+                    for file in (
+                        await client.list(
+                            self._endpoint(
+                                dir,
+                            ),
+                            get_info=True,
+                        )
+                    )[1:]:
+                        files[file["name"]] = File(
+                            file["path"].removeprefix(f"/dav/{self.endpoint}/"),
+                            file["name"],
+                            int(file["size"]),
+                        )
+                        await asyncio.sleep(0)
+                    for remove in set(file for file in self.files.keys() if file.startswith(dir)) - set(files.keys()):
+                        self.files.pop(remove)
+                    self.files.update(files)
+                    if dir not in self.dirs:
+                        self.dirs.append(dir)
+        except:
+            logger.error(traceback.format_exc())
+        if self.lock is not None:
+            self.lock.cancel()
+            self.lock = None
+        return self.files
 
+    async def _wait_lock(self):
+        while self.lock:
+            try:
+                await asyncio.wait_for(self.lock, timeout = 1)
+            except:
+                ...
     async def get(self, file: str, offset: int = 0) -> File:
         if file in self.cache and self.cache[file].expiry - 10 > time.time():
             self.cache[file].cache = True
@@ -625,56 +677,11 @@ class WebDav(Storage):
                 if resp.status == 200:
                     f.set_data(await resp.read())
                 elif resp.status // 100 == 3:
-                    f.path = resp.headers.get("Location")
+                    #f.path = resp.headers.get("Location")
+                    print(f.path, resp.headers.get("Location"))
                     cache_control = resp.headers.get("Cache-Control", "")
                 self.cache[file] = f
         return self.cache[file]
-
-    async def _list_all(self, force=False):
-        if self.fetch and not force:
-            return
-        if not self.fetch:
-            self.lock = asyncio.get_running_loop().create_future()
-        self.fetch = True
-        try:
-            async with self._client() as client:
-                dirs = (await client.list(self.endpoint))[1:]
-                with tqdm(total=len(dirs), desc=f"[WebDav List Files <endpoint: '{self.endpoint}'>]") as pbar:
-                    await dashboard.set_status_by_tqdm("正在获取 WebDav 文件列表中", pbar)
-                    for dir in (await client.list(self.endpoint))[1:]:
-                        pbar.update(1)
-                        files: dict[str, File] = {}
-                        for file in (
-                            await client.list(
-                                self._endpoint(
-                                    dir,
-                                ),
-                                get_info=True,
-                            )
-                        )[1:]:
-                            files[file["name"]] = File(
-                                file["path"].removeprefix(f"/dav/{self.endpoint}/"),
-                                file["name"],
-                                int(file["size"]),
-                            )
-                            await asyncio.sleep(0)
-                        for remove in set(file for file in self.files.keys() if file.startswith(dir)) - set(files.keys()):
-                            self.files.pop(remove)
-                        self.files.update(files)
-        except:
-            logger.error(traceback.format_exc())
-        if self.lock != None:
-            self.lock.cancel()
-            self.lock = None
-        return self.files
-
-    async def _wait_lock(self):
-        while self.lock:
-            try:
-                await asyncio.wait_for(self.lock, timeout = 1)
-            except:
-                ...
-
     async def exists(self, hash: str) -> bool:
         await self._wait_lock()
         if not self.fetch:
@@ -687,24 +694,23 @@ class WebDav(Storage):
         return self.files.get(hash, self.empty).size
 
     async def write(self, hash: str, io: io.BytesIO) -> int:
-        async with self._client() as client:
-            path = self._endpoint(f"{hash[:2]}/{hash}")
-            await client.upload_to(io.getbuffer(), path)
-            self.files[hash] = File(path, hash, len(io.getbuffer()))
-            return self.files[hash].size
+        path = self._endpoint(f"{hash[:2]}/{hash}")
+        await self._mkdir(self._endpoint(f"{hash[:2]}"))
+        await self.session.upload_to(io.getbuffer(), path)
+        self.files[hash] = File(path, hash, len(io.getbuffer()))
+        return self.files[hash].size
 
     async def get_files(self, dir: str) -> list[str]:
         await self._wait_lock()
         return list((hash for hash in self.files.keys() if hash.startswith(dir)))
 
     async def get_hash(self, hash: str) -> str:
-        async with self._client() as session:
-            h = get_hash(hash)
-            async for data in await session.download_iter(
-                self._endpoint(f"{hash[:2]}/{hash}")
-            ):
-                h.update(data)
-            return h.hexdigest()
+        h = get_hash(hash)
+        async for data in await self.session.download_iter(
+            self._endpoint(f"{hash[:2]}/{hash}")
+        ):
+            h.update(data)
+        return h.hexdigest()
 
     async def get_files_size(self, dir: str) -> int:
         await self._wait_lock()
@@ -714,10 +720,9 @@ class WebDav(Storage):
 
     async def removes(self, hashs: list[str]) -> int:
         success = 0
-        async with self._client() as client:
-            for hash in hashs:
-                await client.clean(self._endpoint(f"{hash[:2]}/{hash}"))
-                success += 1
+        for hash in hashs:
+            await self.session.clean(self._endpoint(f"{hash[:2]}/{hash}"))
+            success += 1
         return success
 
     async def get_cache_stats(self) -> StatsCache:
@@ -762,6 +767,9 @@ class StorageManager:
 
     def get_storages(self):
         return self._storages
+    
+    def get_available_storages(self):
+        return [storage for storage in self._storages if not storage.disabled]
 
     def get_storage_stats(self):
         return self._storage_stats
@@ -857,7 +865,7 @@ class Cluster:
             )
             return
         self.connected = True
-        if self._enable_timer != None:
+        if self._enable_timer is not None:
             self._enable_timer.block()
         self._enable_timer = Timer.delay(self.retry, delay=ENABLE_TIMEOUT)
         await self._enable()
@@ -875,6 +883,11 @@ class Cluster:
         await self.enable()
 
     async def _enable(self):
+        if not ENABLE:
+            logger.warn(
+                "Disabled cluster."
+            )
+            return
         storage_str = {"file": 0, "webdav": 0}
         self.trusted = True
         for storage in storages.get_storages():
@@ -914,7 +927,7 @@ class Cluster:
             certificate.load_text(ack["cert"], ack["key"])
         elif type == "enable":
             err, ack = data
-            if self._enable_timer != None:
+            if self._enable_timer is not None:
                 self._enable_timer.block()
                 self._enable_timer = None
             if err:
@@ -960,9 +973,9 @@ class Cluster:
             logger.debug(type, data)
 
     async def start_keepalive(self, delay: int = 0):
-        if self.keepaliveTimer != None:
+        if self.keepaliveTimer is not None:
             self.keepaliveTimer.block()
-        if self.keepaliveTimeoutTimer != None:
+        if self.keepaliveTimeoutTimer is not None:
             self.keepaliveTimeoutTimer.block()
         self.keepaliveTimer = Timer.delay(self._keepalive, delay=delay)
         self.keepaliveTimeoutTimer = Timer.delay(
@@ -970,9 +983,9 @@ class Cluster:
         )
         self.keepaliving = True
     async def _keepalive_timeout(self):
-        if self.keepaliveTimer != None:
+        if self.keepaliveTimer is not None:
             self.keepaliveTimer.block()
-        if self.keepaliveTimeoutTimer != None:
+        if self.keepaliveTimeoutTimer is not None:
             self.keepaliveTimeoutTimer.block()
         self.keepaliving = False
         logger.warn("Failed to keepalive! Reconnecting the main server...")
@@ -1051,8 +1064,11 @@ async def init():
     for plugin in plugins.get_plugins():
         await plugin.init()
         await plugin.enable()
-    storages.add_storage(FileStorage(Path("bmclapi")))
-    #storages.add_storage(WebDav("admin", "123456", "http://127.0.0.1:5244/dav", "/bmclapi", "alist-06e39e3a-d195-44a1-8f8f-296928308922Z84AuS5ttoA7hAW1Wy0jT2N40xpUrA2WeHQrJVum1WcmVmy3bv92zB5NrWbOpp96"))
+    for storage in STORAGES:
+        if storage.type == "file":
+            storages.add_storage(FileStorage(storage.name, Path(storage.path)))
+        elif storage.type == "webdav":
+            storages.add_storage(WebDav(storage.name, storage.kwargs['username'], storage.kwargs['password'], storage.kwargs['endpoint'], storage.path))
     Timer.delay(cluster.init)
     app = web.app
 
@@ -1071,7 +1087,7 @@ async def init():
             yield b"\x00" * 1024 * 1024
         return
 
-    @app.get("/download/{hash}")
+    @app.get("/download/{hash}", access_logs = False)
     async def _(request: web.Request, hash: str):
         if (
             not SIGN_SKIP
@@ -1100,6 +1116,28 @@ async def init():
         if data.is_url() and isinstance(data.get_path(), str):
             return web.RedirectResponse(str(data.get_path())).set_headers(name)
         return web.Response(data.get_data().getbuffer(), headers = data.headers or {}).set_headers(name)
+
+    cache = io.BytesIO()
+    @app.get("/files")
+    async def _(request: web.Request):
+        if len(cache.getbuffer()) != 0:
+            return cache.getbuffer()
+        total = 0
+        buf = utils.DataOutputStream()
+        for root, dirs, files in os.walk("./bmclapi"):  
+            for file in files:
+                total += 1
+                buf.writeString(file)
+                buf.writeVarInt(os.path.getsize(os.path.join(root, file)))
+        data = utils.DataOutputStream()
+        data.writeVarInt(total)
+        data.write(buf.io.getvalue())
+        cache.write(zstd.compress(data.io.getbuffer()))
+        return cache
+    @app.get("/sync_download/{hash}")
+    async def _(request: web.Request, hash: str):
+        return Path(f"./bmclapi/{hash[:2]}/{hash}")
+        
 
     router: web.Router = web.Router("/bmcl")
     dir = Path("./bmclapi_dashboard/")
