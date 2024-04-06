@@ -392,6 +392,19 @@ def format_time(n):
     return f"{hour:02d}:{minutes:02d}:{second:02d}"
 
 
+def base36_encode(number):
+    num_str = '0123456789abcdefghijklmnopqrstuvwxyz'
+    if number == 0:
+        return '0'
+
+    base36 = []
+    while number != 0:
+        number, i = divmod(number, 36)    # 返回 number// 36 , number%36
+        base36.append(num_str[i])
+
+    return ''.join(reversed(base36))
+
+
 def parse_cache_control(cache_control_header: str):  
     directives = {}  
     # 使用正则表达式匹配指令和值  

@@ -180,13 +180,17 @@ async def check_ports():
         closed = False
         for port in ports:
             try:
+                kwargs = {}
+                if port[1] is not None:
+                    kwargs["ssl"] = port[1]
+                    kwargs["ssl_handshake_timeout"] = 5
                 client = Client(
                     *(
                         await asyncio.wait_for(
                             asyncio.open_connection(
                                 "127.0.0.1",
                                 port[0].sockets[0].getsockname()[1],
-                                ssl=port[1]
+                                **kwargs,
                             ),
                             timeout = 5
                         )

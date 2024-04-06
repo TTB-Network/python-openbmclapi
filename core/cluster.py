@@ -27,6 +27,7 @@ import core.web as web
 from core.logger import logger
 import plugins
 import aiowebdav.client as webdav3_client
+import aiowebdav.exceptions as webdav3_exceptions
 
 from core.const import *
 
@@ -43,6 +44,7 @@ from core.api import (
 class TokenManager:
     def __init__(self) -> None:
         self.token = None
+        self.token_expires: float = 0
 
     async def fetchToken(self):
         async with aiohttp.ClientSession(
@@ -75,6 +77,7 @@ class TokenManager:
                     Timer.delay(
                         self.fetchToken, delay=float(content["ttl"]) / 1000.0 - 600
                     )
+                    self.token_expires = content['ttl'] / 1000.0 - 600 + time.time()
                     logger.info(f"Fetched token. TTL: {utils.format_time(content['ttl'] / 1000.0)}")
 
             except aiohttp.ClientError as e:
@@ -125,7 +128,6 @@ class FileDownloader:
     def __init__(self) -> None:
         self.files = []
         self.queues: asyncio.Queue[BMCLAPIFile] = asyncio.Queue()
-        self.storages = []
         self.last_modified: int = 0
 
     async def get_files(self) -> list[BMCLAPIFile]:
@@ -160,10 +162,12 @@ class FileDownloader:
                     self.last_modified, *(file.mtime for file in files)
                 )
                 logger.debug(f"Filelist last modified: {utils.parse_time_to_gmt(self.last_modified / 1000)}")
+                if DEBUG:
+                    self.files = files
                 return files
 
     async def _download(self, pbar: tqdm, session: aiohttp.ClientSession):
-        while not self.queues.empty():
+        while not self.queues.empty() and storages.available:
             file = await self.queues.get()
             hash = get_hash(file.hash)
             size = 0
@@ -198,7 +202,7 @@ class FileDownloader:
             f"./cache/download/{file.hash[:2]}/{file.hash}", "rb"
         ) as r:
             buf = io.BytesIO(await r.read())
-        for storage in self.storages:
+        for storage in storages.get_storages():
             result = -1
             try:
                 result = await storage.write(file.hash, buf)
@@ -214,7 +218,10 @@ class FileDownloader:
         except:
             ...
 
-    async def download(self, storages: list["Storage"], miss: list[BMCLAPIFile]):
+    async def download(self, miss: list[BMCLAPIFile]):
+        if not storages.available:
+            logger.error("No storages.")
+            return
         with tqdm(
             desc="Downloading files",
             unit="b",
@@ -225,7 +232,6 @@ class FileDownloader:
             await dashboard.set_status_by_tqdm(
                 "下载文件中", pbar, unit.format_more_bytes
             )
-            self.storages = storages
             for file in miss:
                 await self.queues.put(file)
             timers = []
@@ -382,7 +388,7 @@ class FileCheck:
             logger.info(
                 f"Total number of missing files: {unit.format_number(len(miss))}."
             )
-            await self.downloader.download(storages.get_storages(), list(miss))
+            await self.downloader.download(list(miss))
         if os.path.exists("./cache/download"):
             paths = []
             dir = []
@@ -446,8 +452,8 @@ class FileCheck:
 
 
 class FileStorage(Storage):
-    def __init__(self, name: str, dir: Path) -> None:
-        super().__init__(name)
+    def __init__(self, name: str, dir: Path, width: int) -> None:
+        super().__init__(name, width)
         self.dir = dir
         if self.dir.is_file():
             raise FileExistsError("The path is file.")
@@ -565,12 +571,13 @@ class WebDav(Storage):
     def __init__(
         self, 
         name: str,
+        width: int,
         username: str,
         password: str,
         hostname: str,
         endpoint: str
     ) -> None:
-        super().__init__(name)
+        super().__init__(name, width)
         self.username = username
         self.password = password
         self.hostname = hostname
@@ -590,15 +597,42 @@ class WebDav(Storage):
             }
         )
         Timer.delay(self._list_all)
+        Timer.repeat(self._keepalive, interval=60)
+    async def _keepalive(self):
+        try:
+            info = await asyncio.wait_for(self.session.info(self.endpoint), timeout=5)
+            if not self.disabled:
+                logger.success(f"[Webdav <hostname: {self.hostname}, endpoint: {self.endpoint}>] Successfully keep alive")
+            else:
+                logger.success(f"[Webdav <hostname: {self.hostname}, endpoint: {self.endpoint}>] Successfully enable.")
+                storages.enable(self)
+                await self._list_all()
+        except webdav3_exceptions.NoConnection:
+            if not self.disabled:
+                logger.success(f"[Webdav <hostname: {self.hostname}, endpoint: {self.endpoint}>] Failed to keep alive, disabled.")
+            storages.disable(self)
+            self.fetch = False
+        except:
+            logger.error(traceback.format_exc())
+    async def _execute(self, target):
+        try:
+            return await target
+        except webdav3_exceptions.NoConnection as e:
+            logger.success(f"[Webdav <hostname: {self.hostname}, endpoint: {self.endpoint}>] Failed to connection, disable.")
+            storages.disable(self)
+            self.fetch = False
+            raise e
+        except Exception as e:
+            raise e
     def _endpoint(self, file: str):
         return f"{self.endpoint}/{file.removeprefix('/')}"
     async def _mkdir(self, dirs: str):
-        if await self.session.check(dirs):
+        if await self._execute(self.session.check(dirs)):
             return
         d = ""
         for dir in dirs.split("/"):
             d += dir
-            await self.session.mkdir(d)
+            await self._execute(self.session.mkdir(d))
             d += "/"
     async def _list_all(self, force=False):
         if self.fetch and not force:
@@ -607,21 +641,20 @@ class WebDav(Storage):
             self.lock = asyncio.get_running_loop().create_future()
         self.fetch = True
         try:
-            client = self.session
             await self._mkdir(self.endpoint)
-            dirs = (await client.list(self.endpoint))[1:]
+            dirs = (await self._execute(self.session.list(self.endpoint)))[1:]
             with tqdm(total=len(dirs), desc=f"[WebDav List Files <endpoint: '{self.endpoint}'>]") as pbar:
                 await dashboard.set_status_by_tqdm("正在获取 WebDav 文件列表中", pbar)
-                for dir in (await client.list(self.endpoint))[1:]:
+                for dir in (await self._execute(self.session.list(self.endpoint)))[1:]:
                     pbar.update(1)
                     files: dict[str, File] = {}
                     for file in (
-                        await client.list(
+                        await self._execute(self.session.list(
                             self._endpoint(
                                 dir,
                             ),
                             get_info=True,
-                        )
+                        ))
                     )[1:]:
                         files[file["name"]] = File(
                             file["path"].removeprefix(f"/dav/{self.endpoint}/"),
@@ -652,36 +685,39 @@ class WebDav(Storage):
             self.cache[file].cache = True
             self.cache[file].last_hit = time.time()
             return self.cache[file]
-        async with aiohttp.ClientSession(
-            auth=aiohttp.BasicAuth(self.username, self.password)
-        ) as session:
-            async with session.get(
-                self.hostname + self._endpoint(file[:2] + "/" + file), allow_redirects=False
-            ) as resp:
-                f = File(
-                    file,
-                    file,
-                    size=int(resp.headers.get("Content-Length", 0)),
-                )
-                f.headers = {}
-                f.expiry = time.time() + 36000
-                for field in (
-                    "ETag", 
-                    "Last-Modified",
-                    "Content-Length",
-                    "Content-Range"
-                ):
-                    if field not in resp.headers:
-                        continue
-                    f.headers[field] = resp.headers.get(field)
-                if resp.status == 200:
-                    f.set_data(await resp.read())
-                elif resp.status // 100 == 3:
-                    #f.path = resp.headers.get("Location")
-                    print(f.path, resp.headers.get("Location"))
-                    cache_control = resp.headers.get("Cache-Control", "")
-                self.cache[file] = f
-        return self.cache[file]
+        try:
+            async with aiohttp.ClientSession(
+                auth=aiohttp.BasicAuth(self.username, self.password)
+            ) as session:
+                async with session.get(
+                    self.hostname + self._endpoint(file[:2] + "/" + file), allow_redirects=False
+                ) as resp:
+                    logger.debug(resp.status, resp.closed)
+                    f = File(
+                        file,
+                        file,
+                        size=int(resp.headers.get("Content-Length", 0)),
+                    )
+                    f.headers = {}
+                    for field in (
+                        "ETag", 
+                        "Last-Modified",
+                        "Content-Length",
+                        "Content-Range"
+                    ):
+                        if field not in resp.headers:
+                            continue
+                        f.headers[field] = resp.headers.get(field)
+                    if resp.status == 200:
+                        f.set_data(await resp.read())
+                        f.expiry = time.time() + CACHE_TIME
+                    elif resp.status // 100 == 3:
+                        f.path = resp.headers.get("Location")
+                        f.expiry = time.time() + utils.parse_cache_control(resp.headers.get("Cache-Control", ""))
+                    self.cache[file] = f
+            return self.cache[file]
+        except Exception as e:
+            storages.disable(self)
     async def exists(self, hash: str) -> bool:
         await self._wait_lock()
         if not self.fetch:
@@ -696,7 +732,7 @@ class WebDav(Storage):
     async def write(self, hash: str, io: io.BytesIO) -> int:
         path = self._endpoint(f"{hash[:2]}/{hash}")
         await self._mkdir(self._endpoint(f"{hash[:2]}"))
-        await self.session.upload_to(io.getbuffer(), path)
+        await self._execute(self.session.upload_to(io.getbuffer(), path))
         self.files[hash] = File(path, hash, len(io.getbuffer()))
         return self.files[hash].size
 
@@ -706,9 +742,9 @@ class WebDav(Storage):
 
     async def get_hash(self, hash: str) -> str:
         h = get_hash(hash)
-        async for data in await self.session.download_iter(
+        async for data in await self._execute(self.session.download_iter(
             self._endpoint(f"{hash[:2]}/{hash}")
-        ):
+        )):
             h.update(data)
         return h.hexdigest()
 
@@ -721,7 +757,7 @@ class WebDav(Storage):
     async def removes(self, hashs: list[str]) -> int:
         success = 0
         for hash in hashs:
-            await self.session.clean(self._endpoint(f"{hash[:2]}/{hash}"))
+            await self._execute(self.session.clean(self._endpoint(f"{hash[:2]}/{hash}")))
             success += 1
         return success
 
@@ -743,6 +779,22 @@ class StorageManager:
         self._storages: list[Storage] = []
         self._interface_storage: dict[TypeStorage, Type[Storage]] = {}
         self._storage_stats: dict[Storage, stats.StorageStats] = {}
+        self.available_width = False
+        self.available = False
+        self.storage_widths: dict[Storage, int] = {}
+        self.storage_cur: int = 0
+
+    def enable(self, storage: Storage):
+        storage.disabled = False
+        if not self.available and not cluster.connected:
+            self.available = True
+            Timer.delay(cluster.start)
+
+    def disable(self, storage: Storage):
+        storage.disabled = True
+        if self.available and not self.get_storages():
+            self.available = False
+            Timer.delay(cluster.disable)
 
     def add_storage(self, storage):
         self._storages.append(storage)
@@ -755,6 +807,10 @@ class StorageManager:
             type = "Webdav"
             key = storage.endpoint
         self._storage_stats[storage] = stats.get_storage(f"{type}_{key}")
+        self.available = True
+        if storage.width != -1:
+            self.available_width = True
+            self.storage_widths[storage] = 0
 
     def remove_storage(self, storage):
         self._storages.remove(storage)
@@ -765,23 +821,43 @@ class StorageManager:
     def create_storage(self, type: TypeStorage, *args, **kwargs):
         self.add_storage(self._interface_storage[type](*args, **kwargs))
 
+    def get_all_storages(self):
+        return [storage for storage in self._storages if not storage.disabled]
+
     def get_storages(self):
-        return self._storages
+        return [storage for storage in self._storages if not storage.disabled]
     
     def get_available_storages(self):
-        return [storage for storage in self._storages if not storage.disabled]
+        return [storage for storage in self._storages if not storage.disabled and storage.width != -1]
 
     def get_storage_stats(self):
         return self._storage_stats
 
-    async def get(self, hash: str, offset: int) -> File:
-        storage = self.get_storages()[0]
+    def get_storage_width(self):
+        keys = list(self.storage_widths.keys())
+        storage: Storage = keys[self.storage_cur]
+        if self.storage_widths[storage] >= storage.width:
+            self.storage_widths[storage] = 0
+            self.storage_cur += 1
+            if self.storage_cur >= len(keys):
+                self.storage_cur = 0
+                storage = keys[self.storage_cur]
+        self.storage_widths[storage] += 1
+        return storage
+
+    async def get(self, hash: str, offset: int) -> Optional[File]:
+        first_storage = self.get_storage_width()
+        storage = first_storage
+        exists: bool = False
+        while not (exists := await storage.exists(hash)):
+            storage = self.get_storage_width()
+            if storage == first_storage:
+                break
+        if not exists:
+            return None
         file = await storage.get(hash, offset)
         self._storage_stats[storage].hit(file, offset)
         return file
-
-    async def exists(self, hash: str) -> bool:
-        return await self.get_storages()[0].exists(hash)
 
     def get_storage_stat(self, storage):
         return self._storage_stats[storage]
@@ -802,6 +878,7 @@ class Cluster:
         self.keepaliveTimeoutTimer: Optional[Task] = None
         self._cur_storages: list[stats.SyncStorage] = []
         self._retry = 0
+        self.cert_valid: float = 0
 
     def _message(self, message):
         logger.info(f"[Remote] {message}")
@@ -816,7 +893,7 @@ class Cluster:
             channel, data, callback=lambda x: Timer.delay(self.message, (channel, x))
         )
 
-    async def init(self):
+    async def connect(self):
         if not self.sio.connected:
             try:
                 await self.sio.connect(
@@ -824,14 +901,18 @@ class Cluster:
                     auth={"token": await token.getToken()},
                     transports=["websocket"],
                 )
+                await self.cert()
+                return True
             except:
                 logger.warn("Failed to connect to the main server, retrying after 5s.")
-                Timer.delay(self.init, delay=5)
-                return
+                return False
+        return True
+    async def init(self):
+        if not await self.connect():
+            return
         await self.start()
 
     async def start(self):
-        await self.cert()
         if len(storages.get_storages()) == 0:
             logger.warn("There is currently no Storage, the enabled nodes are blocked.")
             return
@@ -851,6 +932,8 @@ class Cluster:
 
 
     async def cert(self):
+        if self.cert_valid - 600 > time.time():
+            return
         await self.emit("request-cert")
 
     async def enable(self):
@@ -859,7 +942,7 @@ class Cluster:
                 "Still trying to enable cluster? You has been blocked. (\nFrom bangbang93:\n 谁他妈\n 一秒钟发了好几百个enable请求\n ban了解一下等我回杭州再看\n ban了先\n\n > Timestamp at 2024/3/30 14:07 GMT+8\n)"
             )
             return
-        if not ENABLE:
+        if not ENABLE or not storages.available:
             logger.warn(
                 "Disabled cluster."
             )
@@ -868,6 +951,8 @@ class Cluster:
         if self._enable_timer is not None:
             self._enable_timer.block()
         self._enable_timer = Timer.delay(self.retry, delay=ENABLE_TIMEOUT)
+        if not await self.connect():
+            return
         await self._enable()
 
     async def retry(self):
@@ -883,7 +968,7 @@ class Cluster:
         await self.enable()
 
     async def _enable(self):
-        if not ENABLE:
+        if not ENABLE or not storages.available:
             logger.warn(
                 "Disabled cluster."
             )
@@ -918,11 +1003,14 @@ class Cluster:
         if len(data) == 1:
             data.append(None)
         err, ack = data
+        if type != "request-cert":
+            logger.debug(type, data)
         if type == "request-cert":
             err, ack = data
             if err:
                 logger.error(f"Unable to request cert. {ack}.")
                 return
+            self.cert_valid = utils.parse_iso_time(ack["expires"])
             logger.success("Requested cert!")
             certificate.load_text(ack["cert"], ack["key"])
         elif type == "enable":
@@ -969,8 +1057,6 @@ class Cluster:
                 f"Successfully keep alive, serving {unit.format_number(storage_data['hits'])}({unit.format_bytes(storage_data['bytes'])}, {len(self._cur_storages)} Storage(s)) at {utils.parse_datetime_to_gmt(keepalive_time.timetuple())}, Ping: {int((time.time() - keepalive_time.timestamp()) * 1000)}ms."
             )
             self._cur_storages = []
-        if type != "request-cert":
-            logger.debug(type, data)
 
     async def start_keepalive(self, delay: int = 0):
         if self.keepaliveTimer is not None:
@@ -1014,6 +1100,8 @@ class Cluster:
         if self.sio.connected:
             await self.emit("disable")
             logger.info("Disconnected from the main server...")
+            if token.token_expires <= time.time():
+                await self.sio.disconnect()
         await dashboard.set_status("已下线")
 
     async def get_cache_stats(self) -> StatsCache:
@@ -1066,11 +1154,27 @@ async def init():
         await plugin.enable()
     for storage in STORAGES:
         if storage.type == "file":
-            storages.add_storage(FileStorage(storage.name, Path(storage.path)))
+            storages.add_storage(FileStorage(storage.name, Path(storage.path), storage.width))
         elif storage.type == "webdav":
-            storages.add_storage(WebDav(storage.name, storage.kwargs['username'], storage.kwargs['password'], storage.kwargs['endpoint'], storage.path))
+            storages.add_storage(WebDav(storage.name, storage.width, storage.kwargs['username'], storage.kwargs['password'], storage.kwargs['endpoint'], storage.path))
     Timer.delay(cluster.init)
     app = web.app
+    if DEBUG:
+        logger.debug("Currently in developer mode")
+        @app.get("/files")
+        async def _():
+            files = sorted(cluster.downloader.files, key = lambda x: x.hash)
+            for file in files:
+                yield f'<a href="/dev_download/{file.hash}" target="_blank">{file}</a></br>'.encode()
+        @app.get("/dev_download/{hash}")
+        async def _(hash: str):
+            cur_time = int(time.time() * 1000.0) + 600
+            e = utils.base36_encode(cur_time)
+            s = hashlib.sha1()
+            s.update(CLUSTER_SECERT.encode("utf-8"))
+            s.update(hash.encode("utf-8"))
+            s.update(e.encode("utf-8"))
+            return web.RedirectResponse(f"/download/{hash}?s={base64.urlsafe_b64encode(s.digest()).decode().strip('=')}&e={e}")
 
     @app.get("/measure/{size}")
     async def _(request: web.Request, size: int, config: web.ResponseConfiguration):
@@ -1100,8 +1204,8 @@ async def init():
             or not cluster
         ):
             return web.Response(status_code=403)
-        if not await storages.exists(hash):
-            return web.Response(status_code=404)
+        if not storages.available_width:
+            return web.Response(status_code=503)
         start_bytes = 0
         range_str = await request.get_headers("range", "")
         range_match = re.search(r"bytes=(\d+)-(\d+)", range_str, re.S) or re.search(
@@ -1113,6 +1217,8 @@ async def init():
         if request.get_url_params().get("name"):
             name["Content-Disposition"] = f"attachment; filename={request.get_url_params().get('name')}"
         data = await storages.get(hash, start_bytes)
+        if not data:
+            return web.Response(status_code=404)
         if data.is_url() and isinstance(data.get_path(), str):
             return web.RedirectResponse(str(data.get_path())).set_headers(name)
         return web.Response(data.get_data().getbuffer(), headers = data.headers or {}).set_headers(name)

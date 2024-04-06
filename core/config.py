@@ -38,7 +38,8 @@ defaults = {
     "storages": {
         "bmclapi": {
             "type": "file",
-            "path": "./bmclapi"
+            "path": "./bmclapi",
+            "width": 0
         }
     }
 }

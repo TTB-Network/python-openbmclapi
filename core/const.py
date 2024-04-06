@@ -11,6 +11,7 @@ if version_path.exists():
         f.close()
 else:
     VERSION = "Unknown"
+DEBUG: bool = Config.get("advanced.debug")
 ROOT = os.getcwd()
 API_VERSION = "1.10.3"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
@@ -104,6 +105,7 @@ class StorageParse:
     name: str
     type: str
     path: str
+    width: int
     kwargs: dict
 if Config.get("storages") is not None:
     for name in Config.get("storages"):
@@ -113,6 +115,7 @@ if Config.get("storages") is not None:
                 name,
                 storage['type'],
                 storage['path'],
+                storage.get("width", 0),
                 storage
             )
         )

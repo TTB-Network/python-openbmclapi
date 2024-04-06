@@ -78,9 +78,10 @@ class StatsCache:
 
 
 class Storage(metaclass=abc.ABCMeta):
-    def __init__(self, name) -> None:
+    def __init__(self, name, width: int) -> None:
         self.name = name
         self.disabled = False
+        self.width = width
     def get_name(self):
         return self.name
     @abc.abstractmethod
