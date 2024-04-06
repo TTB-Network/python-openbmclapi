@@ -7,7 +7,6 @@ import io
 from pathlib import Path
 from typing import Optional
 import zlib
-
 import aiofiles
 
 from core import web

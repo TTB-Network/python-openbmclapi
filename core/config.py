@@ -2,7 +2,6 @@ from pathlib import Path
 from typing import Any
 import yaml
 import os
-from core.logger import logger
 
 defaults = {
     "cluster.id": "",
@@ -15,6 +14,7 @@ defaults = {
     "cluster.timeout.keepalive": 300,
     "cluster.reconnect.delay": 5,
     "cluster.reconnect.retry": -1,
+    "cluster.skip_sign": False,
     "cache.buffer": 536870912,
     "cache.time": 1800,
     "cache.check": 360,
@@ -30,27 +30,21 @@ defaults = {
     "advanced.io_buffer": 16777216,
     "advanced.header_bytes": 4096,
     "advanced.debug": False,
+    "advanced.language": "zh_cn",
     "dashboard.username": "admin",
-    "dashboard.password": "",
+    "dashboard.password": "123456",
 }
 
 
 class CFG:
     def __init__(self, path: str) -> None:
         self.file = Path(path)
-        logger.info(f"Loading config: {self.file.absolute()}.")
         self.cfg = {}
         if self.file.exists():
             self.load()
         else:
-            logger.warn(
-                f'''The config file "{self.file.absolute()}" doesn't exist, creating a default config file...'''
-            )
             for key, value in defaults.items():
                 self.set(key, value)
-        logger.add_log(
-            "DEBUG" if self.get("advanced.debug") else "INFO"
-        )
 
     def load(self):
         with open(self.file, "r", encoding="utf-8") as f:
@@ -59,9 +53,10 @@ class CFG:
     def get(self, key: str, def_: Any = None) -> Any:
         value = os.environ.get(key, None) or self._get_value(self.cfg, key.split("."))
         if value == None or value == "":
-            logger.warn(f"{key} is not set! Does it exist?")
-            value = defaults[key] if key in defaults else def_
-            self.set(key, value)
+            print(f"[Config] {key} is not set, does it exist?")
+            value = defaults[key] if key in defaults else def_ if def_ else False
+            if value != False:
+                self.set(key, value)
         return value if value else defaults.get(key, None)
 
     def set(self, key: str, value: Any):
@@ -86,6 +81,5 @@ class CFG:
                 dict_obj[key] = {}
             dict_obj = dict_obj[key]
         dict_obj[keys[-1]] = value
-
 
 Config: CFG = CFG("./config/config.yml")

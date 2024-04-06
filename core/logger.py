@@ -1,8 +1,10 @@
 from loguru import logger as Logger
 from pathlib import Path
 import sys
+from core.config import Config
 
 basic_logger_format = "<green>[{time:YYYY-MM-DD HH:mm:ss}]</green> <level>[{level}] <yellow>[{name}:{function}:{line}]</yellow>: {message}</level>"
+debug_mode = Config.get("advanced.debug")
 
 class LoggingMessage:
     def __init__(self) -> None:
@@ -30,7 +32,7 @@ class LoggingLogger:
             retention="10 days",
             encoding="utf-8",
         )
-        self.add_log("DEBUG")
+        self.add_log("DEBUG" if debug_mode else "INFO")
     def add_log(self, level: str):
         if self.cur_handler:
             self.log.remove(self.cur_handler)

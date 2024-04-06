@@ -10,6 +10,7 @@ import json
 from mimetypes import guess_type
 import os
 from pathlib import Path
+from core.i18n import locale
 import re
 import stat
 import struct
@@ -641,7 +642,7 @@ class Application:
 
     def mount(self, router: Router):
         self._routes.append(router)
-        logger.info(f"Serving router at {router.prefix}.")
+        logger.info(locale.t("web.info.serving_router", router=router.prefix))
 
     def mount_resource(self, resource: Resource):
         self._resources.append(resource)
@@ -1259,7 +1260,7 @@ async def _():
 
 
 async def init():
-    logger.info(f"Loading...")
+    logger.info(locale.t("web.info.loading"))
     cluster.stats.init()
     await cluster.init()
 
