@@ -51,7 +51,7 @@
   "cluster.info.check_update.checking": "检查更新中……",
   "cluster.success.check_update.new_version": "发现新版本：$latest！",
   "cluster.info.check_update.already_up_to_date": "当前已是最新版本。",
-  "cluster.error.check_update.failed": "在尝试获取最新版本是遇到了错误：$e。",
+  "cluster.error.check_update.failed": "在尝试获取最新版本时遇到了错误：$e。",
   "cluster.success.webdav.keepalive": "WebDAV <hostname: $hostname, endpoint: $endpoint> 保活成功。",
   "cluster.warn.webdav.no_connection": "无法连接至 WebDAV <hostname: $hostname, endpoint: $endpoint>，正在关闭储存……",
   "cluster.success.webdav.enabled": "WebDAV <hostname: $hostname, endpoint: $endpoint> 成功启用。",

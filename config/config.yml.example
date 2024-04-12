@@ -36,6 +36,7 @@ storages:
   bmclapi:
     path: ./bmclapi
     type: file
+    width: 0
 web:
   force_ssl: false
   port: 8080
