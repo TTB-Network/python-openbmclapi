@@ -103,12 +103,13 @@ STATUS_CODES: dict[int, str] = {
 }
 REQUEST_TIME_UNITS = ["ns", "ms", "s", "m", "h"]
 FILECHECK = Config.get("file.check")
-STORAGES: list['StorageParse'] = []
+STORAGES: list["StorageParse"] = []
 COMPRESSOR: dict[str, Any] = {
     "zstd": pyzstd.compress,
     "gzip": gzip.compress,
-    "deflate": zlib.compress
+    "deflate": zlib.compress,
 }
+
 
 @dataclass
 class StorageParse:
@@ -124,10 +125,6 @@ if Config.get("storages") is not None:
         storage = Config.get(f"storages.{name}")
         STORAGES.append(
             StorageParse(
-                name,
-                storage['type'],
-                storage['path'],
-                storage.get("width", 0),
-                storage
+                name, storage["type"], storage["path"], storage.get("width", 0), storage
             )
         )

@@ -851,7 +851,10 @@ class Response:
             length = length - start_bytes
         if isinstance(content, io.BytesIO) and len(content.getbuffer()) != 0:
             self.content_type = self.content_type or self._get_content_type(content)
-            compression: Compressor = compressor(await request.get_headers("Accept-Encoding", ""), content.getbuffer()[start_bytes:length])
+            compression: Compressor = compressor(
+                await request.get_headers("Accept-Encoding", ""),
+                content.getbuffer()[start_bytes:length],
+            )
             if compression.type is None:
                 content = compression.data
             content = compression
@@ -1255,6 +1258,7 @@ class Statistics:
 class Compressor:
     type: Optional[str]
     data: io.BytesIO
+
 
 def compressor(header: str, data: io.BytesIO | bytes | memoryview) -> Compressor:
     if isinstance(data, io.BytesIO):
