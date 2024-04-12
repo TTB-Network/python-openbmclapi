@@ -78,7 +78,7 @@ class TokenManager:
                     Timer.delay(
                         self.fetchToken, delay=float(content["ttl"]) / 1000.0 - 600
                     )
-                    self.token_expires = content['ttl'] / 1000.0 - 600 + time.time()
+                    self.token_expires = content["ttl"] / 1000.0 - 600 + time.time()
                     tll = utils.format_time(content["ttl"] / 1000.0)
                     logger.success(locale.t("cluster.success.token.fetched", tll=tll))
 
@@ -425,7 +425,11 @@ class FileCheck:
             file_size = unit.format_bytes(
                 sum(file.size for file in files) * len(storages.get_storages())
             )
-            logger.success(locale.t("cluster.success.check.finished", count=file_count, size=file_size))
+            logger.success(
+                locale.t(
+                    "cluster.success.check.finished", count=file_count, size=file_size
+                )
+            )
         else:
             logger.info(
                 locale.t(
@@ -577,9 +581,13 @@ class FileStorage(Storage):
             return
         for key in old_keys:
             self.cache.pop(key)
-        logger.info(locale.t("cluster.info.clear_cache.count", 
-                             count=unit.format_number(len(old_keys)), 
-                             size=unit.format_bytes(old_size)))
+        logger.info(
+            locale.t(
+                "cluster.info.clear_cache.count",
+                count=unit.format_number(len(old_keys)),
+                size=unit.format_bytes(old_size),
+            )
+        )
 
     async def get_files(self, dir: str) -> list[str]:
         files = []
@@ -616,13 +624,13 @@ class FileStorage(Storage):
 
 class WebDav(Storage):
     def __init__(
-        self, 
+        self,
         name: str,
         width: int,
         username: str,
         password: str,
         hostname: str,
-        endpoint: str
+        endpoint: str,
     ) -> None:
         super().__init__(name, width)
         self.username = username
@@ -645,34 +653,62 @@ class WebDav(Storage):
         )
         Timer.delay(self._list_all)
         Timer.repeat(self._keepalive, interval=60)
+
     async def _keepalive(self):
         try:
-            info = await asyncio.wait_for(self.session.info(self.endpoint), timeout=5)
             hostname = self.hostname
             endpoint = self.endpoint
             if not self.disabled:
-                logger.success(locale.t("cluster.success.webdav.keepalive", hostname=hostname, endpoint=endpoint))
+                logger.success(
+                    locale.t(
+                        "cluster.success.webdav.keepalive",
+                        hostname=hostname,
+                        endpoint=endpoint,
+                    )
+                )
             else:
                 storages.enable(self)
-                logger.success(locale.t("cluster.success.webdav.enabled", hostname=hostname, endpoint=endpoint))
+                logger.success(
+                    locale.t(
+                        "cluster.success.webdav.enabled",
+                        hostname=hostname,
+                        endpoint=endpoint,
+                    )
+                )
                 await self._list_all()
         except webdav3_exceptions.NoConnection:
             if not self.disabled:
-                logger.warn(locale.t("cluster.warn.webdav.no_connection", hostname=hostname, endpoint=endpoint))
+                logger.warn(
+                    locale.t(
+                        "cluster.warn.webdav.no_connection",
+                        hostname=hostname,
+                        endpoint=endpoint,
+                    )
+                )
             storages.disable(self)
             self.fetch = False
         except:
             logger.error(traceback.format_exc())
+
     async def _execute(self, target):
         try:
             return await target
         except webdav3_exceptions.NoConnection as e:
-            logger.warn(locale.t("cluster.warn.webdav.no_connection", hostname=hostname, endpoint=endpoint))
+            hostname = self.hostname
+            endpoint = self.endpoint
+            logger.warn(
+                locale.t(
+                    "cluster.warn.webdav.no_connection",
+                    hostname=hostname,
+                    endpoint=endpoint,
+                )
+            )
             storages.disable(self)
             self.fetch = False
             raise e
         except Exception as e:
             raise e
+
     def _endpoint(self, file: str):
         return f"{self.endpoint}/{file.removeprefix('/')}"
 
@@ -694,18 +730,23 @@ class WebDav(Storage):
         try:
             await self._mkdir(self.endpoint)
             dirs = (await self._execute(self.session.list(self.endpoint)))[1:]
-            with tqdm(total=len(dirs), desc=f"[WebDav List Files <endpoint: '{self.endpoint}'>]") as pbar:
+            with tqdm(
+                total=len(dirs),
+                desc=f"[WebDav List Files <endpoint: '{self.endpoint}'>]",
+            ) as pbar:
                 await dashboard.set_status_by_tqdm("正在获取 WebDav 文件列表中", pbar)
                 for dir in (await self._execute(self.session.list(self.endpoint)))[1:]:
                     pbar.update(1)
                     files: dict[str, File] = {}
                     for file in (
-                        await self._execute(self.session.list(
-                            self._endpoint(
-                                dir,
-                            ),
-                            get_info=True,
-                        ))
+                        await self._execute(
+                            self.session.list(
+                                self._endpoint(
+                                    dir,
+                                ),
+                                get_info=True,
+                            )
+                        )
                     )[1:]:
                         files[file["name"]] = File(
                             file["path"].removeprefix(f"/dav/{self.endpoint}/"),
@@ -744,7 +785,8 @@ class WebDav(Storage):
                 auth=aiohttp.BasicAuth(self.username, self.password)
             ) as session:
                 async with session.get(
-                    self.hostname + self._endpoint(file[:2] + "/" + file), allow_redirects=False
+                    self.hostname + self._endpoint(file[:2] + "/" + file),
+                    allow_redirects=False,
                 ) as resp:
                     logger.debug(resp.status, resp.closed)
                     f = File(
@@ -754,10 +796,10 @@ class WebDav(Storage):
                     )
                     f.headers = {}
                     for field in (
-                        "ETag", 
+                        "ETag",
                         "Last-Modified",
                         "Content-Length",
-                        "Content-Range"
+                        "Content-Range",
                     ):
                         if field not in resp.headers:
                             continue
@@ -767,11 +809,14 @@ class WebDav(Storage):
                         f.expiry = time.time() + CACHE_TIME
                     elif resp.status // 100 == 3:
                         f.path = resp.headers.get("Location")
-                        f.expiry = time.time() + utils.parse_cache_control(resp.headers.get("Cache-Control", ""))
+                        f.expiry = time.time() + utils.parse_cache_control(
+                            resp.headers.get("Cache-Control", "")
+                        )
                     self.cache[file] = f
             return self.cache[file]
         except Exception as e:
             storages.disable(self)
+
     async def exists(self, hash: str) -> bool:
         await self._wait_lock()
         if not self.fetch:
@@ -796,9 +841,9 @@ class WebDav(Storage):
 
     async def get_hash(self, hash: str) -> str:
         h = get_hash(hash)
-        async for data in await self._execute(self.session.download_iter(
-            self._endpoint(f"{hash[:2]}/{hash}")
-        )):
+        async for data in await self._execute(
+            self.session.download_iter(self._endpoint(f"{hash[:2]}/{hash}"))
+        ):
             h.update(data)
         return h.hexdigest()
 
@@ -811,7 +856,9 @@ class WebDav(Storage):
     async def removes(self, hashs: list[str]) -> int:
         success = 0
         for hash in hashs:
-            await self._execute(self.session.clean(self._endpoint(f"{hash[:2]}/{hash}")))
+            await self._execute(
+                self.session.clean(self._endpoint(f"{hash[:2]}/{hash}"))
+            )
             success += 1
         return success
 
@@ -880,9 +927,13 @@ class StorageManager:
 
     def get_storages(self):
         return [storage for storage in self._storages if not storage.disabled]
-    
+
     def get_available_storages(self):
-        return [storage for storage in self._storages if not storage.disabled and storage.width != -1]
+        return [
+            storage
+            for storage in self._storages
+            if not storage.disabled and storage.width != -1
+        ]
 
     def get_storage_stats(self):
         return self._storage_stats
@@ -961,6 +1012,7 @@ class Cluster:
                 logger.warn(locale.t("cluster.warn.cluster.failed_to_connect"))
                 return False
         return True
+
     async def init(self):
         if not await self.connect():
             return
@@ -1231,18 +1283,31 @@ async def init():
         await plugin.enable()
     for storage in STORAGES:
         if storage.type == "file":
-            storages.add_storage(FileStorage(storage.name, Path(storage.path), storage.width))
+            storages.add_storage(
+                FileStorage(storage.name, Path(storage.path), storage.width)
+            )
         elif storage.type == "webdav":
-            storages.add_storage(WebDav(storage.name, storage.width, storage.kwargs['username'], storage.kwargs['password'], storage.kwargs['endpoint'], storage.path))
+            storages.add_storage(
+                WebDav(
+                    storage.name,
+                    storage.width,
+                    storage.kwargs["username"],
+                    storage.kwargs["password"],
+                    storage.kwargs["endpoint"],
+                    storage.path,
+                )
+            )
     Timer.delay(cluster.init)
     app = web.app
     if DEBUG:
         logger.debug("Currently in developer mode")
+
         @app.get("/files")
         async def _():
-            files = sorted(cluster.downloader.files, key = lambda x: x.hash)
+            files = sorted(cluster.downloader.files, key=lambda x: x.hash)
             for file in files:
                 yield f'<a href="/dev_download/{file.hash}" target="_blank">{file}</a></br>'.encode()
+
         @app.get("/dev_download/{hash}")
         async def _(hash: str):
             cur_time = int(time.time() * 1000.0) + 600
@@ -1251,7 +1316,9 @@ async def init():
             s.update(CLUSTER_SECERT.encode("utf-8"))
             s.update(hash.encode("utf-8"))
             s.update(e.encode("utf-8"))
-            return web.RedirectResponse(f"/download/{hash}?s={base64.urlsafe_b64encode(s.digest()).decode().strip('=')}&e={e}")
+            return web.RedirectResponse(
+                f"/download/{hash}?s={base64.urlsafe_b64encode(s.digest()).decode().strip('=')}&e={e}"
+            )
 
     @app.get("/measure/{size}")
     async def _(request: web.Request, size: int, config: web.ResponseConfiguration):
@@ -1326,7 +1393,7 @@ async def init():
     @app.get("/sync_download/{hash}")
     async def _(request: web.Request, hash: str):
         return Path(f"./bmclapi/{hash[:2]}/{hash}")
-        
+
     dir = Path("./bmclapi_dashboard/")
     dir.mkdir(exist_ok=True, parents=True)
     app.mount_resource(web.Resource("/", dir, show_dir=False))
@@ -1376,7 +1443,6 @@ async def init():
             cookies=[web.Cookie("auth", token.value, expires=int(time.time() + 86400))],
         )
 
-
     @app.post("/api/{name}")
     async def _(request: web.Request, name: str):
         if name == "auth":
@@ -1396,6 +1462,7 @@ async def init():
         return await dashboard.process(name, data.get("content"))
 
     app.redirect("/", "/dashboard/")
+
 
 async def close():
     global cluster

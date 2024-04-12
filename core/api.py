@@ -81,6 +81,7 @@ class Storage(metaclass=abc.ABCMeta):
         self.name = name
         self.disabled = False
         self.width = width
+
     def get_name(self):
         return self.name
 
