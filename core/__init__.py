@@ -38,8 +38,12 @@ class ProxyClient:
     closed: bool = False
 
     def start(self):
-        self._task_origin = Timer.delay(self.process_origin,)
-        self._task_target = Timer.delay(self.process_target,)
+        self._task_origin = Timer.delay(
+            self.process_origin,
+        )
+        self._task_target = Timer.delay(
+            self.process_target,
+        )
 
     async def process_origin(self):
         try:
@@ -157,7 +161,8 @@ async def _handle_process(client: Client, ssl: bool = False):
     except (
         TimeoutError,
         asyncio.exceptions.IncompleteReadError,
-        ConnectionResetError, OSError
+        ConnectionResetError,
+        OSError,
     ):
         ...
     except:
@@ -192,7 +197,7 @@ async def check_ports():
                                 port[0].sockets[0].getsockname()[1],
                                 **kwargs,
                             ),
-                            timeout = 5
+                            timeout=5,
                         )
                     )
                 )
@@ -201,7 +206,10 @@ async def check_ports():
                 key = await client.read(len(check_port_key), 5)
             except:
                 logger.warn(
-                    f"Port {port[0].sockets[0].getsockname()[1]} has been closed! Reopening..."
+                    locale.t(
+                        "core.warn.port_closed",
+                        port=port[0].sockets[0].getsockname()[1],
+                    )
                 )
                 logger.error(traceback.format_exc())
                 closed = True
@@ -226,9 +234,12 @@ async def main():
                 port=0 if SSL_PORT == PORT else SSL_PORT,
                 ssl=server_side_ssl if get_loaded() else None,
             )
-            logger.info(f"Listening server on port {PORT}.")
+            logger.info(locale.t("core.info.listening", port=PORT))
             logger.info(
-                f"Listening SSL server on {ssl_server.sockets[0].getsockname()[1]}."
+                locale.t(
+                    "core.info.listening_ssl",
+                    port=ssl_server.sockets[0].getsockname()[1],
+                )
             )
             async with server, ssl_server:
                 await asyncio.gather(server.serve_forever(), ssl_server.serve_forever())
@@ -244,7 +255,7 @@ async def main():
             logger.error(traceback.format_exc())
             await asyncio.sleep(2)
     await close()
-    logger.info("Shutting down web service...")
+    logger.info(locale.t("core.info.shutting_down_web_service"))
     os.environ["ASYNCIO_STARTUP"] = str(0)
     os.kill(os.getpid(), signal.SIGINT)
 

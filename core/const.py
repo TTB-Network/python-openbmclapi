@@ -34,7 +34,7 @@ RECONNECT_DELAY: bool = Config.get("cluster.reconnect.delay")
 RECONNECT_RETRY: bool = Config.get("cluster.reconnect.retry")
 ENABLE_TIMEOUT: bool = Config.get("cluster.timeout.enable")
 KEEPALIVE_TIMEOUT: bool = Config.get("cluster.timeout.keepalive")
-CACHE_BUFFER: int = Config.get("cache.buffer") # bytes
+CACHE_BUFFER: int = Config.get("cache.buffer")  # bytes
 CACHE_TIME: int = Config.get("cache.time")
 CHECK_CACHE: int = Config.get("cache.check")
 SIGN_SKIP: bool = Config.get("cluster.skip_sign")
@@ -117,6 +117,8 @@ class StorageParse:
     path: str
     width: int
     kwargs: dict
+
+
 if Config.get("storages") is not None:
     for name in Config.get("storages"):
         storage = Config.get(f"storages.{name}")

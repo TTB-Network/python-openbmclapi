@@ -11,11 +11,11 @@ from tqdm import tqdm
 from core import stats, system, unit, utils, web
 from core import cluster
 from core.api import StatsCache
-from core.config import Config
 from core import timer as Timer
 from core.timer import Task
 
 from core.const import *
+
 
 @dataclass
 class Token:
@@ -30,6 +30,7 @@ class StorageInfo:
     endpoint: str
     size: int
     free: int
+
 
 last_status = ""
 last_text = ""
@@ -143,12 +144,7 @@ async def process(type: str, data: Any):
         for storage in cluster.storages.get_storages():
             if isinstance(storage, cluster.FileStorage):
                 data.append(
-                    StorageInfo(
-                        storage.get_name(),
-                        "file",
-                        str(storage.dir),
-                        -1, -1
-                    )
+                    StorageInfo(storage.get_name(), "file", str(storage.dir), -1, -1)
                 )
             elif isinstance(storage, cluster.WebDav):
                 data.append(
@@ -156,7 +152,8 @@ async def process(type: str, data: Any):
                         storage.get_name(),
                         "webdav",
                         storage.hostname + storage.endpoint,
-                        -1, -1
+                        -1,
+                        -1,
                     )
                 )
         return data

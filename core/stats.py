@@ -179,7 +179,6 @@ def get_offset_storages() -> list[SyncStorage]:
     return sync_storages
 
 
-
 def get_storage(name):
     global storages
     if name not in storages:

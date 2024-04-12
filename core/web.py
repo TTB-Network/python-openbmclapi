@@ -10,6 +10,7 @@ import json
 from mimetypes import guess_type
 import os
 from pathlib import Path
+from core.i18n import locale
 import re
 import stat
 import struct
@@ -91,9 +92,12 @@ class Cookie:
 
 class Route:
     def __init__(
-        self, path: str, method: Optional[str], handler: Callable[..., Coroutine],
+        self,
+        path: str,
+        method: Optional[str],
+        handler: Callable[..., Coroutine],
         access_logs: bool = True,
-        **kwargs
+        **kwargs,
     ) -> None:
         self._path = path if path.startswith("/") else "/" + path
         self._params = path.count("{") == path.count("}") != 0
@@ -609,7 +613,7 @@ class Application:
                         }
                     ),
                     status_code=101,
-                    access_logs = access_logs
+                    access_logs=access_logs,
                 )
                 ws.start()
                 if request.get_url() not in self._ws:
@@ -640,12 +644,12 @@ class Application:
         yield Response(
             content=result or "",
             headers=Header({"Server": Config.get("web.server_name")}),
-            access_logs = access_logs
+            access_logs=access_logs,
         )
 
     def mount(self, router: Router):
         self._routes.append(router)
-        logger.info(f"Serving router at {router.prefix}.")
+        logger.info(locale.t("web.info.serving_router", router=router.prefix))
 
     def mount_resource(self, resource: Resource):
         self._resources.append(resource)
@@ -726,7 +730,7 @@ class Response:
         content_type: Optional[str] = None,
         compress=None,
         status_code: int = 200,
-        **kwargs
+        **kwargs,
     ) -> None:
         self.status_code = status_code
         self.content: CONTENT_ACCEPT = content
@@ -878,7 +882,9 @@ class Response:
         if self._headers:
             headers = str(self._headers) + "\r\n"
         cookies = [
-            f"Set-Cookie: {cookie}" for cookie in self._cookies if cookie.name is not None
+            f"Set-Cookie: {cookie}"
+            for cookie in self._cookies
+            if cookie.name is not None
         ]
         if cookies:
             cookie = "\r\n".join(cookies) + "\r\n"
@@ -919,7 +925,9 @@ class Response:
 
 
 class RedirectResponse(Response):
-    def __init__(self, location: str, headers: Header | dict[str, Any] | None = None) -> None:
+    def __init__(
+        self, location: str, headers: Header | dict[str, Any] | None = None
+    ) -> None:
         header = Header()
         header.update(headers)
         header.update({"Location": location})
@@ -1298,7 +1306,7 @@ async def _():
 
 
 async def init():
-    logger.info(f"Loading...")
+    logger.info(locale.t("web.info.loading"))
     cluster.stats.init()
     await cluster.init()
 

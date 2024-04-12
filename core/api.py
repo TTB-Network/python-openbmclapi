@@ -7,7 +7,6 @@ import io
 from pathlib import Path
 from typing import Optional
 import zlib
-
 import aiofiles
 
 from core import web
@@ -50,7 +49,7 @@ class File:
     expiry: Optional[float] = None
     data: Optional[io.BytesIO] = None
     cache: bool = False
-    headers: Optional['web.Header'] = None
+    headers: Optional["web.Header"] = None
 
     def is_url(self):
         if not isinstance(self.path, str):
@@ -84,6 +83,7 @@ class Storage(metaclass=abc.ABCMeta):
         self.width = width
     def get_name(self):
         return self.name
+
     @abc.abstractmethod
     async def get(self, file: str, offset: int = 0) -> File:
         """

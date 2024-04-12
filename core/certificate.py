@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import ssl
 import time
+from .i18n import locale
 import traceback
 
 from core.logger import logger
@@ -27,7 +28,7 @@ def load_cert(cert, key):
         _loaded = True
         return True
     except:
-        logger.error(f"Failed to load certificate: {traceback.format_exc()}.")
+        logger.error(locale.t("cert.error.failed", failure=traceback.format_exc()))
         return False
 
 
@@ -43,7 +44,7 @@ def load_text(cert: str, key: str):
         c.write(cert)
         k.write(key)
     if load_cert(cert_file, key_file):
-        logger.success("Loaded certificate from local files!")
+        logger.success(locale.t("cert.success.loaded_cert"))
         core.restart = True
         if core.server:
             core.server.close()
