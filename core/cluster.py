@@ -267,7 +267,7 @@ class FileDownloader:
                     )
             await asyncio.gather(*timers)
             # pbar.set_postfix_str(" " * 40)
-        logger.sucess(locale.t("cluster.info.download.finished"))
+        logger.success(locale.t("cluster.info.download.finished"))
 
 
 class FileCheck:
