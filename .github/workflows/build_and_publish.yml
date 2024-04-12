@@ -67,6 +67,3 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -a -m ":sparkles: 更新 VERSION"
           git push
-      
-
-        
