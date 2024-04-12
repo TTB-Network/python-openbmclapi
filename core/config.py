@@ -35,7 +35,7 @@ defaults = {
     "advanced.language": "zh_cn",
     "dashboard.username": "admin",
     "dashboard.password": "123456",
-    "storages": {"bmclapi": {"type": "file", "path": "./bmclapi"}},
+    "storages": {"bmclapi": {"type": "file", "path": "./bmclapi", "width": 0}},
 }
 
 

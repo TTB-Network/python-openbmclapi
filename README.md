@@ -41,7 +41,7 @@
 
 ## 从源码运行
 
-建议 Python 版本：3.12+。
+建议 Python 版本：3.10+。
 
 1. 克隆仓库或从 [Releases](https://github.com/TTB-Network/python-openbmclapi/releases) 中下载代码：
 

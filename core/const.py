@@ -1,6 +1,11 @@
 from dataclasses import dataclass
+import gzip
 import os
 from pathlib import Path
+from typing import Any
+import zlib
+
+import pyzstd
 from core.config import Config
 
 VERSION = ""
@@ -11,6 +16,7 @@ if version_path.exists():
         f.close()
 else:
     VERSION = "Unknown"
+DEBUG: bool = Config.get("advanced.debug")
 ROOT = os.getcwd()
 API_VERSION = "1.10.3"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
@@ -96,8 +102,13 @@ STATUS_CODES: dict[int, str] = {
     505: "HTTP Version not supported",
 }
 REQUEST_TIME_UNITS = ["ns", "ms", "s", "m", "h"]
-FILECHECK = Config.get("clueset.file_check_mode")
+FILECHECK = Config.get("file.check")
 STORAGES: list["StorageParse"] = []
+COMPRESSOR: dict[str, Any] = {
+    "zstd": pyzstd.compress,
+    "gzip": gzip.compress,
+    "deflate": zlib.compress,
+}
 
 
 @dataclass
@@ -105,10 +116,15 @@ class StorageParse:
     name: str
     type: str
     path: str
+    width: int
     kwargs: dict
 
 
 if Config.get("storages") is not None:
     for name in Config.get("storages"):
         storage = Config.get(f"storages.{name}")
-        STORAGES.append(StorageParse(name, storage["type"], storage["path"], storage))
+        STORAGES.append(
+            StorageParse(
+                name, storage["type"], storage["path"], storage.get("width", 0), storage
+            )
+        )
