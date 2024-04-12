@@ -427,7 +427,7 @@ class FileCheck:
             )
             logger.success(
                 locale.t(
-                    "cluster.success.check.finished", count=file_count, size=file_size
+                    "cluster.success.check_files.finished", count=file_count, size=file_size
                 )
             )
         else:
