@@ -577,9 +577,9 @@ class FileStorage(Storage):
             return
         for key in old_keys:
             self.cache.pop(key)
-        logger.info(
-            f"Outdated caches: {unit.format_number(len(old_keys))}({unit.format_bytes(old_size)})."
-        )
+        logger.info(locale.t("cluster.info.clear_cache.count", 
+                             count=unit.format_number(len(old_keys)), 
+                             size=unit.format_bytes(old_size)))
 
     async def get_files(self, dir: str) -> list[str]:
         files = []
@@ -648,15 +648,17 @@ class WebDav(Storage):
     async def _keepalive(self):
         try:
             info = await asyncio.wait_for(self.session.info(self.endpoint), timeout=5)
+            hostname = self.hostname
+            endpoint = self.endpoint
             if not self.disabled:
-                logger.success(f"[Webdav <hostname: {self.hostname}, endpoint: {self.endpoint}>] Successfully keep alive")
+                logger.success(locale.t("cluster.success.webdav.keepalive", hostname=hostname, endpoint=endpoint))
             else:
-                logger.success(f"[Webdav <hostname: {self.hostname}, endpoint: {self.endpoint}>] Successfully enable.")
                 storages.enable(self)
+                logger.success(locale.t("cluster.success.webdav.enabled", hostname=hostname, endpoint=endpoint))
                 await self._list_all()
         except webdav3_exceptions.NoConnection:
             if not self.disabled:
-                logger.success(f"[Webdav <hostname: {self.hostname}, endpoint: {self.endpoint}>] Failed to keep alive, disabled.")
+                logger.warn(locale.t("cluster.warn.webdav.no_connection", hostname=hostname, endpoint=endpoint))
             storages.disable(self)
             self.fetch = False
         except:
@@ -665,7 +667,7 @@ class WebDav(Storage):
         try:
             return await target
         except webdav3_exceptions.NoConnection as e:
-            logger.success(f"[Webdav <hostname: {self.hostname}, endpoint: {self.endpoint}>] Failed to connection, disable.")
+            logger.warn(locale.t("cluster.warn.webdav.no_connection", hostname=hostname, endpoint=endpoint))
             storages.disable(self)
             self.fetch = False
             raise e
