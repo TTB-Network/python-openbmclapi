@@ -174,6 +174,35 @@ class Client:
         self.log_network(sent, recv)
 
 
+class WaitLock:
+    def __init__(self) -> None:
+        self.waiters: list[asyncio.Future] = []
+        self.locked = False
+    def acquire(self):
+        if self.locked:
+            return
+        self.locked = True
+    def release(self):
+        if not self.locked:
+            return
+        self.locked = False
+        for waiter in self.waiters:
+            waiter.set_result(True)
+        self.waiters.clear()
+    async def wait(self):
+        if not self.locked:
+            return
+        fut = asyncio.get_running_loop().create_future()
+        self.waiters.append(fut)
+        try:
+            await fut
+        except:
+            ...
+        
+        
+
+
+
 def parse_obj_as_type(obj: Any, type_: Type[Any]) -> Any:
     if obj is None:
         return obj

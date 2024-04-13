@@ -1,10 +1,7 @@
 from pathlib import Path
 import json
 from string import Template
-from core.config import Config
-
-lang = Config.get("advanced.language")
-
+from core.const import *
 
 class Locale:
     def __init__(self, lang: str):
@@ -37,4 +34,4 @@ class Locale:
         return Template(localized).safe_substitute(*args, **kwargs)
 
 
-locale: Locale = Locale(lang)
+locale: Locale = Locale(LANG.lower())

@@ -55,12 +55,12 @@ class CFG:
 
     def get(self, key: str, def_: Any = None) -> Any:
         value = os.environ.get(key, None) or self._get_value(self.cfg, key.split("."))
-        if value == None or value == "":
+        if (value == None or value == "") and def_ is None:
             print(f"[Config] {key} is not set, does it exist?")
             value = defaults[key] if key in defaults else def_ if def_ else False
             if value != False:
                 self.set(key, value)
-        return value if value else defaults.get(key, None)
+        return value if value else defaults.get(key, def_)
 
     def set(self, key: str, value: Any):
         self._set_value(self.cfg, key.split("."), value)

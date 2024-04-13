@@ -51,7 +51,7 @@ class TokenManager:
         async with aiohttp.ClientSession(
             headers={"User-Agent": USER_AGENT}, base_url=BASE_URL
         ) as session:
-            logger.info(locale.t("cluster.info.token.fetching"))
+            logger.tinfo("cluster.info.token.fetching")
             try:
                 async with session.get(
                     "/openbmclapi-agent/challenge", params={"clusterId": CLUSTER_ID}
@@ -80,12 +80,10 @@ class TokenManager:
                     )
                     self.token_expires = content["ttl"] / 1000.0 - 600 + time.time()
                     tll = utils.format_time(content["ttl"] / 1000.0)
-                    logger.success(locale.t("cluster.success.token.fetched", tll=tll))
+                    logger.tsuccess("cluster.success.token.fetched", tll=tll)
 
             except aiohttp.ClientError as e:
-                logger.error(
-                    locale.t("cluster.error.token.failed", delay=RECONNECT_DELAY, e=e)
-                )
+                logger.terror("cluster.error.token.failed", delay=RECONNECT_DELAY, e=e)
                 await asyncio.sleep(RECONNECT_DELAY)
                 return await self.fetchToken()
 
@@ -145,7 +143,7 @@ class FileDownloader:
                 "Authorization": f"Bearer {await token.getToken()}",
             },
         ) as session:
-            logger.debug(locale.t("cluster.debug.get_files.created_session"))
+            logger.tdebug("cluster.debug.get_files.created_session")
             async with session.get(
                 "/openbmclapi/files",
                 data={
@@ -154,10 +152,8 @@ class FileDownloader:
                     "lastModified": self.last_modified,
                 },
             ) as req:
-                logger.debug(
-                    locale.t(
-                        "cluster.debug.get_files.response_status", status=req.status
-                    )
+                logger.tdebug(
+                    "cluster.debug.get_files.response_status", status=req.status
                 )
                 if req.status == 204:
                     return []
@@ -167,55 +163,66 @@ class FileDownloader:
                     except:
                         logger.error(traceback.format_exc())
                     return []
-                logger.info(locale.t("cluster.success.get_files.requested_filelist"))
+                logger.tinfo("cluster.success.get_files.requested_filelist")
                 files = await ParseFileList()(zstd.decompress(await req.read()))
                 self.last_modified = max(
                     self.last_modified, *(file.mtime for file in files)
                 )
                 modified = utils.parse_time_to_gmt(self.last_modified / 1000)
-                logger.info(
-                    locale.t("cluster.info.get_files.modified_time", time=modified)
-                )
+                logger.tinfo("cluster.info.get_files.modified_time", time=modified)
                 if DEBUG:
                     self.files = files
                 return files
 
+    async def _download_temporarily_file(self, hash: str):
+        async with aiohttp.ClientSession(
+            BASE_URL,
+            headers={
+                "Authorization": f"Bearar {await token.getToken()}",
+                "User-Agent": USER_AGENT
+            }
+        ) as session:
+            logger.debug(f"正在下载 {hash}")
+            content: io.BytesIO = io.BytesIO()
+            async with session.get(f"/openbmclapi/download/{hash}") as resp:
+                while data := await resp.content.read(IO_BUFFER):
+                    if not data:
+                        break
+                    content.write(data)
+            logger.debug(f"下载完成 {hash}")
+            await self._mount_file(BMCLAPIFile(
+                path = f"/download/{hash}",
+                hash = hash,
+                size = len(content.getbuffer()),
+                mtime = int(time.time() * 1000)
+            ), content)
+            return content
     async def _download(self, pbar: tqdm, session: aiohttp.ClientSession):
         while not self.queues.empty() and storages.available:
             file = await self.queues.get()
             hash = get_hash(file.hash)
             size = 0
-            filepath = Path("./cache/download/" + file.hash[:2] + "/" + file.hash)
-            if filepath.exists() and filepath.stat().st_size == size:
-                await self._mount_files(file)
             try:
+                content: io.BytesIO = io.BytesIO()
                 async with session.get(file.path) as resp:
-                    filepath.parent.mkdir(exist_ok=True, parents=True)
-                    async with aiofiles.open(filepath, "wb") as w:
-                        while data := await resp.content.read(IO_BUFFER):
-                            if not data:
-                                break
-                            byte = len(data)
-                            size += byte
-                            pbar.update(byte)
-                            # pbar.set_postfix_str(file.hash.ljust(40))
-                            await w.write(data)
-                            hash.update(data)
+                    while data := await resp.content.read(IO_BUFFER):
+                        if not data:
+                            break
+                        byte = len(data)
+                        size += byte
+                        pbar.update(byte)
+                        # pbar.set_postfix_str(file.hash.ljust(40))
+                        content.write(data)
+                        hash.update(data)
                 if file.hash != hash.hexdigest():
-                    filepath.unlink(True)
                     raise EOFError
-                await self._mount_files(file)
+                await self._mount_file(file, content)
             except:
                 pbar.update(-size)
                 await self.queues.put(file)
         await session.close()
 
-    async def _mount_files(self, file: BMCLAPIFile):
-        buf = io.BytesIO()
-        async with aiofiles.open(
-            f"./cache/download/{file.hash[:2]}/{file.hash}", "rb"
-        ) as r:
-            buf = io.BytesIO(await r.read())
+    async def _mount_file(self, file: BMCLAPIFile, buf: io.BytesIO):
         for storage in storages.get_storages():
             result = -1
             try:
@@ -226,23 +233,17 @@ class FileDownloader:
                 hash = file.hash
                 file_size = unit.format_bytes(file.size)
                 target_size = unit.format_bytes(result)
-                logger.error(
-                    locale.t(
-                        "cluster.error.mount_files.failed_to_copy",
-                        hash=hash,
-                        file=file_size,
-                        target=target_size,
-                    )
+                logger.terror(
+                    "cluster.error.mount_files.failed_to_copy",
+                    hash=hash,
+                    file=file_size,
+                    target=target_size,
                 )
-
-        try:
-            os.remove(f"./cache/download/{file.hash[:2]}/{file.hash}")
-        except:
-            ...
+        return buf
 
     async def download(self, miss: list[BMCLAPIFile]):
         if not storages.available:
-            logger.error("No storages.")
+            logger.terror("cluster.erorr.cluster.storage.available")
             return
         with tqdm(
             desc=locale.t("cluster.tqdm.desc.download"),
@@ -252,13 +253,13 @@ class FileDownloader:
             unit_scale=True,
         ) as pbar:
             await dashboard.set_status_by_tqdm(
-                "下载文件中", pbar
+                "downloading", pbar
             )
             for file in miss:
                 await self.queues.put(file)
             timers = []
-            for _ in range(0, MAX_DOWNLOAD, 32):
-                for __ in range(32):
+            for _ in range(0, MAX_DOWNLOAD, min(MAX_DOWNLOAD, 32)):
+                for __ in range(min(32, MAX_DOWNLOAD)):
                     timers.append(
                         self._download(
                             pbar,
@@ -273,7 +274,7 @@ class FileDownloader:
                     )
             await asyncio.gather(*timers)
             # pbar.set_postfix_str(" " * 40)
-        logger.success(locale.t("cluster.info.download.finished"))
+        logger.tsuccess("cluster.info.download.finished")
 
 
 class FileCheck:
@@ -288,9 +289,7 @@ class FileCheck:
         self.files = []
         self.pbar: Optional[tqdm] = None
         self.check_files_timer: Optional[Task] = None
-        logger.info(
-            locale.t("cluster.info.check_files.check_type", type=self.check_type.name)
-        )
+        logger.tinfo("cluster.info.check_files.check_type", type=self.check_type.name)
 
     def start_task(self):
         if self.check_files_timer:
@@ -301,13 +300,13 @@ class FileCheck:
         self,
     ) -> Any:
         if not self.checked:
-            await dashboard.set_status("拉取最新文件列表")
+            await dashboard.set_status("files.fetching")
         files = await self.downloader.get_files()
         sorted(files, key=lambda x: x.hash)
         if not self.checked:
-            await dashboard.set_status("正在检查缺失文件")
+            await dashboard.set_status("files.checking")
         if not files:
-            logger.warn(locale.t("cluster.warn.check_files.skipped"))
+            logger.twarn("cluster.warn.check_files.skipped")
             self.start_task()
             return
         with tqdm(
@@ -371,12 +370,10 @@ class FileCheck:
                     for storage, filelist in more_files.items():
                         removed = await storage.removes(filelist)
                         if removed != (total := len(filelist)):
-                            logger.warn(
-                                locale.t(
-                                    "cluster.warn.check_files.failed",
-                                    cur=removed,
-                                    total=total,
-                                )
+                            logger.twarn(
+                                "cluster.warn.check_files.failed",
+                                cur=removed,
+                                total=total,
                             )
                         pbar.update(total)
             if total_missing_bytes != 0 and len(miss_storage) >= 2:
@@ -408,13 +405,11 @@ class FileCheck:
                                         hash = file.hash
                                         file_size = unit.format_bytes(file.size)
                                         target_size = unit.format_bytes(size)
-                                        logger.warn(
-                                            locale.t(
-                                                "cluster.error.check_files.failed_to_copy",
-                                                hash=hash,
-                                                file=file_size,
-                                                target=target_size,
-                                            )
+                                        logger.twarn(
+                                            "cluster.error.check_files.failed_to_copy",
+                                            hash=hash,
+                                            file=file_size,
+                                            target=target_size,
                                         )
                                     else:
                                         missing_files_by_storage[storage].remove(file)
@@ -425,43 +420,15 @@ class FileCheck:
             file_size = unit.format_bytes(
                 sum(file.size for file in files) * len(storages.get_storages())
             )
-            logger.success(
-                locale.t(
-                    "cluster.success.check.finished", count=file_count, size=file_size
-                )
+            logger.tsuccess(
+                "cluster.success.check.finished", count=file_count, size=file_size
             )
         else:
-            logger.info(
-                locale.t(
-                    "cluster.info.check_files.missing",
-                    count=unit.format_number(len(miss)),
-                )
+            logger.tinfo(
+                "cluster.info.check_files.missing",
+                count=unit.format_number(len(miss)),
             )
             await self.downloader.download(list(miss))
-        if os.path.exists("./cache/download"):
-            paths = []
-            dir = []
-            for root, dirs, files in os.walk("./cache/download"):
-                for file in files:
-                    paths.append(os.path.join(root, file))
-                if dirs:
-                    for d in dirs:
-                        dir.append(d)
-            with tqdm(
-                desc=locale.t("cluster.tqdm.desc.cleaning_cache"),
-                total=len(paths) + len(dir),
-                unit=locale.t("cluster.tqdm.unit.file"),
-                unit_scale=True,
-            ) as pbar:
-                await dashboard.set_status_by_tqdm("清理缓存文件中", pbar)
-                if paths:
-                    for path in paths:
-                        os.remove(path)
-                        pbar.update(1)
-                if dir:
-                    for d in dir:
-                        os.removedirs(f"./cache/download/{d}")
-                        pbar.update(1)
         self.start_task()
 
     async def _exists(self, file: BMCLAPIFile, storage: Storage):
@@ -535,17 +502,6 @@ class FileStorage(Storage):
     async def get_size(self, hash: str) -> int:
         return os.path.getsize(str(self.dir) + f"/{hash[:2]}/{hash}")
 
-    async def copy(self, origin: Path, hash: str):
-        Path(str(self.dir) + f"/{hash[:2]}/{hash}").parent.mkdir(
-            exist_ok=True, parents=True
-        )
-        async with (
-            aiofiles.open(str(self.dir) + f"/{hash[:2]}/{hash}", "wb") as w,
-            aiofiles.open(origin, "rb") as r,
-        ):
-            await w.write(await r.read())
-            return origin.stat().st_size
-
     async def write(self, hash: str, io: io.BytesIO) -> int:
         Path(str(self.dir) + f"/{hash[:2]}/{hash}").parent.mkdir(
             exist_ok=True, parents=True
@@ -581,12 +537,10 @@ class FileStorage(Storage):
             return
         for key in old_keys:
             self.cache.pop(key)
-        logger.info(
-            locale.t(
-                "cluster.info.clear_cache.count",
-                count=unit.format_number(len(old_keys)),
-                size=unit.format_bytes(old_size),
-            )
+        logger.tinfo(
+            "cluster.info.clear_cache.count",
+            count=unit.format_number(len(old_keys)),
+            size=unit.format_bytes(old_size),
         )
 
     async def get_files(self, dir: str) -> list[str]:
@@ -642,7 +596,7 @@ class WebDav(Storage):
         self.fetch: bool = False
         self.cache: dict[str, File] = {}
         self.empty = File("", "", 0)
-        self.lock = None
+        self.lock = utils.WaitLock()
         self.session = webdav3_client.Client(
             {
                 "webdav_login": self.username,
@@ -651,6 +605,7 @@ class WebDav(Storage):
                 "User-Agent": USER_AGENT,
             }
         )
+        self.session_lock = asyncio.Lock()
         Timer.delay(self._list_all)
         Timer.repeat(self._keepalive, interval=60)
 
@@ -659,31 +614,25 @@ class WebDav(Storage):
             hostname = self.hostname
             endpoint = self.endpoint
             if not self.disabled:
-                logger.success(
-                    locale.t(
-                        "cluster.success.webdav.keepalive",
-                        hostname=hostname,
-                        endpoint=endpoint,
-                    )
+                logger.tsuccess(
+                    "cluster.success.webdav.keepalive",
+                    hostname=hostname,
+                    endpoint=endpoint,
                 )
             else:
                 storages.enable(self)
-                logger.success(
-                    locale.t(
-                        "cluster.success.webdav.enabled",
-                        hostname=hostname,
-                        endpoint=endpoint,
-                    )
+                logger.tsuccess(
+                    "cluster.success.webdav.enabled",
+                    hostname=hostname,
+                    endpoint=endpoint,
                 )
                 await self._list_all()
         except webdav3_exceptions.NoConnection:
             if not self.disabled:
-                logger.warn(
-                    locale.t(
-                        "cluster.warn.webdav.no_connection",
-                        hostname=hostname,
-                        endpoint=endpoint,
-                    )
+                logger.twarn(
+                    "cluster.warn.webdav.no_connection",
+                    hostname=hostname,
+                    endpoint=endpoint,
                 )
             storages.disable(self)
             self.fetch = False
@@ -696,12 +645,10 @@ class WebDav(Storage):
         except webdav3_exceptions.NoConnection as e:
             hostname = self.hostname
             endpoint = self.endpoint
-            logger.warn(
-                locale.t(
-                    "cluster.warn.webdav.no_connection",
-                    hostname=hostname,
-                    endpoint=endpoint,
-                )
+            logger.twarn(
+                "cluster.warn.webdav.no_connection",
+                hostname=hostname,
+                endpoint=endpoint,
             )
             storages.disable(self)
             self.fetch = False
@@ -715,17 +662,19 @@ class WebDav(Storage):
     async def _mkdir(self, dirs: str):
         if await self._execute(self.session.check(dirs)):
             return
+        await self.session_lock.acquire()
         d = ""
         for dir in dirs.split("/"):
             d += dir
             await self._execute(self.session.mkdir(d))
             d += "/"
+        self.session_lock.release()
 
     async def _list_all(self, force=False):
         if self.fetch and not force:
             return
         if not self.fetch:
-            self.lock = asyncio.get_running_loop().create_future()
+            self.lock.acquire()
         self.fetch = True
         try:
             await self._mkdir(self.endpoint)
@@ -764,16 +713,13 @@ class WebDav(Storage):
         except:
             logger.error(traceback.format_exc())
         if self.lock is not None:
-            self.lock.cancel()
-            self.lock = None
+            self.lock.release()
         return self.files
 
     async def _wait_lock(self):
-        while self.lock:
-            try:
-                await asyncio.wait_for(self.lock, timeout=1)
-            except:
-                ...
+        if self.lock is None:
+            return
+        await self.lock.wait()
 
     async def get(self, file: str, offset: int = 0) -> File:
         if file in self.cache and self.cache[file].expiry - 10 > time.time():
@@ -788,7 +734,6 @@ class WebDav(Storage):
                     self.hostname + self._endpoint(file[:2] + "/" + file),
                     allow_redirects=False,
                 ) as resp:
-                    logger.debug(resp.status, resp.closed)
                     f = File(
                         file,
                         file,
@@ -823,6 +768,7 @@ class WebDav(Storage):
             self.fetch = True
             await self._list_all()
         return hash in self.files
+
 
     async def get_size(self, hash: str) -> int:
         await self._wait_lock()
@@ -887,7 +833,7 @@ class StorageManager:
 
     def enable(self, storage: Storage):
         storage.disabled = False
-        if not self.available and not cluster.connected:
+        if not self.available and not cluster.enabled:
             self.available = True
             Timer.delay(cluster.start)
 
@@ -953,8 +899,12 @@ class StorageManager:
     async def get(self, hash: str, offset: int) -> Optional[File]:
         first_storage = self.get_storage_width()
         storage = first_storage
-        exists: bool = False
+        exists: bool = await storage.exists(hash)
+        if not exists:
+            await cluster.downloader._download_temporarily_file(hash)
+            exists = True
         while not (exists := await storage.exists(hash)):
+            await cluster.downloader._download_temporarily_file(hash)
             storage = self.get_storage_width()
             if storage == first_storage:
                 break
@@ -970,35 +920,21 @@ class StorageManager:
 
 class Cluster:
     def __init__(self) -> None:
-        self.connected = False
-        self.sio = socketio.AsyncClient()
-        self.sio.on("message", self._message)
-        self.sio.on("exception", self._exception)
-        self.stats_storage: Optional[stats.SyncStorage] = None
         self.downloader = FileDownloader()
         self.file_check = FileCheck(self.downloader)
-        self._enable_timer: Optional[Task] = None
-        self.keepaliving = False
-        self.keepaliveTimer: Optional[Task] = None
-        self.keepaliveTimeoutTimer: Optional[Task] = None
-        self._cur_storages: list[stats.SyncStorage] = []
-        self._retry = 0
+        self.sio = socketio.AsyncClient()
+        self.sio.on("message", self._message)   
+        self.sio.on("exception", self._exception)
+        self.enabled: bool = False
         self.cert_valid: float = 0
-
-    def _message(self, message):
-        logger.info(locale.t("cluster.info.cluster.remote_message", message=message))
-        if "信任度过低" in message:
-            self.trusted = False
-
-    def _exception(self, message):
-        logger.error(locale.t("cluster.error.cluster.remote_message", message=message))
-            Timer.delay(self.retry)
-
-    async def emit(self, channel, data=None):
-        await self.sio.emit(
-            channel, data, callback=lambda x: Timer.delay(self.message, (channel, x))
-        )
-
+        self.cur_token_timestamp: float = 0
+        self._retry: int = 0
+        self.want_enable: bool = False
+        self.disable_future: utils.WaitLock = utils.WaitLock()
+        self.channel_lock: utils.WaitLock = utils.WaitLock()
+        self.keepalive_timer: Optional[Task] = None
+        self.keepalive_timeout_timer: Optional[Task] = None
+        self.keepalive_failed: int = 0
     async def connect(self):
         if not self.sio.connected:
             try:
@@ -1007,78 +943,96 @@ class Cluster:
                     auth={"token": await token.getToken()},
                     transports=["websocket"],
                 )
+                self.cur_token_timestamp = token.token_expires
                 await self.cert()
                 return True
             except:
-                logger.warn(locale.t("cluster.warn.cluster.failed_to_connect"))
+                logger.twarn("cluster.warn.cluster.failed_to_connect")
+                logger.debug(traceback.format_exc())
+                Timer.delay(self.init, delay=5)
                 return False
-        return True
-
     async def init(self):
         if not await self.connect():
             return
         await self.start()
-
-    async def start(self):
-        if len(storages.get_storages()) == 0:
-            logger.warn(locale.t("cluster.warn.cluster.no_storage"))
+    async def disable(self):
+        if self.keepalive_timer is not None:
+            self.keepalive_timer.block()
+        await self.disable_future.wait()
+        self.disable_future.acquire()
+        async def _(err, ack):
+            self.disable_future.release()
+            logger.tsuccess("cluster.success.cluster.disable")
+        await self.emit("disable", callback=_)
+        
+    async def retry(self):
+        if self.cur_token_timestamp != token.token_expires and self.sio.connected:
+            self.sio.disconnect()
+            logger.tdebug("cluster.debug.cluster.socketio.disconnect")
+            await self.connect()
+        if RECONNECT_RETRY != -1 and self._retry >= RECONNECT_RETRY:
+            logger.terror(
+                "cluster.error.cluster.reached_maximum_retry_count",
+                count=RECONNECT_RETRY,
+            )
             return
-        await self.start_storage()
-
-    async def start_storage(self):
-        if len(storages.get_storages()) == 0:
-            if self.connected:
-                self.disable()
-            logger.warn(locale.t("cluster.warn.cluster.no_storage"))
+        if self.enabled:
+            await self.disable()
+            self.enabled = False
+        self._retry += 1
+        logger.tinfo("cluster.info.cluster.retry", t=RECONNECT_DELAY)
+        await asyncio.sleep(RECONNECT_DELAY)
+        await self.enable()
+    async def start(self):
+        if not storages.available:
+            await self.disable()
+            logger.twarn("cluster.warn.cluster.no_storage")
             return
         start = time.time()
         await self.file_check()
-        t = "%.2f" % start
-        logger.success(locale.t("cluster.success.cluster.finished_file_check", time=t))
-        if not self.connected:
-            await self.enable()
-
+        t = "%.2f" % (time.time() - start)
+        logger.tsuccess("cluster.success.cluster.finished_file_check", time=t)
+        await self.enable()
     async def cert(self):
         if self.cert_valid - 600 > time.time():
             return
-        await self.emit("request-cert")
-
+        self.channel_lock.acquire()
+        async def _(err, ack):
+            if err:
+                logger.terror("cluster.error.cert.failed", ack=ack)
+                return
+            self.cert_valid = utils.parse_iso_time(ack["expires"])
+            logger.tsuccess("cluster.success.cert.requested")
+            certificate.load_text(ack["cert"], ack["key"])
+            await dashboard.set_status("cluster.got.cert") 
+            self.channel_lock.release()
+        await self.emit("request-cert", callback=_)
+        await dashboard.set_status("cluster.get.cert")
     async def enable(self):
-        if self.connected:
-            logger.debug(locale.t("cluster.debug.cluster.blocked"))
+        if self.want_enable or self.enabled:
+            logger.tdebug("cluster.debug.cluster.enable_again")
             return
-        if not ENABLE or not storages.available:
-            logger.warn(locale.t("cluster.warn.cluster.disabled"))
-            return
-        self.connected = True
-        if self._enable_timer is not None:
-            self._enable_timer.block()
-        self._enable_timer = Timer.delay(self.retry, delay=ENABLE_TIMEOUT)
-        if not await self.connect():
-            return
-        await self._enable()
-
-    async def retry(self):
-        if RECONNECT_RETRY != -1 and self._retry >= RECONNECT_RETRY:
-            logger.error(
-                locale.t(
-                    "cluster.error.cluster.reached_maximum_retry_count",
-                    count=RECONNECT_RETRY,
+        async def _(err, ack):
+            self.want_enable = False
+            if err:
+                logger.terror(
+                    "cluster.error.cluster.failed_to_start_service",
+                    e=err["message"],
                 )
+                await self.retry()
+                return
+            self.enabled = True
+            logger.tsuccess("cluster.success.cluster.connected_to_center_server")
+            logger.tinfo(
+                "cluster.info.cluster.hosting",
+                id=CLUSTER_ID,
+                port=PUBLIC_PORT or PORT,
             )
-            return
-        if self.connected:
-            await self.disable()
-            self.connected = False
-        self._retry += 1
-        logger.info(locale.t("cluster.info.cluster.retry", t=RECONNECT_DELAY))
-        await asyncio.sleep(RECONNECT_DELAY)
-        await self.enable()
-
-    async def _enable(self):
-        if not ENABLE or not storages.available:
-            logger.warn(locale.t("cluster.warn.cluster.disabled"))
-            return
+            await dashboard.set_status("cluster.enabled" + (".trusted" if self.trusted else ""))
+            await self.keepalive()
+        self.want_enable = True
+        await self.channel_lock.wait()
+        await dashboard.set_status("cluster.want_enable")
         storage_str = {"file": 0, "webdav": 0}
         self.trusted = True
         for storage in storages.get_storages():
@@ -1086,13 +1040,11 @@ class Cluster:
                 storage_str["file"] += 1
             elif isinstance(storage, WebDav):
                 storage_str["webdav"] += 1
-        logger.info(
-            locale.t(
-                "cluster.info.cluster.storage_count",
-                total=len(storages.get_storages()),
-                local=storage_str["file"],
-                webdav=storage_str["webdav"],
-            )
+        logger.tinfo(
+            "cluster.info.cluster.storage_count",
+            total=len(storages.get_storages()),
+            local=storage_str["file"],
+            webdav=storage_str["webdav"],
         )
         await self.emit(
             "enable",
@@ -1109,133 +1061,94 @@ class Cluster:
                     ),
                 },
             },
+            callback=_
         )
-        await dashboard.set_status("巡检中")
-
-    async def message(self, type, data: list[Any]):
-        if len(data) == 1:
-            data.append(None)
-        err, ack = data
-        if type != "request-cert":
-            logger.debug(type, data)
-        if type == "request-cert":
-            err, ack = data
+    async def keepalive(self, delay: float = 0):
+        def _clear():
+            if self.keepalive_timer is not None:
+                self.keepalive_timer.block()
+            if self.keepalive_timeout_timer is not None:
+                self.keepalive_timeout_timer.block()
+            self.keepalive_timer = None
+            self.keepalive_timeout_timer = None
+        async def _failed():
+            self.keepalive_failed += 1
+            if self.keepalive_failed >= 3:
+                logger.terror("Failed to keepalive.")
+                await self.disable()
+            else:
+                if self.keepalive_timer is not None:
+                    self.keepalive_timer.block()
+                self.keepalive_timer = Timer.delay(self.keepalive, args=(delay, ), delay=10)
+        async def _(err, ack):
+            if self.keepalive_failed <= 2:
+                if self.keepalive_timer is not None:
+                    self.keepalive_timer.block()
+                self.keepalive_timer = Timer.delay(self.keepalive, args=(delay, ), delay=60)
             if err:
-                logger.error(locale.t("cluster.error.cert.failed", ack=ack))
-                return
-            self.cert_valid = utils.parse_iso_time(ack["expires"])
-            logger.success(locale.t("cluster.success.cert.requested"))
-            certificate.load_text(ack["cert"], ack["key"])
-        elif type == "enable":
-            err, ack = data
-            if self._enable_timer is not None:
-                self._enable_timer.block()
-                self._enable_timer = None
-            if err:
-                logger.error(
-                    locale.t(
-                        "cluster.error.cluster.failed_to_start_service",
-                        e=err["message"],
-                    )
-                )
-                await self.retry()
-                return
-            self._retry = 0
-            self.connected = True
-            logger.success(
-                locale.t("cluster.success.cluster.connected_to_center_server")
-            )
-            logger.info(
-                locale.t(
-                    "cluster.info.cluster.hosting",
-                    id=CLUSTER_ID,
-                    port=PUBLIC_PORT or PORT,
-                )
-            )
-            await self.start_keepalive()
-            await dashboard.set_status(
-                "正常工作" + ("" if self.trusted else "（节点信任度过低）")
-            )
-        elif type == "keep-alive":
-            if err:
-                logger.error(locale.t("cluster.error.cluster.keepalive_failed"))
-                await self.retry()
+                await _failed()
+                logger.terror("cluster.error.cluster.keepalive_failed", count=self.keepalive_failed)
                 return
             if not ack:
                 await self.emit("disable")
-                logger.warn(locale.t("cluster.warn.cluster.kicked"))
+                logger.twarn("cluster.warn.cluster.kicked")
+                await _failed()
                 return
+            self.keepalive_failed = 0
+            ping = int((time.time() - utils.parse_iso_time(ack).timestamp()) * 1000)
             storage_data = {"hits": 0, "bytes": 0}
-            for storage in self._cur_storages:
+            for storage in cur_storages:
                 storage.object.add_last_hits(storage.sync_hits)
                 storage.object.add_last_bytes(storage.sync_bytes)
                 storage_data["hits"] += storage.sync_hits
                 storage_data["bytes"] += storage.sync_bytes
-            keepalive_time = utils.parse_iso_time(ack)
             hits = unit.format_number(storage_data["hits"])
             bytes = unit.format_bytes(storage_data["bytes"])
-            storage_count = len(self._cur_storages)
-            ping = int((time.time() - keepalive_time.timestamp()) * 1000)
-            logger.success(
-                locale.t(
-                    "cluster.success.keepalive",
-                    hits=hits,
-                    bytes=bytes,
-                    count=storage_count,
-                    ping=ping,
-                )
+            storage_count = len(cur_storages)
+            logger.tsuccess(
+                "cluster.success.keepalive",
+                hits=hits,
+                bytes=bytes,
+                count=storage_count,
+                ping=ping,
             )
-            self._cur_storages = []
-
-    async def start_keepalive(self, delay: int = 0):
-        if self.keepaliveTimer is not None:
-            self.keepaliveTimer.block()
-        if self.keepaliveTimeoutTimer is not None:
-            self.keepaliveTimeoutTimer.block()
-        self.keepaliveTimer = Timer.delay(self._keepalive, delay=delay)
-        self.keepaliveTimeoutTimer = Timer.delay(
-            self._keepalive_timeout, delay=delay + KEEPALIVE_TIMEOUT
+        async def _start():
+            data = {"hits": 0, "bytes": 0}
+            for storage in cur_storages:
+                data["hits"] += storage.sync_hits
+                data["bytes"] += storage.sync_bytes
+            await self.emit(
+                "keep-alive",
+                {"time": int(time.time() * 1000), **data},
+                callback=_
+            )
+        _clear()
+        cur_storages = stats.get_offset_storages().copy()
+        await _start()
+    def _message(self, message):
+        logger.tinfo("cluster.info.cluster.remote_message", message=message)
+        if "信任度过低" in message:
+            self.trusted = False
+    def _exception(self, message):
+        logger.terror("cluster.error.cluster.remote_message", message=message)
+        Timer.delay(self.retry)
+    async def emit(self, channel, data=None, callback = None):
+        logger.tdebug("cluster.debug.cluster.emit.send", channel=channel, data=data,)
+        await self.sio.emit(
+            channel, data, callback=lambda x: Timer.delay(self.message, (channel, x, callback))
         )
-        self.keepaliving = True
-
-    async def _keepalive_timeout(self):
-        if self.keepaliveTimer is not None:
-            self.keepaliveTimer.block()
-        if self.keepaliveTimeoutTimer is not None:
-            self.keepaliveTimeoutTimer.block()
-        self.keepaliving = False
-        logger.warn(locale.t("cluster.error.cluster.keepalive_failed"))
-        await self.retry()
-
-    async def _keepalive(self):
-        self._cur_storages = stats.get_offset_storages().copy()
-        data = {"hits": 0, "bytes": 0}
-        for storage in self._cur_storages:
-            data["hits"] += storage.sync_hits
-            data["bytes"] += storage.sync_bytes
-        await self.emit(
-            "keep-alive",
-            {"time": int(time.time() * 1000), **data},
-        )
-        self.keepaliving = False
-        logger.debug(locale.t("cluster.info.cluster.next_keepalive"))
-        await self.start_keepalive(60)
-
-    async def disable(self):
-        if self.sio.connected and self.connected:
-            await self.emit("disable")
-            logger.info(locale.t("cluster.info.cluster.disconnecting"))
-        if self.sio.connected and token.token_expires <= time.time():
-            await self.sio.disconnect()
-        await dashboard.set_status("已下线")
-
-    async def get_cache_stats(self) -> StatsCache:
-        stat = StatsCache()
-        for storage in storages.get_storages():
-            t = await storage.get_cache_stats()
-            stat.total += t.total
-            stat.bytes += t.bytes
-        return stat
+    async def message(self, channel, data: list[Any], callback = None):
+        if len(data) == 1:
+            data.append(None)
+        err, ack = data
+        if channel != "request-cert":
+            logger.tdebug("cluster.debug.cluster.emit.recv", channel=channel, data=data)
+        if callback is None:
+            return
+        try:
+            await callback(err, ack)
+        except:
+            logger.error(traceback.format_exc())
 
 
 token = TokenManager()
@@ -1250,7 +1163,7 @@ async def check_update():
     global fetched_version
     fetched_version = "Unknown"
     async with aiohttp.ClientSession(base_url=github_api) as session:
-        logger.info(locale.t("cluster.info.check_update.checking"))
+        logger.tinfo("cluster.info.check_update.checking")
         try:
             async with session.get(
                 "/repos/TTB-Network/python-openbmclapi/releases/latest"
@@ -1259,17 +1172,15 @@ async def check_update():
                 data = await req.json()
                 fetched_version = data["tag_name"]
             if fetched_version != VERSION:
-                logger.success(
-                    locale.t(
-                        "cluster.success.check_update.new_version",
-                        latest=fetched_version,
-                    )
+                logger.tsuccess(
+                    "cluster.success.check_update.new_version",
+                    latest=fetched_version,
                 )
                 await dashboard.trigger("version")
             else:
-                logger.info(locale.t("cluster.info.check_update.already_up_to_date"))
+                logger.tinfo("cluster.info.check_update.already_up_to_date")
         except aiohttp.ClientError as e:
-            logger.error(locale.t("cluster.error.check_update.failed", e=e))
+            logger.terror("cluster.error.check_update.failed", e=e)
     Timer.delay(check_update, delay=3600)
 
 

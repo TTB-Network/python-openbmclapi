@@ -649,7 +649,7 @@ class Application:
 
     def mount(self, router: Router):
         self._routes.append(router)
-        logger.info(locale.t("web.info.serving_router", router=router.prefix))
+        logger.tinfo("web.info.serving_router", router=router.prefix)
 
     def mount_resource(self, resource: Resource):
         self._resources.append(resource)
@@ -1310,7 +1310,7 @@ async def _():
 
 
 async def init():
-    logger.info(locale.t("web.info.loading"))
+    logger.tinfo("web.info.loading")
     cluster.stats.init()
     await cluster.init()
 

@@ -189,6 +189,9 @@ async def check_ports():
                 if port[1] is not None:
                     kwargs["ssl"] = port[1]
                     kwargs["ssl_handshake_timeout"] = 5
+                if port[0] is None or not port[0].sockets:
+                    closed = True
+                    continue
                 client = Client(
                     *(
                         await asyncio.wait_for(

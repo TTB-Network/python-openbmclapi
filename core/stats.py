@@ -300,21 +300,33 @@ def get_storage_stats():
 
 def hourly():
     data = []
+    hours: dict[int, StorageStats] = {}
     t = get_timestamp_from_day_tohour(0)
     for r in queryAllData(
         "select storage, hour, hit, bytes, cache_hit, cache_bytes, last_hit, last_bytes, failed from access where hour >= ?",
         t,
     ):
+        hour = int(r[1] - t)
+        if hour not in hours:
+            hours[hour] = StorageStats("Total")
+        hours[hour]._hits += r[2]
+        hours[hour]._bytes += r[3]
+        hours[hour]._cache_hits += r[4]
+        hours[hour]._cache_bytes += r[5]
+        hours[hour]._last_hits += r[6]
+        hours[hour]._last_bytes += r[7]
+        hours[hour]._failed += r[8]
+    for hour in sorted(hours.keys()):
         data.append(
             {
-                "_hour": int(r[1] - t),
-                "cache_hits": r[4],
-                "cache_bytes": r[5],
-                "hits": r[2],
-                "bytes": r[3],
-                "last_hits": r[6],
-                "last_bytes": r[7],
-                "failed": r[8],
+                "_hour": int(hour),
+                "hits": hours[hour]._hits,
+                "bytes": hours[hour]._bytes,
+                "cache_hits": hours[hour]._cache_hits,
+                "cache_bytes": hours[hour]._cache_bytes,
+                "last_hits": hours[hour]._last_hits,
+                "last_bytes": hours[hour]._last_bytes,
+                "failed": hours[hour]._failed,
             }
         )
     return data
