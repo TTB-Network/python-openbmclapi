@@ -31,12 +31,20 @@ class StorageInfo:
     size: int
     free: int
 
+
+@dataclass
+class ProgressBar:
+    object: Optional[tqdm] = None
+    desc: str = ""
+    last_value: float = 0
+    speed: float = 0
+    show: Optional[Task] = None
+
+
+websockets: list['web.WebSocket'] = []
 last_status = ""
 last_text = ""
-last_tqdm: float = 0
-cur_tqdm: Optional[tqdm] = None
-cur_tqdm_unit = None
-cur_tqdm_text = None
+cur_tqdm: ProgressBar = ProgressBar()
 task_tqdm: Optional[Task] = None
 tokens: list[Token] = []
 
@@ -120,7 +128,20 @@ async def process(type: str, data: Any):
                 resp_data[_] += raw_data.get(__ + _, 0)
         return {_format_time(k): v for k, v in resp_data.items()}
     if type == "status":
-        return last_status
+        resp: dict = {
+            "key": last_status,
+        }
+        if cur_tqdm is not None and cur_tqdm.object is not None:
+            resp.update({
+                "progress": {
+                    "value": cur_tqdm.object.n,
+                    "total": cur_tqdm.object.total,
+                    "speed": cur_tqdm.speed,
+                    "unit": cur_tqdm.object.unit,
+                    "desc": cur_tqdm.desc
+                }
+            })
+        return resp
     if type == "master":
         async with aiohttp.ClientSession(BASE_URL) as session:
             async with session.get(data) as resp:
@@ -162,50 +183,40 @@ async def process(type: str, data: Any):
         return data
 
 
-async def set_status_by_tqdm(text: str, pbar: tqdm, format=unit.format_numbers):
-    global cur_tqdm_text, cur_tqdm, cur_tqdm_unit, task_tqdm
-    cur_tqdm_text = text
-    cur_tqdm = pbar
-    cur_tqdm_unit = format
+async def set_status_by_tqdm(text: str, pbar: tqdm):
+    global cur_tqdm, task_tqdm
+    cur_tqdm.object = pbar
+    cur_tqdm.desc = text
     if task_tqdm:
-        if cur_tqdm is None:
+        task_tqdm.block()
+    task_tqdm = Timer.repeat(_calc_tqdm_speed, delay=0, interval=0.5)
+    cur_tqdm.show = Timer.repeat(_set_status, kwargs={
+        "blocked": True
+    }, delay=0, interval=1)
+
+
+async def _calc_tqdm_speed():
+    global cur_tqdm
+    if cur_tqdm.object is None or cur_tqdm.object.disable:
+        if task_tqdm is not None:
             task_tqdm.block()
+        cur_tqdm.show.block()
+        cur_tqdm.object = None
         return
-    task_tqdm = Timer.repeat(_set_status_by_tqdm, delay=0, interval=1)
+    cur_tqdm.speed = (cur_tqdm.object.n - cur_tqdm.last_value) / 0.5
+    cur_tqdm.last_value = cur_tqdm.object.n
+
+       
 
 
-async def _set_status_by_tqdm():
-    global cur_tqdm_text, cur_tqdm, cur_tqdm_unit, last_tqdm
-    if last_tqdm > time.time():
-        return
-    if (
-        not cur_tqdm_text
-        or cur_tqdm is None
-        or not cur_tqdm_unit
-        or cur_tqdm is not None
-        and cur_tqdm.disable
-    ):
-        if cur_tqdm is not None:
-            if task_tqdm:
-                task_tqdm.block()
-            await _set_status()
-        cur_tqdm = None
-        return
-    n, total = cur_tqdm_unit(cur_tqdm.n, cur_tqdm.total)
-    await _set_status(f"{cur_tqdm_text} ({n}/{total})")
-    last_tqdm = time.time() + 1
-
-
-async def _set_status(text: Optional[str] = None):
+async def _set_status(text: Optional[str] = None, blocked: bool = False):
     global last_text, last_status
     if not text:
         text = last_text
-    if last_status != text:
-        app = web.app
-        output = to_bytes("status", text)
-        for ws in app.get_websockets("/bmcl/"):
-            await ws.send(output.io.getvalue())
+    if last_status == text and not blocked:
+        return
     last_status = text
+    await trigger("status")
 
 
 async def set_status(text):
@@ -216,14 +227,14 @@ async def set_status(text):
 
 
 async def trigger(type: str, data: Any = None):
-    app = web.app
-    output = to_bytes(type, await process(type, data))
-    for ws in app.get_websockets("/bmcl/"):
+    output = to_bytes(0, type, await process(type, data))
+    for ws in websockets:
         await ws.send(output.io.getvalue())
 
 
-def to_bytes(type: str, data: Any):
+def to_bytes(key: int, type: str, data: Any):
     output = utils.DataOutputStream()
+    output.writeVarInt(key)
     output.writeString(type)
     output.write(serialize(data).io.getvalue())
     return output

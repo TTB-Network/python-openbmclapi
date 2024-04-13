@@ -1,5 +1,6 @@
 from datetime import datetime
 import os
+import sys
 import time
 
 cur = time.time()
@@ -17,6 +18,10 @@ os.environ["ASYNCIO_STARTUP"] = str(
 )
 
 if __name__ == "__main__":
+    if sys.version_info <= (3, 8):
+        print(f"Not support version: {sys.version}")
+    if sys.version_info == (3, 9):
+        print(f"Warning version: {sys.version}")
     import core
 
     core.init()

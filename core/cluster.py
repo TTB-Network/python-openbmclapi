@@ -230,7 +230,7 @@ class FileDownloader:
             unit_scale=True,
         ) as pbar:
             await dashboard.set_status_by_tqdm(
-                "下载文件中", pbar, unit.format_more_bytes
+                "下载文件中", pbar
             )
             for file in miss:
                 await self.queues.put(file)
@@ -887,6 +887,8 @@ class Cluster:
     
     def _exception(self, message):
         logger.error(f"[Remote] {message}")
+        if message['message'] == "Forbidden resource":
+            Timer.delay(self.retry)
 
     async def emit(self, channel, data=None):
         await self.sio.emit(
@@ -1144,7 +1146,6 @@ async def check_update():
 
 
 async def init():
-    await check_update()
     global cluster
     cluster = Cluster()
     system.init()
@@ -1248,33 +1249,36 @@ async def init():
     dir.mkdir(exist_ok=True, parents=True)
     app.mount_resource(web.Resource("/", dir, show_dir=False))
 
-    @app.get("/dashboard/{name}/{sub}")
-    @app.get("/dashboard/{name}")
+    @app.get("/pages/{name}/{sub}")
+    @app.get("/pages/{name}")
     async def _(request: web.Request, name: str, sub: str = ""):
         return Path(f"./bmclapi_dashboard/index.html")
 
-    @app.websocket("/")
+    @app.websocket("/pages/{name}/{sub}")
+    @app.websocket("/pages/{name}")
     async def _(request: web.Request, ws: web.WebSocket):
+        dashboard.websockets.append(ws)
         auth_cookie = (await request.get_cookies()).get("auth") or None
         auth = dashboard.token_isvaild(auth_cookie.value if auth_cookie else None)
         if not auth:
-            await ws.send(dashboard.to_bytes("auth", None).io.getbuffer())
+            await ws.send(dashboard.to_bytes(0, "auth", None).io.getbuffer())
         else:
-            await ws.send(dashboard.to_bytes("auth", DASHBOARD_USERNAME).io.getbuffer())
+            await ws.send(dashboard.to_bytes(0, "auth", DASHBOARD_USERNAME).io.getbuffer())
         async for raw_data in ws:
             if isinstance(raw_data, str):
-                return
+                continue
             if isinstance(raw_data, io.BytesIO):
                 raw_data = raw_data.getvalue()
             input = utils.DataInputStream(raw_data)
+            key = input.readVarInt()
             type = input.readString()
             data = dashboard.deserialize(input)
             await ws.send(
                 dashboard.to_bytes(
-                    type, await dashboard.process(type, data)
+                    key, type, await dashboard.process(type, data)
                 ).io.getbuffer()
             )
-
+        dashboard.websockets.remove(ws)
     @app.get("/auth")
     async def _(request: web.Request):
         auth = (await request.get_headers("Authorization")).split(" ", 1)[1]
@@ -1312,7 +1316,8 @@ async def init():
             ...
         return await dashboard.process(name, data.get("content"))
 
-    app.redirect("/", "/dashboard/")
+    app.redirect("/", "/pages/")
+    await check_update()
 
 async def close():
     global cluster
