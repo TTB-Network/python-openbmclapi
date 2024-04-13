@@ -5,7 +5,8 @@ import traceback
 from types import ModuleType
 from typing import Any
 from pathlib import Path
-from core import logger
+from core.logger import logger
+from core.i18n import locale
 
 
 class Plugin:
@@ -54,7 +55,7 @@ plugins: list[Plugin] = []
 
 
 def load_plugins():
-    logger.info("Attempting to load plugins...")
+    logger.info(locale.t("plugins.info.attempt_loading"))
     dirlist = os.listdir("./plugins")
     for file in dirlist:
         load = None
@@ -66,11 +67,16 @@ def load_plugins():
             if file[0] != "_" and file.endswith(".py"):
                 load = file[:-3]
         if load:
-            logger.debug(f"Loading plugins.{load}")
+            logger.debug(locale.t("plugins.debug.loading", name=load))
             try:
                 plugin = Plugin(importlib.import_module("plugins." + load))
                 logger.info(
-                    f"Successfully loaded plugin [{plugin.get_name()}]! Version: [{plugin.get_version()}], Author: [{plugin.get_author()}]."
+                    locale.t(
+                        "plugins.success.loaded",
+                        name=plugin.get_name(),
+                        version=plugin.get_version(),
+                        author=plugin.get_author(),
+                    )
                 )
                 plugins.append(plugin)
             except:

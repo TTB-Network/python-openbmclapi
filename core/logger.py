@@ -1,8 +1,11 @@
 from loguru import logger as Logger
 from pathlib import Path
 import sys
+from core.config import Config
 
 basic_logger_format = "<green>[{time:YYYY-MM-DD HH:mm:ss}]</green> <level>[{level}] <yellow>[{name}:{function}:{line}]</yellow>: {message}</level>"
+debug_mode = Config.get("advanced.debug")
+
 
 class LoggingMessage:
     def __init__(self) -> None:
@@ -21,7 +24,7 @@ def _log(*values):
 
 class LoggingLogger:
     def __init__(self, depth: int = 0):
-        self.log = Logger.opt(depth = 2 + depth)
+        self.log = Logger.opt(depth=2 + depth)
         self.log.remove()
         self.cur_handler = None
         self.log.add(
@@ -30,7 +33,8 @@ class LoggingLogger:
             retention="10 days",
             encoding="utf-8",
         )
-        self.add_log("DEBUG")
+        self.add_log("DEBUG" if debug_mode else "INFO")
+
     def add_log(self, level: str):
         if self.cur_handler:
             self.log.remove(self.cur_handler)
@@ -40,6 +44,7 @@ class LoggingLogger:
             level=level,
             colorize=True,
         )
+
     def _log_with_args(self, level, *args, **kwargs):
         message = _log(*args) if args else ""
         self.log.log(level, message, **kwargs)
@@ -64,5 +69,6 @@ class LoggingLogger:
 
     def depth(self, depth):
         return LoggingLogger(depth)
+
 
 logger = LoggingLogger()

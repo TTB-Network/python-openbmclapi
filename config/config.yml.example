@@ -1,22 +1,44 @@
 advanced:
+  debug: false
   header_bytes: 4096
   io_buffer: 16777216
+  language: zh_cn
   min_rate: 500
   min_rate_timestamp: 1000
   request_buffer: 8192
   timeout: 30
+cache:
+  buffer: 536870912
+  check: 360
+  time: 1800
 cluster:
   byoc: false
+  enable: true
+  file_check_mode: size
   id: ''
   public_host: ''
   public_port: 8800
+  reconnect:
+    delay: 5
+    retry: -1
   secret: ''
+  skip_sign: false
+  timeout:
+    enable: 60
+    keepalive: 300
+  url: https://openbmclapi.bangbang93.com/
+dashboard:
+  password: '123456'
+  username: admin
 download:
   threads: 64
-dashboard:
-  password: ''
-  username: admin
+storages:
+  bmclapi:
+    path: ./bmclapi
+    type: file
+    width: 0
 web:
+  force_ssl: false
   port: 8080
   server_name: TTB-Network
   ssl_port: 8800

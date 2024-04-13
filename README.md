@@ -1,6 +1,10 @@
 <div align="center">
 
-![](https://github.com/TTB-Network/python-openbmclapi/assets/113701655/5b554658-b057-4111-85c3-9d1eb5b32975)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://d.kstore.space/download/7507/logo_dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://d.kstore.space/download/7507/logo_light.svg">
+  <img alt="logo" src="https://d.kstore.space/download/7507/logo_light.svg" height=400>
+</picture>
 
 # OpenBMCLAPI for Python
 
@@ -19,11 +23,11 @@
 
 ✨ **Docker** 支持。通过 Docker 更加**快捷地**部署 python-openbmclapi ~~（更支持一键跑路）~~
 
-🌈 __*新增功能！*__ **插件拓展**支持。你可以更方便地为 python-openbmclapi 编写自己的插件。
+🎉 __*新增功能！*__ WebDav 支持（实验性）。
 
-🎉 __*新增功能！*__ 基于 Echart 的 OpenBMCLAPI 仪表盘（Dashboard）。
+🎉 __*新增功能！*__ 多语言支持（实验性）。
 
-🎉 __*新增功能！*__ 基于 loguru 的**日志器**。
+~~🎉 __*新增功能！*__ 由 tianxiu2b2t 强势驱动的 Dashboard。~~
 
 </div>
 
@@ -87,8 +91,9 @@
     -v ${/path/to/your/cache}:/opt/python-openbmclapi/bmclapi \
     -e cluster.id=${cluster.id} \
     -e cluster.secret=${cluster.secret} \
-    -e web.public_port=${web.public_port} \
-    -p ${web.public_port}:8080 \
+    -e cluster.public_port=${cluster.public_port} \
+    -e web.ssl_port=${cluster.public_port}
+    -p ${cluster.public_port}:8080 \
     --restart always \
     --name python-openbmclapi \
     silianz/python-openbmclapi 
