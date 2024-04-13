@@ -80,7 +80,7 @@ class Task:
             if inspect.iscoroutinefunction(self._handler):
                 await self._handler(*self._args, **self._kwargs)
             elif inspect.iscoroutine(self._handler):
-                await self._handler(*self._args, **self._kwargs)
+                await self._handler
         except:
             logger.error(traceback.format_exc())
 
