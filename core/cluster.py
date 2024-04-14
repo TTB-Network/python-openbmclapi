@@ -421,7 +421,7 @@ class FileCheck:
                 sum(file.size for file in files) * len(storages.get_storages())
             )
             logger.tsuccess(
-                "cluster.success.check.finished", count=file_count, size=file_size
+                "cluster.success.check_files.finished", count=file_count, size=file_size
             )
         else:
             logger.tinfo(
