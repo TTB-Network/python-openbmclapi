@@ -48,5 +48,7 @@ def load_text(cert: str, key: str):
         core.restart = True
         if core.server:
             core.server.close()
+        if core.ssl_server:
+            core.ssl_server.close()
     cert_file.unlink()
     key_file.unlink()

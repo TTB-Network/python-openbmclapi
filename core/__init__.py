@@ -251,10 +251,14 @@ async def main():
                 break
             if server:
                 server.close()
+            if ssl_server:
+                ssl_server.close()
             restart = False
         except:
             if server:
                 server.close()
+            if ssl_server:
+                ssl_server.close()
             logger.error(traceback.format_exc())
             await asyncio.sleep(2)
     await close()
@@ -274,6 +278,8 @@ async def close():
 def kill(_, __):
     if int(os.environ["ASYNCIO_STARTUP"]) and server:
         server.close()
+        if ssl_server:
+            ssl_server.close()
         asyncio.get_running_loop().close()
         return
     exit(0)
