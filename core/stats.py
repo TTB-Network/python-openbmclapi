@@ -47,7 +47,7 @@ class UserAgent(Enum):
             for UA in UserAgent:
                 if UA.value == ua.lower():
                     data.append(UA)
-        return data or UserAgent.OTHER
+        return data or [UserAgent.OTHER]
     @staticmethod
     def get_ua(ua: str) -> 'UserAgent':
         for _ in UserAgent:
@@ -62,7 +62,6 @@ class GlobalStats:
 
     def add_ua(self, ua: str = ""):
         for ua in UserAgent.parse_ua(ua):
-            print(ua)
             self.useragent[ua] += 1
     def add_ip(self, ip: str):
         self.ip[ip] += 1
