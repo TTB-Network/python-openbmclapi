@@ -253,7 +253,7 @@ class FileDownloader:
             unit_scale=True,
         ) as pbar:
             await dashboard.set_status_by_tqdm(
-                "downloading", pbar
+                "files.downloading", pbar
             )
             for file in miss:
                 await self.queues.put(file)
@@ -316,7 +316,7 @@ class FileCheck:
         ) as pbar:
             self.pbar = pbar
             self.files = files
-            await dashboard.set_status_by_tqdm("文件完整性", pbar)
+            await dashboard.set_status_by_tqdm("files.checking", pbar)
             pbar.set_description(locale.t("cluster.tqdm.desc.check_files"))
 
             miss_storage: list[list[BMCLAPIFile]] = await asyncio.gather(
@@ -366,7 +366,7 @@ class FileCheck:
                     unit=locale.t("cluster.tqdm.unit.file"),
                     unit_scale=True,
                 ) as pbar:
-                    await dashboard.set_status_by_tqdm("删除旧文件中", pbar)
+                    await dashboard.set_status_by_tqdm("files.delete_old", pbar)
                     for storage, filelist in more_files.items():
                         removed = await storage.removes(filelist)
                         if removed != (total := len(filelist)):
@@ -386,7 +386,7 @@ class FileCheck:
                     unit_divisor=1024,
                     unit_scale=True,
                 ) as pbar:
-                    await dashboard.set_status_by_tqdm("复制缺失文件中", pbar)
+                    await dashboard.set_status_by_tqdm("files.copying", pbar)
                     for storage, files in missing_files_by_storage.items():
                         for file in files:
                             for other_storage in storages.get_storages():
@@ -683,7 +683,7 @@ class WebDav(Storage):
                 total=len(dirs),
                 desc=f"[WebDav List Files <endpoint: '{self.endpoint}'>]",
             ) as pbar:
-                await dashboard.set_status_by_tqdm("正在获取 WebDav 文件列表中", pbar)
+                await dashboard.set_status_by_tqdm("storage.webdav", pbar)
                 for dir in (await self._execute(self.session.list(self.endpoint)))[1:]:
                     pbar.update(1)
                     files: dict[str, File] = {}
@@ -846,14 +846,11 @@ class StorageManager:
     def add_storage(self, storage):
         self._storages.append(storage)
         type = "Unknown"
-        key = time.time()
         if isinstance(storage, FileStorage):
             type = "File"
-            key = storage.dir
         elif isinstance(storage, WebDav):
             type = "Webdav"
-            key = storage.endpoint
-        self._storage_stats[storage] = stats.get_storage(f"{type}_{key}")
+        self._storage_stats[storage] = stats.get_storage(f"{type}_{storage.get_name()}")
         self.available = True
         if storage.width != -1:
             self.available_width = True
@@ -896,7 +893,7 @@ class StorageManager:
         self.storage_widths[storage] += 1
         return storage
 
-    async def get(self, hash: str, offset: int) -> Optional[File]:
+    async def get(self, hash: str, offset: int, ip: str, ua: str = "") -> Optional[File]:
         first_storage = self.get_storage_width()
         storage = first_storage
         exists: bool = await storage.exists(hash)
@@ -911,7 +908,7 @@ class StorageManager:
         if not exists:
             return None
         file = await storage.get(hash, offset)
-        self._storage_stats[storage].hit(file, offset)
+        self._storage_stats[storage].hit(file, offset, ip, ua)
         return file
 
     def get_storage_stat(self, storage):
@@ -1266,7 +1263,7 @@ async def init():
             name["Content-Disposition"] = (
                 f"attachment; filename={request.get_url_params().get('name')}"
             )
-        data = await storages.get(hash, start_bytes)
+        data = await storages.get(hash, start_bytes, request.get_ip(), request.get_user_agent())
         if not data:
             return web.Response(status_code=404)
         if data.is_url() and isinstance(data.get_path(), str):
