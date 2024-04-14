@@ -1074,8 +1074,8 @@ class Cluster:
         async def _failed():
             self.keepalive_failed += 1
             if self.keepalive_failed >= 3:
-                logger.terror("Failed to keepalive.")
-                await self.disable()
+                logger.terror("cluster.error.cluster.keepalive_error")
+                await self.retry()
             else:
                 if self.keepalive_timer is not None:
                     self.keepalive_timer.block()
@@ -1084,7 +1084,6 @@ class Cluster:
             if self.keepalive_failed <= 2:
                 if self.keepalive_timer is not None:
                     self.keepalive_timer.block()
-                self.keepalive_timer = Timer.delay(self.keepalive, args=(delay, ), delay=60)
             if err:
                 await _failed()
                 logger.terror("cluster.error.cluster.keepalive_failed", count=self.keepalive_failed)
@@ -1124,6 +1123,7 @@ class Cluster:
             )
         _clear()
         cur_storages = stats.get_offset_storages().copy()
+        self.keepalive_timer = Timer.delay(self.keepalive, args=(delay, ), delay=60)
         await _start()
     def _message(self, message):
         logger.tinfo("cluster.info.cluster.remote_message", message=message)
