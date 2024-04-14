@@ -1031,6 +1031,7 @@ class Cluster:
             await dashboard.set_status("cluster.enabled" + (".trusted" if self.trusted else ""))
             await self.keepalive()
         self.want_enable = True
+        self.keepalive_failed = 0
         await self.channel_lock.wait()
         await dashboard.set_status("cluster.want_enable")
         storage_str = {"file": 0, "webdav": 0}
@@ -1063,34 +1064,26 @@ class Cluster:
             },
             callback=_
         )
-    async def keepalive(self, delay: float = 0):
+    async def keepalive(self):
         def _clear():
             if self.keepalive_timer is not None:
                 self.keepalive_timer.block()
             if self.keepalive_timeout_timer is not None:
                 self.keepalive_timeout_timer.block()
-            self.keepalive_timer = None
-            self.keepalive_timeout_timer = None
         async def _failed():
-            self.keepalive_failed += 1
             if self.keepalive_failed >= 3:
-                logger.terror("cluster.error.cluster.keepalive_error")
                 await self.retry()
+                return
             else:
-                if self.keepalive_timer is not None:
-                    self.keepalive_timer.block()
-                self.keepalive_timer = Timer.delay(self.keepalive, args=(delay, ), delay=10)
+                await asyncio.sleep(10)
+                await _start()
+            self.keepalive_failed += 1
         async def _(err, ack):
-            if self.keepalive_failed <= 2:
-                if self.keepalive_timer is not None:
-                    self.keepalive_timer.block()
             if err:
-                await _failed()
-                logger.terror("cluster.error.cluster.keepalive_failed", count=self.keepalive_failed)
+                logger.terror("cluster.error.cluster.keepalive_failed")
+                await self.retry()
                 return
             if not ack:
-                await self.emit("disable")
-                logger.twarn("cluster.warn.cluster.kicked")
                 await _failed()
                 return
             self.keepalive_failed = 0
@@ -1123,7 +1116,7 @@ class Cluster:
             )
         _clear()
         cur_storages = stats.get_offset_storages().copy()
-        self.keepalive_timer = Timer.delay(self.keepalive, args=(delay, ), delay=60)
+        self.keepalive_timer = Timer.delay(self.keepalive, delay=60)
         await _start()
     def _message(self, message):
         logger.tinfo("cluster.info.cluster.remote_message", message=message)

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 import os
 from pathlib import Path
 import sqlite3
@@ -14,6 +15,36 @@ from core.utils import (
 from core.api import File
 from core import timer as Timer
 
+
+class UserAgent(Enum):
+    PCL2 = "PCL2"
+    PCL = "PCL"
+    HMCL = "HMCL"
+    POJAV = "PojavLauncher"
+    FCL = "FCL"
+    BAKAXL = "BakaXL"
+    GOT = "got"
+    BADLION = "Badlion Client"
+    TECHNIC = "TechnicLauncher"   
+    TLAUNCHER = "TLauncher"
+    MULTIMC = "MultiMC"
+    LUNAR = "Lunar Client"  
+    MAGNET = "Magnet" 
+    ATLAUNCHER = "ATLauncher" 
+    CURSEFORGE = "CurseForge"
+    DALVIK = "Dalvik"
+    WARDEN = "bmclapi-warden"
+    OPENBMCLAPI_CLUSTER = "openbmclapi-cluster"
+    PYTHON = "python-openbmclapi"
+    OTHER = "Other"
+    @staticmethod
+    def parse_ua(user_gent: str):
+        for ua in user_gent.split(" "):
+            ua = ua.split("/")[0]
+            for UA in UserAgent:
+                if ua == ua.lower():
+                    return UA
+        return UserAgent.OTHER
 
 class StorageStats:
     def __init__(self, name) -> None:
