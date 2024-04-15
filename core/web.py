@@ -848,7 +848,6 @@ class Response:
                 }
             )
             self.status_code = 206 if start_bytes > 0 else 200
-            print(length, start_bytes)
             length = length - start_bytes
         if isinstance(content, io.BytesIO) and len(content.getbuffer()) != 0:
             self.content_type = self.content_type or self._get_content_type(content)
