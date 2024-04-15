@@ -152,7 +152,7 @@ async def process(type: str, data: Any):
             "connections": system.get_connections(),
             "cpu": system.get_cpus(),
             "cache": (
-                asdict(await cluster.cluster.get_cache_stats())
+                asdict(await get_cache_stats())
                 if cluster.cluster
                 else StatsCache()
             ),
@@ -179,12 +179,23 @@ async def process(type: str, data: Any):
         return data
 
 
+async def get_cache_stats() -> StatsCache:
+    stat = StatsCache()
+    for storage in cluster.storages.get_storages():
+        t = await storage.get_cache_stats()
+        stat.total += t.total
+        stat.bytes += t.bytes
+    return stat
+
+
+
 async def set_status_by_tqdm(text: str, pbar: tqdm):
     global cur_tqdm, task_tqdm
     cur_tqdm.object = pbar
     cur_tqdm.desc = text
     if task_tqdm:
         task_tqdm.block()
+        cur_tqdm.show.block()
     task_tqdm = Timer.repeat(_calc_tqdm_speed, delay=0, interval=0.5)
     cur_tqdm.show = Timer.repeat(_set_status, kwargs={
         "blocked": True

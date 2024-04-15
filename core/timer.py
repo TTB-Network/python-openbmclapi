@@ -47,12 +47,12 @@ class Task:
 
     def block(self):
         if self._blocked:
-            logger.debug(
-                locale.t("timer.info.task.freezed", task=self._get_function_name())
+            logger.tdebug(
+                "timer.info.task.freezed", task=self._get_function_name()
             )
         else:
-            logger.debug(
-                locale.t("timer.info.task.freezing", task=self._get_function_name())
+            logger.tdebug(
+                "timer.info.task.freezing", task=self._get_function_name()
             )
         self._blocked = True
         if self._cur_task is not None:

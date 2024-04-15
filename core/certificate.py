@@ -28,7 +28,7 @@ def load_cert(cert, key):
         _loaded = True
         return True
     except:
-        logger.error(locale.t("cert.error.failed", failure=traceback.format_exc()))
+        logger.terror("cert.error.failed", failure=traceback.format_exc())
         return False
 
 
@@ -44,9 +44,11 @@ def load_text(cert: str, key: str):
         c.write(cert)
         k.write(key)
     if load_cert(cert_file, key_file):
-        logger.success(locale.t("cert.success.loaded_cert"))
+        logger.tsuccess("cert.success.loaded_cert")
         core.restart = True
         if core.server:
             core.server.close()
+        if core.ssl_server:
+            core.ssl_server.close()
     cert_file.unlink()
     key_file.unlink()
