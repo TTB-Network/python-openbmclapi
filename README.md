@@ -66,6 +66,8 @@
     python main.py
     ```
 
+    如果你看到以下报错信息：`core.exceptions.ClusterIdNotSet`，那么你就可以进行下一步的配置。
+
 4. 在 `config/config.yml` 中，填写你的 `id`（即 `CLUSTER_ID`）和 `secret`（即 `CLUSTER_SECRET`）。
 
 5. 重新启动程序。
@@ -80,9 +82,9 @@
 
     你也可使用镜像源进行拉取：
 
-   ```sh
-   docker pull registry.cn-hangzhou.aliyuncs.com/silianz/python-openbmclapi:latest
-   ```
+    ```sh
+    docker pull registry.cn-hangzhou.aliyuncs.com/silianz/python-openbmclapi:latest
+    ```
 
 2. 创建容器：
 
@@ -113,10 +115,13 @@
 
 ```yml
 advanced:
+  debug: false
   # 新连接读取数据头大小
   header_bytes: 4096
   # 数据传输缓存大小
   io_buffer: 16777216
+  # 语言
+  language: zh_cn
   # 最小读取速率（Bytes）
   min_rate: 500
   # 最小读取速率时间
@@ -125,6 +130,10 @@ advanced:
   request_buffer: 8192
   # 超时时间
   timeout: 30
+cache:
+  buffer: 536870912
+  check: 360
+  time: 1800
 cluster:
   # 是否不使用 BMCLAPI 分发的证书, 同 CLUSTER_BYOC
   byoc: false
@@ -134,19 +143,34 @@ cluster:
   public_host: ''
   # 实际开放的公网端口, 同 CLUSTER_PUBLIC_PORT
   public_port: 8800
+  reconnect:
+    delay: 5
+    retry: -1
   # OpenBMCLAPI 的 CLUSTER_SECRET
   secret: ''
+  skip_sign: false
+  timeout:
+    enable: 60
+    keepalive: 300
+  # OpenBMCLAPI 的基础 URL
+  url: https://openbmclapi.bangbang93.com/
+dashboard:
+  # 仪表盘密码
+  password: '123456'
+  # 仪表盘用户名
+  username: admin
 download:
   # 最高下载线程
   threads: 64
-dashboard:
-  # 仪表盘密码
-  password: ''
-  # 仪表盘用户名
-  username: admin
+storages:
+  bmclapi:
+    path: ./bmclapi
+    type: file
+    width: 0
 web:
+  force_ssl: false
   # 要监听的本地端口, 同 CLUSTER_PORT
-  port: 80
+  port: 8080
   # 服务器名字
   server_name: TTB-Network
   # SSL 端口
