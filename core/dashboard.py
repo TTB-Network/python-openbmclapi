@@ -177,7 +177,15 @@ async def process(type: str, data: Any):
                     )
                 )
         return data
+    if type == "global_stats":
+        return {
+            "ip": {
 
+            },
+            "ua": {
+                
+            }
+        }
 
 async def get_cache_stats() -> StatsCache:
     stat = StatsCache()

@@ -18,10 +18,9 @@ os.environ["ASYNCIO_STARTUP"] = str(
 )
 
 if __name__ == "__main__":
-    if sys.version_info <= (3, 8):
-        print(f"Not support version: {sys.version}")
-    if sys.version_info == (3, 9):
-        print(f"Warning version: {sys.version}")
+    if sys.version_info <= (3, 9):
+        print(f"Not support version: {sys.version}. Please update python to 3.10+")
+        exit(-1)
     import core
 
     core.init()
