@@ -189,6 +189,9 @@ async def check_ports():
                 if port[1] is not None:
                     kwargs["ssl"] = port[1]
                     kwargs["ssl_handshake_timeout"] = 5
+                if port[0] is None or not port[0].sockets:
+                    closed = True
+                    continue
                 client = Client(
                     *(
                         await asyncio.wait_for(
@@ -248,10 +251,14 @@ async def main():
                 break
             if server:
                 server.close()
+            if ssl_server:
+                ssl_server.close()
             restart = False
         except:
             if server:
                 server.close()
+            if ssl_server:
+                ssl_server.close()
             logger.error(traceback.format_exc())
             await asyncio.sleep(2)
     await close()
@@ -271,6 +278,8 @@ async def close():
 def kill(_, __):
     if int(os.environ["ASYNCIO_STARTUP"]) and server:
         server.close()
+        if ssl_server:
+            ssl_server.close()
         asyncio.get_running_loop().close()
         return
     exit(0)

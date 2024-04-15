@@ -6,7 +6,7 @@ import hashlib
 import io
 from pathlib import Path
 from typing import Optional
-import zlib
+import pyzstd as zstd
 import aiofiles
 
 from core import web
@@ -62,12 +62,12 @@ class File:
     def get_data(self):
         if not self.data:
             return io.BytesIO()
-        return io.BytesIO(zlib.decompress(self.data.getbuffer()))
+        return io.BytesIO(zstd.decompress(self.data.getbuffer()))
 
     def set_data(self, data: io.BytesIO | memoryview | bytes):
         if not isinstance(data, io.BytesIO):
             data = io.BytesIO(data)
-        self.data = io.BytesIO(zlib.compress(data.getbuffer()))
+        self.data = io.BytesIO(zstd.compress(data.getbuffer()))
 
 
 @dataclass

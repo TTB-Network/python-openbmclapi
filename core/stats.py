@@ -1,11 +1,15 @@
+from collections import defaultdict
 from dataclasses import dataclass
+from enum import Enum
 import os
 from pathlib import Path
 import sqlite3
 import time
 from typing import Any
+import pyzstd as zstd
 
 from core.utils import (
+    DataInputStream,
     DataOutputStream,
     FileDataInputStream,
     get_timestamp_from_day_tohour,
@@ -14,13 +18,91 @@ from core.utils import (
 from core.api import File
 from core import timer as Timer
 
+class UserAgent(Enum):
+    PCL2 = "PCL2"
+    PCL = "PCL"
+    HMCL = "HMCL"
+    POJAV = "PojavLauncher"
+    FCL = "FCL"
+    BAKAXL = "BakaXL"
+    GOT = "got"
+    BADLION = "Badlion Client"
+    TECHNIC = "TechnicLauncher"   
+    TLAUNCHER = "TLauncher"
+    MULTIMC = "MultiMC"
+    LUNAR = "Lunar Client"  
+    MAGNET = "Magnet" 
+    ATLAUNCHER = "ATLauncher" 
+    CURSEFORGE = "CurseForge"
+    DALVIK = "Dalvik"
+    WARDEN = "bmclapi-warden"
+    OPENBMCLAPI_CLUSTER = "openbmclapi-cluster"
+    PYTHON = "python-openbmclapi"
+    OTHER = "Other"
+    @staticmethod
+    def parse_ua(user_gent: str) -> list['UserAgent']:
+        data = []
+        for ua in user_gent.split(" "):
+            ua = ua.split("/")[0]
+            for UA in UserAgent:
+                if UA.value == ua.lower():
+                    data.append(UA)
+        return data or [UserAgent.OTHER]
+    @staticmethod
+    def get_ua(ua: str) -> 'UserAgent':
+        for _ in UserAgent:
+            if _.value == ua:
+                return _
+        return UserAgent.OTHER
+
+class GlobalStats:
+    def __init__(self, ua: defaultdict['UserAgent', int] = defaultdict(int), ip: defaultdict[str, int] = defaultdict(int)):
+        self.useragent: defaultdict['UserAgent', int] = ua
+        self.ip: defaultdict[str, int] = ip
+
+    def add_ua(self, ua: str = ""):
+        for ua in UserAgent.parse_ua(ua):
+            self.useragent[ua] += 1
+    def add_ip(self, ip: str):
+        self.ip[ip] += 1
+    def get_binary(self):
+        cache_ip = self.ip.copy()
+        cache_ua = self.useragent.copy()
+        buf = DataOutputStream()
+        buf.writeVarInt(len(cache_ip))
+        buf.writeVarInt(len(cache_ua))
+        for ip, c in cache_ip.items():
+            buf.writeString(ip)
+            buf.writeVarInt(c)
+        for ua, c in cache_ua.items():
+            buf.writeString(ua.value)
+            buf.writeVarInt(c)
+        return zstd.compress(buf.io.getbuffer())
+    @staticmethod
+    def from_binary(data: bytes):
+        input = DataInputStream(zstd.decompress(data))
+        cache_ip: defaultdict['UserAgent', int] = defaultdict(int)
+        cache_ua: defaultdict[str, int] = defaultdict(int)
+        ip_length = input.readVarInt()
+        ua_length = input.readVarInt()
+        for _ in range(ip_length):
+            cache_ip[input.readString()] = input.readVarInt()
+        for _ in range(ua_length):
+            cache_ua[UserAgent.get_ua(input.readString())] = input.readVarInt()
+        return GlobalStats(cache_ip, cache_ua)
+    def reset(self):
+        self.useragent.clear()
+        self.ip.clear()
+
+globalStats = GlobalStats()
 
 class StorageStats:
     def __init__(self, name) -> None:
         self._name = name
         self.reset()
 
-    def hit(self, file: File, offset: int):
+    def hit(self, file: File, offset: int, ip: str, ua: str = ""):
+        global globalStats
         byte = file.size - offset
         if file.cache:
             self._cache_hits += 1
@@ -28,6 +110,8 @@ class StorageStats:
         else:
             self._hits += 1
             self._bytes += byte
+        globalStats.add_ip(ip)
+        globalStats.add_ua(ua)
         write_storage()
 
     def failed(self):
@@ -92,6 +176,8 @@ storages: dict[str, StorageStats] = {}
 cache: Path = Path("./cache")
 cache.mkdir(exist_ok=True, parents=True)
 last_storages: dict[str, int] = {}
+last_ip: dict[str, int] = {}
+last_ua: int = 0
 last_hour: int = 0
 db: sqlite3.Connection = sqlite3.Connection("./cache/stats.db", check_same_thread=False)
 db.execute(
@@ -108,6 +194,21 @@ CREATE TABLE IF NOT EXISTS access (
     failed unsigned bigint NOT NULL DEFAULT 0
 );"""
 )
+db.execute(
+    """
+CREATE TABLE IF NOT EXISTS g_access_ip (  
+    hour unsigned bigint NOT NULL,
+    ip TEXT NOT NULL,
+    hit unsigned bigint not null default 0
+);"""
+)
+db.execute(
+    """
+CREATE TABLE IF NOT EXISTS g_access_ua (  
+    hour unsigned bigint NOT NULL
+);"""
+)
+
 db.commit()
 
 
@@ -121,6 +222,7 @@ def read_storage():
     with open("./cache/storage.bin", "rb") as r:
         f = FileDataInputStream(r)
         last_hour = f.readVarInt()
+        GlobalStats.from_binary(f.read(f.readVarInt()))
         for _ in range(f.readVarInt()):
             storage = StorageStats(f.readString())
             (
@@ -145,9 +247,12 @@ def read_storage():
 
 
 def write_storage():
-    global storages
+    global storages, globalStats
     f = DataOutputStream()
     f.writeVarInt(last_hour)
+    data = globalStats.get_binary()
+    f.writeVarInt(len(data))
+    f.write(data)
     f.writeVarInt(len(storages))
     for storage in storages.values():
         f.writeString(storage.get_name())
@@ -187,22 +292,21 @@ def get_storage(name):
 
 
 def _write_database():
-    global last_storages, last_hour
+    global last_storages, last_hour, globalStats, last_ip, last_ua
     cmds: list[tuple[str, tuple[Any, ...]]] = []
     hour = get_hour(0)
     for storage in storages.values():
-        if hour not in last_storages or hour != last_storages[storage.get_name()]:
-            if not exists(
-                "select storage from access where storage = ? and hour = ?",
-                storage.get_name(),
-                hour,
-            ):
-                cmds.append(
-                    (
-                        "insert into access(storage, hour) values (?, ?)",
-                        (storage.get_name(), hour),
-                    )
+        if (hour not in last_storages or hour != last_storages[storage.get_name()]) and not exists(
+            "select storage from access where storage = ? and hour = ?",
+            storage.get_name(),
+            hour,
+        ):
+            cmds.append(
+                (
+                    "insert into access(storage, hour) values (?, ?)",
+                    (storage.get_name(), hour),
                 )
+            )
             last_storages[storage.get_name()] = hour
         cmds.append(
             (
@@ -220,10 +324,56 @@ def _write_database():
                 ),
             )
         )
+    for ip, c in globalStats.ip.items():
+        if (ip not in last_ip or hour != last_ip[ip]) and not exists(
+            "select ip from g_access_ip where ip = ? and hour = ?",
+            ip,
+            hour,
+        ):
+            cmds.append(
+                (
+                    "insert into g_access_ip(ip, hour) values (?, ?)",
+                    (ip, hour),
+                )
+            )
+            last_ip[ip] = hour
+        cmds.append(
+            (
+                "update g_access_ip set hit = ? where ip = ? and hour = ?",
+                (
+                    c,
+                    ip,
+                    hour
+                )
+            )
+        )
+    if last_ua != hour and not exists(
+            "select hour from g_access_ua where hour = ?",
+            hour,
+        ):
+            cmds.append(
+                (
+                    "insert into g_access_ua(hour) values (?)",
+                    (hour,),
+                )
+            )
+            last_ua = hour
+    for ua, c in globalStats.useragent.items():
+        cmds.append(
+            (
+                f"update g_access_ua set `{ua.value}` = ? where hour = ?",
+                (
+                    c,
+                    hour
+                )
+            )
+        )
+        
     executemany(*cmds)
     if last_hour and last_hour != hour:
         for storage in storages.values():
             storage.reset()
+        globalStats.reset()
     last_hour = hour
 
 
@@ -265,10 +415,13 @@ def columns(table):
 
 
 def addColumns(table, params, data, default=None):
-    if params not in columns(table):
+    #if params not in columns(table):
+    try:
         execute(f"ALTER TABLE {table} ADD COLUMN {params} {data}")
         if default is not None:
             execute(f"UPDATE {table} SET {params}={default}")
+    except:
+        ...
 
 
 def get_storage_stats():
@@ -300,21 +453,33 @@ def get_storage_stats():
 
 def hourly():
     data = []
+    hours: dict[int, StorageStats] = {}
     t = get_timestamp_from_day_tohour(0)
     for r in queryAllData(
         "select storage, hour, hit, bytes, cache_hit, cache_bytes, last_hit, last_bytes, failed from access where hour >= ?",
         t,
     ):
+        hour = int(r[1] - t)
+        if hour not in hours:
+            hours[hour] = StorageStats("Total")
+        hours[hour]._hits += r[2]
+        hours[hour]._bytes += r[3]
+        hours[hour]._cache_hits += r[4]
+        hours[hour]._cache_bytes += r[5]
+        hours[hour]._last_hits += r[6]
+        hours[hour]._last_bytes += r[7]
+        hours[hour]._failed += r[8]
+    for hour in sorted(hours.keys()):
         data.append(
             {
-                "_hour": int(r[1] - t),
-                "cache_hits": r[4],
-                "cache_bytes": r[5],
-                "hits": r[2],
-                "bytes": r[3],
-                "last_hits": r[6],
-                "last_bytes": r[7],
-                "failed": r[8],
+                "_hour": int(hour),
+                "hits": hours[hour]._hits,
+                "bytes": hours[hour]._bytes,
+                "cache_hits": hours[hour]._cache_hits,
+                "cache_bytes": hours[hour]._cache_bytes,
+                "last_hits": hours[hour]._last_hits,
+                "last_bytes": hours[hour]._last_bytes,
+                "failed": hours[hour]._failed,
             }
         )
     return data
@@ -353,6 +518,9 @@ def daily():
         )
     return data
 
+
+for ua in UserAgent:
+    addColumns("g_access_ua", f"`{ua.value}`", " unsigned bigint NOT NULL DEFAULT 0")
 
 read_storage()
 _write_database()
