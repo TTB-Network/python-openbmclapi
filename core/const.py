@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 import gzip
-import locale as syslocale
 import os
 from pathlib import Path
 from typing import Any
@@ -21,7 +20,7 @@ DEBUG: bool = Config.get("advanced.debug")
 ROOT = os.getcwd()
 API_VERSION = "1.10.3"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
-BASE_URL = Config.get("cluster.url", "https://openbmclapi.bangbang93.com/")
+BASE_URL = Config.get("cluster.url")
 CLUSTER_ID: str = Config.get("cluster.id")
 CLUSTER_SECERT: str = Config.get("cluster.secret")
 IO_BUFFER: int = Config.get("advanced.io_buffer")
@@ -30,7 +29,6 @@ BYOC: bool = Config.get("cluster.byoc")
 PUBLIC_HOST: str = Config.get("cluster.public_host")
 PUBLIC_PORT: int = Config.get("cluster.public_port")
 PORT: int = Config.get("web.port")
-ENABLE: bool = Config.get("cluster.enable")
 RECONNECT_DELAY: bool = Config.get("cluster.reconnect.delay")
 RECONNECT_RETRY: bool = Config.get("cluster.reconnect.retry")
 ENABLE_TIMEOUT: bool = Config.get("cluster.timeout.enable")
@@ -110,7 +108,7 @@ COMPRESSOR: dict[str, Any] = {
     "gzip": gzip.compress,
     "deflate": zlib.compress,
 }
-LANG: str = Config.get("language", syslocale.getdefaultlocale()[0])
+LANG: str = Config.get("advanced.language")
 
 @dataclass
 class StorageParse:

@@ -13,8 +13,6 @@ cache:
   time: 1800
 cluster:
   byoc: false
-  enable: true
-  file_check_mode: size
   id: ''
   public_host: ''
   public_port: 8800
@@ -32,6 +30,8 @@ dashboard:
   username: admin
 download:
   threads: 64
+file:
+  check: size
 storages:
   bmclapi:
     path: ./bmclapi

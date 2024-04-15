@@ -29,6 +29,7 @@ import plugins
 from core.i18n import locale
 import aiowebdav.client as webdav3_client
 import aiowebdav.exceptions as webdav3_exceptions
+from core.exceptions import ClusterIdNotSet, ClusterSecretNotSet
 
 from core.const import *
 
@@ -1184,6 +1185,10 @@ async def check_update():
 
 
 async def init():
+    if CLUSTER_ID == '':
+        raise ClusterIdNotSet
+    if CLUSTER_SECERT == '':
+        raise ClusterSecretNotSet
     global cluster
     cluster = Cluster()
     system.init()

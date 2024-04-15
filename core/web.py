@@ -19,6 +19,7 @@ import time
 import traceback
 from core import cluster
 import zlib
+from core.exceptions import WebSocketError, ServerWebSocketError, ServerWebSocketUnknownDataError
 from typing import (
     Any,
     AsyncGenerator,
@@ -239,13 +240,7 @@ class Resource:
         return Response("Not Found", status_code=404)
 
 
-class WebSocketError(Exception): ...
 
-
-class ServerWebSocketError(WebSocketError): ...
-
-
-class ServerWebSocketUnknownDataError(ServerWebSocketError): ...
 
 
 class WebSocketOpcode(Enum):

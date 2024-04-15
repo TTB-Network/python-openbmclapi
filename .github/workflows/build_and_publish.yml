@@ -10,6 +10,18 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+      - name: Write version
+        run: echo "${GITHUB_REF#refs/*/}" > VERSION
+      - name: Commit and push
+        run: |
+          git add VERSION
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -a -m ":sparkles: 更新 VERSION"
+          git push
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
@@ -52,18 +64,3 @@ jobs:
             registry.cn-hangzhou.aliyuncs.com/silianz/python-openbmclapi:latest
             registry.cn-hangzhou.aliyuncs.com/silianz/python-openbmclapi:${{env.RELEASE_VERSION}}
           platforms: linux/amd64, linux/arm64
-  update:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: master
-      - name: Write version
-        run: echo "${GITHUB_REF#refs/*/}" > VERSION
-      - name: Commit and push
-        run: |
-          git add VERSION
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -a -m ":sparkles: 更新 VERSION"
-          git push
