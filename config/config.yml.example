@@ -30,6 +30,8 @@ dashboard:
   username: admin
 download:
   threads: 64
+file:
+  check: size
 storages:
   bmclapi:
     path: ./bmclapi

@@ -130,6 +130,9 @@ advanced:
   request_buffer: 8192
   # 超时时间
   timeout: 30
+file:
+  # 文件检查模式，可选值为“size”（大小）和“hash”（哈希值）
+  check: size
 cache:
   buffer: 536870912
   check: 360
