@@ -108,7 +108,7 @@ COMPRESSOR: dict[str, Any] = {
     "gzip": gzip.compress,
     "deflate": zlib.compress,
 }
-LANG: str = Config.get("language")
+LANG: str = Config.get("advanced.language")
 
 @dataclass
 class StorageParse:
