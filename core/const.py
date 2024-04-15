@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 import gzip
-import locale as syslocale
 import os
 from pathlib import Path
 from typing import Any
@@ -109,7 +108,7 @@ COMPRESSOR: dict[str, Any] = {
     "gzip": gzip.compress,
     "deflate": zlib.compress,
 }
-LANG: str = Config.get("language", syslocale.getdefaultlocale()[0])
+LANG: str = Config.get("language")
 
 @dataclass
 class StorageParse:
