@@ -825,7 +825,7 @@ class Response:
             r"bytes=(\d+)-", range_str, re.S
         )
         end_bytes = length - 1
-        if range_match:
+        if range_match and self.status_code == 200:
             start_bytes = int(range_match.group(1)) if range_match else 0
             if range_match.lastindex == 2:
                 end_bytes = int(range_match.group(2))
@@ -838,7 +838,7 @@ class Response:
             )
             self.set_headers(
                 {
-                    "Accept-ranges": "bytes",
+                    "Accept-Ranges": "bytes",
                     "Content-Range": f"bytes {start_bytes}-{end_bytes}/{length}",
                 }
             )
@@ -848,7 +848,7 @@ class Response:
             self.content_type = self.content_type or self._get_content_type(content)
             compression: Compressor = compressor(
                 await request.get_headers("Accept-Encoding", ""),
-                content.getbuffer()[start_bytes:length],
+                content.getbuffer()[start_bytes:end_bytes + 1],
             )
             if compression.type is None:
                 content = compression.data
@@ -896,7 +896,7 @@ class Response:
                 client.write(content.data)
                 await client.writer.drain()
             elif isinstance(content, io.BytesIO):
-                client.write(content.getbuffer()[start_bytes:length])
+                client.write(content.getbuffer()[start_bytes:end_bytes + 1])
                 await client.writer.drain()
             elif isinstance(content, Path):
                 async with aiofiles.open(content, "rb") as r:

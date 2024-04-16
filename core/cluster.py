@@ -740,17 +740,18 @@ class WebDav(Storage):
                         file,
                         size=int(resp.headers.get("Content-Length", 0)),
                     )
-                    f.headers = {}
-                    for field in (
-                        "ETag",
-                        "Last-Modified",
-                        "Content-Length",
-                        "Content-Range",
-                    ):
-                        if field not in resp.headers:
-                            continue
-                        f.headers[field] = resp.headers.get(field)
                     if resp.status == 200:
+                        f.headers = {}
+                        for field in (
+                            "ETag",
+                            "Last-Modified",
+                            "Content-Length",
+                            "Content-Range",
+                            "Accept-Ranges"
+                        ):
+                            if field not in resp.headers:
+                                continue
+                            f.headers[field] = resp.headers.get(field)
                         f.set_data(await resp.read())
                         f.expiry = time.time() + CACHE_TIME
                     elif resp.status // 100 == 3:
@@ -909,7 +910,8 @@ class StorageManager:
         if not exists:
             return None
         file = await storage.get(hash, offset)
-        self._storage_stats[storage].hit(file, offset, ip, ua)
+        if file is not None:
+            self._storage_stats[storage].hit(file, offset, ip, ua)
         return file
 
     def get_storage_stat(self, storage):
@@ -1010,7 +1012,10 @@ class Cluster:
         if self.want_enable or self.enabled:
             logger.tdebug("cluster.debug.cluster.enable_again")
             return
+        timeoutTimer = None
         async def _(err, ack):
+            if timeoutTimer is not None:
+                timeoutTimer.block()
             self.want_enable = False
             if err:
                 logger.terror(
@@ -1028,6 +1033,9 @@ class Cluster:
             )
             await dashboard.set_status("cluster.enabled" + (".trusted" if self.trusted else ""))
             await self.keepalive()
+        async def _timeout():
+            self.want_enable = False
+            await self.retry()
         self.want_enable = True
         self.keepalive_failed = 0
         await self.channel_lock.wait()
@@ -1062,6 +1070,7 @@ class Cluster:
             },
             callback=_
         )
+        timeoutTimer = Timer.delay(_timeout, delay=120)
     async def keepalive(self):
         def _clear():
             if self.keepalive_timer is not None:

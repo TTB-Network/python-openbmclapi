@@ -222,7 +222,6 @@ def read_storage():
     with open("./cache/storage.bin", "rb") as r:
         f = FileDataInputStream(r)
         last_hour = f.readVarInt()
-        GlobalStats.from_binary(f.read(f.readVarInt()))
         for _ in range(f.readVarInt()):
             storage = StorageStats(f.readString())
             (
@@ -244,15 +243,18 @@ def read_storage():
             )
 
             storages[storage.get_name()] = storage
+        try:
+            blength = f.readVarInt()
+            bdata = f.read(bdata)
+        except:
+            return
+        GlobalStats.from_binary(bdata)
 
 
 def write_storage():
     global storages, globalStats
     f = DataOutputStream()
     f.writeVarInt(last_hour)
-    data = globalStats.get_binary()
-    f.writeVarInt(len(data))
-    f.write(data)
     f.writeVarInt(len(storages))
     for storage in storages.values():
         f.writeString(storage.get_name())
@@ -266,6 +268,9 @@ def write_storage():
             storage._last_bytes,
         ):
             f.writeVarInt(field)
+    data = globalStats.get_binary()
+    f.writeVarInt(len(data))
+    f.write(data)
     with open("./cache/storage.bin", "wb") as w:
         w.write(f.io.getbuffer())
 
