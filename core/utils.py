@@ -363,6 +363,10 @@ def get_timestamp_from_hour_tohour(hour: int):
     t = int(time.time())
     return (t - (t - time.timezone) % 3600 - 3600 * hour) / 3600
 
+def get_timestamp_from_day_today(day: int):
+    t = int(time.time())
+    return (t - (t - time.timezone) % 86400 - 86400 * day) / 86400
+
 
 def calc_bytes(v):
     unit = bytes_unit[0]
@@ -413,7 +417,7 @@ def updateDict(dict: dict, new: dict):
     return org
 
 
-def format_time(n):
+def format_stime(n):
     if not n:
         return "--:--:--"
     n = int(n)
@@ -422,6 +426,16 @@ def format_time(n):
     second = int(n % 60)
     return f"{hour:02d}:{minutes:02d}:{second:02d}"
 
+
+def format_time(k: float):
+    local = time.localtime(k)
+    return f"{local.tm_hour:02d}:{local.tm_min:02d}:{local.tm_sec:02d}"
+
+
+def format_date(k: float):
+    print(k)
+    local = time.localtime(k)
+    return f"{local.tm_year:04d}-{local.tm_mon:02d}-{local.tm_mday:02d}"
 
 def base36_encode(number):
     num_str = "0123456789abcdefghijklmnopqrstuvwxyz"

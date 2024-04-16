@@ -130,12 +130,17 @@ advanced:
   request_buffer: 8192
   # 超时时间
   timeout: 30
+  # 是否跳过签名检测
+  skip_sign: false
 file:
-  # 文件检查模式，可选值为“size”（大小）和“hash”（哈希值）
+  # 文件检查模式，可选值为“exists”（存在，不推荐）、“size”（大小）和“hash”（哈希值）
   check: size
 cache:
+  # 缓存大小 （Bytes）
   buffer: 536870912
+  # 检查过时文件时间，单位为秒
   check: 360
+  # 文件存在时间，单位为秒
   time: 1800
 cluster:
   # 是否不使用 BMCLAPI 分发的证书, 同 CLUSTER_BYOC
@@ -146,17 +151,18 @@ cluster:
   public_host: ''
   # 实际开放的公网端口, 同 CLUSTER_PUBLIC_PORT
   public_port: 8800
+  # 重新上线
   reconnect:
+    # 多少秒重试，默认为5秒
     delay: 5
+    # 重试次数，-1为无限重试
     retry: -1
   # OpenBMCLAPI 的 CLUSTER_SECRET
   secret: ''
-  skip_sign: false
+  # 超时设置
   timeout:
-    enable: 60
-    keepalive: 300
-  # OpenBMCLAPI 的基础 URL
-  url: https://openbmclapi.bangbang93.com/
+    # 启用超时时间
+    enable: 120
 dashboard:
   # 仪表盘密码
   password: '123456'
@@ -165,11 +171,25 @@ dashboard:
 download:
   # 最高下载线程
   threads: 64
+# 存储设置
 storages:
-  bmclapi:
-    path: ./bmclapi
-    type: file
-    width: 0
+  bmclapi: # 是你的存储名字
+    # 存储路径
+    path: ./bmclapi 
+    # 存储类型，目前为file（本地存储）和webdav
+    type: file 
+    # 选用存储下载权重，-1为禁用，不选择，但会下载文件
+    width: 0 
+  bmclapi_webdav: 
+    path: /bmclapidev
+    type: webdav
+    width: 2 
+    # 你的 webdav 端点
+    endpoint: http://localhost:5244/dav
+    # webdav 用户名字
+    username: user
+    # webdav 用户密码
+    password: password
 web:
   force_ssl: false
   # 要监听的本地端口, 同 CLUSTER_PORT

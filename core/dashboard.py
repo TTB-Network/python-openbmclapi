@@ -105,11 +105,6 @@ def serialize(data: Any):
     return buf
 
 
-def _format_time(k: float):
-    local = time.localtime(k)
-    return f"{local.tm_hour:02d}:{local.tm_min:02d}:{local.tm_sec:02d}"
-
-
 async def process(type: str, data: Any):
     if type == "uptime":
         return float(os.getenv("STARTUP") or 0)
@@ -126,7 +121,7 @@ async def process(type: str, data: Any):
             resp_data[_] = 0
             for __ in range(5):
                 resp_data[_] += raw_data.get(__ + _, 0)
-        return {_format_time(k): v for k, v in resp_data.items()}
+        return {utils.format_time(k): v for k, v in resp_data.items()}
     if type == "status":
         resp: dict = {
             "key": last_status,
@@ -179,12 +174,7 @@ async def process(type: str, data: Any):
         return data
     if type == "global_stats":
         return {
-            "ip": {
-
-            },
-            "ua": {
-                
-            }
+            "daily": stats.daily_global()
         }
 
 async def get_cache_stats() -> StatsCache:

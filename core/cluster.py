@@ -80,7 +80,7 @@ class TokenManager:
                         self.fetchToken, delay=float(content["ttl"]) / 1000.0 - 600
                     )
                     self.token_expires = content["ttl"] / 1000.0 - 600 + time.time()
-                    tll = utils.format_time(content["ttl"] / 1000.0)
+                    tll = utils.format_stime(content["ttl"] / 1000.0)
                     logger.tsuccess("cluster.success.token.fetched", tll=tll)
 
             except aiohttp.ClientError as e:
@@ -217,13 +217,15 @@ class FileDownloader:
                         hash.update(data)
                 if file.hash != hash.hexdigest():
                     raise EOFError
-                await self._mount_file(file, content)
+                r = await self._mount_file(file, content)
+                if r[0] == -1:
+                    raise EOFError
             except:
                 pbar.update(-size)
                 await self.queues.put(file)
         await session.close()
 
-    async def _mount_file(self, file: BMCLAPIFile, buf: io.BytesIO):
+    async def _mount_file(self, file: BMCLAPIFile, buf: io.BytesIO) -> tuple[int, io.BytesIO]:
         for storage in storages.get_storages():
             result = -1
             try:
@@ -240,7 +242,7 @@ class FileDownloader:
                     file=file_size,
                     target=target_size,
                 )
-        return buf
+        return buf, result
 
     async def download(self, miss: list[BMCLAPIFile]):
         if not storages.available:
@@ -1009,6 +1011,8 @@ class Cluster:
         await self.emit("request-cert", callback=_)
         await dashboard.set_status("cluster.get.cert")
     async def enable(self):
+        if not ENABLE or self._retry >= RECONNECT_RETRY or not storages.available_width:
+            logger.twarn("cluster.warn.cluster.disabled")
         if self.want_enable or self.enabled:
             logger.tdebug("cluster.debug.cluster.enable_again")
             return
@@ -1070,7 +1074,7 @@ class Cluster:
             },
             callback=_
         )
-        timeoutTimer = Timer.delay(_timeout, delay=120)
+        timeoutTimer = Timer.delay(_timeout, delay=ENABLE_TIMEOUT)
     async def keepalive(self):
         def _clear():
             if self.keepalive_timer is not None:
