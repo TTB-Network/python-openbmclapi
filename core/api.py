@@ -71,9 +71,10 @@ class File:
     def set_data(self, data: io.BytesIO | memoryview | bytes):
         if not isinstance(data, io.BytesIO):
             data = io.BytesIO(data)
-        if len(data) >= CACHE_BUFFER_COMPRESSION_MIN_LENGTH:
+        data_length = len(data.getbuffer())
+        if data_length >= CACHE_BUFFER_COMPRESSION_MIN_LENGTH:
             compressed_data = zstd.compress(data.getbuffer())
-            if len(data) > len(compressed_data):
+            if data_length > len(compressed_data):
                 self.compressed = True
                 self.data = io.BytesIO(compressed_data)
                 return
