@@ -13,7 +13,7 @@ defaults = {
     "cluster.enable": True,
     "cluster.timeout.enable": 120,
     "cluster.timeout.keepalive": 300,
-    "cluster.reconnect.delay": 5,
+    "cluster.reconnect.delay": 60,
     "cluster.reconnect.retry": -1,
     "advanced.skip_sign": False,
     "cache.buffer": 536870912,
