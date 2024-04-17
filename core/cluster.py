@@ -962,7 +962,7 @@ class Cluster:
         self.disable_future.acquire()
         async def _(err, ack):
             self.disable_future.release()
-            logger.tsuccess("cluster.success.cluster.disable")
+            logger.tsuccess("cluster.success.cluster.disabled")
         await self.emit("disable", callback=_)
         
     async def retry(self):
@@ -1215,7 +1215,7 @@ async def init():
     Timer.delay(cluster.init)
     app = web.app
     if DEBUG:
-        logger.debug("Currently in developer mode")
+        logger.tdebug("cluster.info.debug_mode")
 
         @app.get("/files")
         async def _():
