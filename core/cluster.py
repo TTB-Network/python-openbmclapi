@@ -1379,7 +1379,8 @@ async def init():
             ...
         return await dashboard.process(name, data.get("content"))
 
-    app.redirect("/", "/pages/")
+    app.redirect("/", "/pages")
+    app.redirect("/pages/", "/pages")
     await check_update()
 
 
