@@ -5,6 +5,7 @@ import datetime
 import hashlib
 import inspect
 import io
+import os
 import re
 import time
 from typing import (
@@ -433,9 +434,16 @@ def format_time(k: float):
 
 
 def format_date(k: float):
-    print(k)
     local = time.localtime(k)
     return f"{local.tm_year:04d}-{local.tm_mon:02d}-{local.tm_mday:02d}"
+
+
+def get_env_monotonic():
+    return float(os.environ.get("MONOTONIC"))
+
+def get_uptime():
+    return time.monotonic() - get_env_monotonic()
+
 
 def base36_encode(number):
     num_str = "0123456789abcdefghijklmnopqrstuvwxyz"

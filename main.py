@@ -16,6 +16,9 @@ os.environ["STARTUP"] = str(
 os.environ["ASYNCIO_STARTUP"] = str(
     0
 )
+os.environ["MONOTONIC"] = str(
+    time.monotonic()
+)
 
 if __name__ == "__main__":
     if sys.version_info <= (3, 9):

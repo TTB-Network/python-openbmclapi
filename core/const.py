@@ -16,6 +16,7 @@ if version_path.exists():
         f.close()
 else:
     VERSION = "Unknown"
+CACHE_BUFFER_COMPRESSION_MIN_LENGTH: int = 64
 DEBUG: bool = Config.get("advanced.debug")
 ROOT = os.getcwd()
 API_VERSION = "1.10.3"
@@ -128,3 +129,11 @@ if Config.get("storages") is not None:
                 name, storage["type"], storage["path"], storage.get("width", 0), storage
             )
         )
+
+
+# xdb 默认参数
+XDB_HeaderInfoLength = 256
+XDB_VectorIndexRows = 256
+XDB_VectorIndexCols = 256
+XDB_VectorIndexSize = 8
+XDB_SegmentIndexSize = 14

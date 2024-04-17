@@ -20,7 +20,7 @@ from core.utils import (
 )
 from core.api import File
 from core import logger, timer as Timer
-
+from core.location import ipaddress as location
 class UserAgent(Enum):
     OPENBMCLAPI_CLUSTER = "openbmclapi-cluster"
     PYTHON              = "python-openbmclapi"
@@ -186,36 +186,6 @@ last_ua: int = 0
 last_hour: int = 0
 last_day: int = 0
 db: sqlite3.Connection = sqlite3.Connection("./cache/stats.db", check_same_thread=False)
-db.execute(
-    """
-CREATE TABLE IF NOT EXISTS access (  
-    hour unsigned bigint NOT NULL,
-    storage TEXT NOT NULL,  
-    hit unsigned bigint NOT NULL DEFAULT 0,
-    bytes unsigned bigint NOT NULL DEFAULT 0,
-    cache_hit unsigned bigint NOT NULL DEFAULT 0,
-    cache_bytes unsigned bigint NOT NULL DEFAULT 0,
-    last_hit unsigned bigint NOT NULL DEFAULT 0,
-    last_bytes unsigned bigint NOT NULL DEFAULT 0,
-    failed unsigned bigint NOT NULL DEFAULT 0
-);"""
-)
-db.execute(
-    """
-CREATE TABLE IF NOT EXISTS g_access_ip (  
-    day unsigned bigint NOT NULL,
-    ip TEXT NOT NULL,
-    hit unsigned bigint not null default 0
-);"""
-)
-db.execute(
-    """
-CREATE TABLE IF NOT EXISTS g_access_ua (  
-    day unsigned bigint NOT NULL
-);"""
-)
-
-db.commit()
 
 
 def read_storage():
@@ -515,7 +485,7 @@ def daily():
         "select storage, hour, hit, bytes, cache_hit, cache_bytes, last_hit, last_bytes, failed from access where hour >= ?",
         t,
     ):
-        hour = (r[1] - t) // 24
+        hour = r[1] // 24
         if hour not in days:
             days[hour] = StorageStats("Total")
         days[hour]._hits += r[2]
@@ -528,7 +498,7 @@ def daily():
     for day in sorted(days.keys()):
         data.append(
             {
-                "_day": int(day),
+                "_day": format_date(day * 86400),
                 "hits": days[day]._hits,
                 "bytes": days[day]._bytes,
                 "cache_hits": days[day]._cache_hits,
@@ -545,6 +515,7 @@ def daily_global():
     t = get_timestamp_from_day_today(30)
     g_ua = ','.join((f"`{ua.value}`" for ua in UserAgent))
     s_ua: dict[str, defaultdict[UserAgent, int]] = {}
+    ip: dict[int, defaultdict[str, int]] = {}
     for q in queryAllData(
         f"select day, {g_ua} from g_access_ua where day >= ?",
         t,
@@ -554,20 +525,61 @@ def daily_global():
             s_ua[day] = defaultdict(int)
         for i, ua in enumerate(UserAgent):
             s_ua[day][ua.value] = q[i + 1]
+    for q in queryAllData(
+        f"select day, ip, hit from g_access_ip where day >= ?",
+        t,
+    ):
+        day = format_date((q[0] + 1) * 86400)
+        if day not in ip:
+            ip[day] = defaultdict(int)
+        ip[day][q[1]] += q[2]
     return {
         "useragents": s_ua,
-        "addresses": {}
+        "addresses": {},
+        "distinct_ip": {
+            day: len(ip) for day, ip in ip.items()
+        }
     }
-    
-
-for ua in UserAgent:
-    addColumns("g_access_ua", f"`{ua.value}`", " unsigned bigint NOT NULL DEFAULT 0")
-
-read_storage()
-_write_database()
 
 
 def init():
+    start = time.monotonic()
+    logger.tinfo("stats.info.init")
+    db.execute(
+        """
+    CREATE TABLE IF NOT EXISTS access (  
+        hour unsigned bigint NOT NULL,
+        storage TEXT NOT NULL,  
+        hit unsigned bigint NOT NULL DEFAULT 0,
+        bytes unsigned bigint NOT NULL DEFAULT 0,
+        cache_hit unsigned bigint NOT NULL DEFAULT 0,
+        cache_bytes unsigned bigint NOT NULL DEFAULT 0,
+        last_hit unsigned bigint NOT NULL DEFAULT 0,
+        last_bytes unsigned bigint NOT NULL DEFAULT 0,
+        failed unsigned bigint NOT NULL DEFAULT 0
+    );"""
+    )
+    db.execute(
+        """
+    CREATE TABLE IF NOT EXISTS g_access_ip (  
+        day unsigned bigint NOT NULL,
+        ip TEXT NOT NULL,
+        hit unsigned bigint not null default 0
+    );"""
+    )
+    db.execute(
+        """
+    CREATE TABLE IF NOT EXISTS g_access_ua (  
+        day unsigned bigint NOT NULL
+    );"""
+    )
+
+    db.commit()
+    for ua in UserAgent:
+        addColumns("g_access_ua", f"`{ua.value}`", " unsigned bigint NOT NULL DEFAULT 0")
+    read_storage()
+    _write_database()
+    logger.tinfo("stats.info.initization", time = f"{(time.monotonic() - start):.2f}")
     Timer.delay(write_database, delay=time.time() % 1)
 
 
