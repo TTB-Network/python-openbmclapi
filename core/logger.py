@@ -34,15 +34,10 @@ class LoggingLogger:
             retention="10 days",
             encoding="utf-8",
         )
-        self.add_log("DEBUG" if debug_mode else "INFO")
-
-    def add_log(self, level: str):
-        if self.cur_handler:
-            self.log.remove(self.cur_handler)
-        self.cur_handler = self.log.add(
+        self.log.add(
             sys.stderr,
             format=basic_logger_format,
-            level=level,
+            level="DEBUG" if debug_mode else "INFO",
             colorize=True,
         )
 

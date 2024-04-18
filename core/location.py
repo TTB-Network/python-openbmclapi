@@ -427,7 +427,7 @@ country_iso = {
 cache: dict[str, IPInfo] = {}
 empty: IPInfo = IPInfo()
 
-ipaddress: XdbSearcher = XdbSearcher(contentBuff=XdbSearcher.loadContentFromFile("data/ip.xdb"))
+ipaddress: XdbSearcher = XdbSearcher(contentBuff=XdbSearcher.loadContentFromFile("assets/ip.xdb"))
 cn_level: str = r"(省|市|自治区|壮族自治区|回族自治区|维吾尔自治区|藏族自治区|蒙古族自治区|林区)"
 
 def query(ip: str) -> IPInfo:
@@ -438,9 +438,5 @@ def query(ip: str) -> IPInfo:
     info = IPInfo(
         country, re.sub(cn_level, "", data[2]) if country == "CN" else ""
     )
-    if country == data[0]:
-        logger.warn(f"需要修正ip表: {ip}, {country}")
-    if country == "CN" and not info.province and (data[4] != "移动" and data[4] != "阿里巴巴"): # 服了这个移不动，谁用阿里巴巴机房玩我的世界啊？
-        logger.warn(f"未找到省级单位：{ip}, {'|'.join(('0' if not data else data for data in data))}")
     cache[ip] = info
     return info
