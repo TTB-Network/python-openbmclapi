@@ -1288,8 +1288,6 @@ async def init():
             data.get_data().getbuffer(), headers=data.headers or {}
         ).set_headers(name)
 
-    cache = io.BytesIO()
-    
     @app.get("/sync_download/{hash}")
     async def _(request: web.Request, hash: str):
         return Path(f"./bmclapi/{hash[:2]}/{hash}")
@@ -1365,7 +1363,7 @@ async def init():
         return await dashboard.process(name, data.get("content"))
 
     app.redirect("/", "/pages/")
-    
+
     await check_update()
 
 

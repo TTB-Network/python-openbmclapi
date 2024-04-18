@@ -395,8 +395,13 @@ def execute(cmd: str, *params) -> None:
 
 def executemany(*cmds: tuple[str, tuple[Any, ...]]) -> None:
     global db
+    pbar = None
+    if len(cmds) >= 512:
+        pbar = tqdm(total=pbar, unit_scale=True)
     for cmd in cmds:
         db.execute(*cmd)
+        if pbar is not None:
+            pbar.update(1)
     db.commit()
 
 
