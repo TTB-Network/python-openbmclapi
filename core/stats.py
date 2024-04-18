@@ -375,8 +375,8 @@ def _write_database(first: bool = False):
             storage.reset()
     if last_day and last_day != day:
         globalStats.reset()
-    last_day = day
-    last_hour = hour
+    last_day = get_day(0)
+    last_hour = get_hour(0)
 
 
 def get_hour(hour: int) -> int:
@@ -538,6 +538,8 @@ def daily_global():
         if day not in s_ua:
             s_ua[day] = defaultdict(int)
         for i, ua in enumerate(UserAgent):
+            if q[i + 1] == 0:
+                continue
             s_ua[day][ua.value] = q[i + 1]
     for q in queryAllData(
         f"select day, ip, hit from g_access_ip where day >= ?",
