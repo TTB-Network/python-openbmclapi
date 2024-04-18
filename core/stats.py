@@ -5,7 +5,8 @@ import os
 from pathlib import Path
 import sqlite3
 import time
-import tracebackfrom typing import Any, Optional
+import traceback
+from typing import Any, Optional
 import pyzstd as zstd
 from tqdm import tqdm
 
