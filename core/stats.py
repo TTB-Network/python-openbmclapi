@@ -371,7 +371,7 @@ def _write_database(first: bool = False):
     if first:
         logger.debug(f"执行SQL语句耗时 {time.monotonic() - start:.2f}")
     cur_day = get_day(0)
-    cur_hour = get_day(0)
+    cur_hour = get_hour(0)
     if cur_hour != hour:
         for storage in storages.values():
             storage.reset()
