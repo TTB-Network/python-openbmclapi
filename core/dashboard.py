@@ -194,6 +194,8 @@ async def set_status_by_tqdm(text: str, pbar: tqdm):
     if task_tqdm:
         task_tqdm.block()
         cur_tqdm.show.block()
+    cur_tqdm.speed = 0
+    cur_tqdm.last_value = 0
     task_tqdm = Timer.repeat(_calc_tqdm_speed, delay=0, interval=0.5)
     cur_tqdm.show = Timer.repeat(_set_status, kwargs={
         "blocked": True

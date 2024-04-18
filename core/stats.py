@@ -238,7 +238,7 @@ def read_storage():
 
 
 def write_storage():
-    global storages, globalStats
+    global storages, globalStats, last_hour
     f = DataOutputStream()
     f.writeVarInt(last_hour)
     f.writeVarInt(len(storages))
@@ -573,34 +573,9 @@ def daily_global():
 def init():
     start = time.monotonic()
     logger.tinfo("stats.info.init")
-    db.execute(
-        """
-    CREATE TABLE IF NOT EXISTS access (  
-        hour unsigned bigint NOT NULL,
-        storage TEXT NOT NULL,  
-        hit unsigned bigint NOT NULL DEFAULT 0,
-        bytes unsigned bigint NOT NULL DEFAULT 0,
-        cache_hit unsigned bigint NOT NULL DEFAULT 0,
-        cache_bytes unsigned bigint NOT NULL DEFAULT 0,
-        last_hit unsigned bigint NOT NULL DEFAULT 0,
-        last_bytes unsigned bigint NOT NULL DEFAULT 0,
-        failed unsigned bigint NOT NULL DEFAULT 0
-    );"""
-    )
-    db.execute(
-        """
-    CREATE TABLE IF NOT EXISTS g_access_ip (  
-        day unsigned bigint NOT NULL,
-        ip TEXT NOT NULL,
-        hit unsigned bigint not null default 0
-    );"""
-    )
-    db.execute(
-        """
-    CREATE TABLE IF NOT EXISTS g_access_ua (  
-        day unsigned bigint NOT NULL
-    );"""
-    )
+    db.execute("CREATE TABLE IF NOT EXISTS access (hour unsigned bigint NOT NULL, storage TEXT NOT NULL, hit unsigned bigint NOT NULL DEFAULT 0, bytes unsigned bigint NOT NULL DEFAULT 0, cache_hit unsigned bigint NOT NULL DEFAULT 0, cache_bytes unsigned bigint NOT NULL DEFAULT 0, last_hit unsigned bigint NOT NULL DEFAULT 0, last_bytes unsigned bigint NOT NULL DEFAULT 0, failed unsigned bigint NOT NULL DEFAULT 0);")
+    db.execute("CREATE TABLE IF NOT EXISTS g_access_ip (day unsigned bigint NOT NULL, ip TEXT NOT NULL, hit unsigned bigint not null default 0);")
+    db.execute("CREATE TABLE IF NOT EXISTS g_access_ua (day unsigned bigint NOT NULL);")
 
     db.commit()
     for ua in UserAgent:
