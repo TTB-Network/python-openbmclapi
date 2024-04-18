@@ -8,6 +8,7 @@ import time
 import traceback
 from typing import Any
 import pyzstd as zstd
+from tqdm import tqdm
 
 from core.utils import (
     DataInputStream,
@@ -19,7 +20,7 @@ from core.utils import (
     get_timestamp_from_hour_tohour,
 )
 from core.api import File
-from core import logger, timer as Timer
+from core import logger, timer as Timer, unit
 import core.location as location
 class UserAgent(Enum):
     OPENBMCLAPI_CLUSTER = "openbmclapi-cluster"
@@ -86,6 +87,7 @@ class GlobalStats:
         input = DataInputStream(zstd.decompress(data))
         ip_length = input.readVarInt()
         ua_length = input.readVarInt()
+        logger.debug(f"数据读取IP [{unit.format_number(ip_length)}] UA [{unit.format_number(ua_length)}]")
         cache_ip = {input.readString(): input.readVarInt() for _ in range(ip_length)}
         cache_ua = {UserAgent.get_ua(input.readString()): input.readVarInt() for _ in range(ua_length)}
         return GlobalStats(GlobalStats.convert_dict_to_defaultdict(cache_ua, int), GlobalStats.convert_dict_to_defaultdict(cache_ip, int))
@@ -280,7 +282,7 @@ def get_storage(name):
     return storages[name]
 
 
-def _write_database():
+def _write_database(first: bool = False):
     global last_storages, last_hour, globalStats, last_ip, last_ua, last_day
     cmds: list[tuple[str, tuple[Any, ...]]] = []
     hour = last_hour or get_hour(0)
@@ -315,12 +317,11 @@ def _write_database():
             )
         )
     ips = globalStats.ip.copy()
+    cache_sql_ip = {}
+    for cip in queryAllData("select ip, hit from g_access_ip where day = ?", day):
+        cache_sql_ip[cip[0]] = cip[1]
     for ip, c in ips.items():
-        if (ip not in last_ip or day != last_ip[ip]) and not exists(
-            "select ip from g_access_ip where ip = ? and day = ?",
-            ip,
-            day,
-        ):
+        if (ip not in last_ip or day != last_ip[ip]) and ip not in cache_sql_ip:
             cmds.append(
                 (
                     "insert into g_access_ip(ip, day) values (?, ?)",
@@ -328,6 +329,8 @@ def _write_database():
                 )
             )
             last_ip[ip] = day
+        if cache_sql_ip[ip] == c:
+            continue
         cmds.append(
             (
                 "update g_access_ip set hit = ? where ip = ? and day = ?",
@@ -361,8 +364,12 @@ def _write_database():
             )
         )
     )
-        
+    if first:
+        logger.debug(f"本地数据同步到数据库 [{unit.format_number(len(cmds))}]")
+        start = time.monotonic()
     executemany(*cmds)
+    if first:
+        logger.debug(f"执行SQL语句耗时 {time.monotonic() - start:.2f}")
     if last_hour and last_hour != hour:
         for storage in storages.values():
             storage.reset()
@@ -589,7 +596,7 @@ def init():
     for ua in UserAgent:
         addColumns("g_access_ua", f"`{ua.value}`", " unsigned bigint NOT NULL DEFAULT 0")
     read_storage()
-    _write_database()
+    _write_database(True)
     logger.tinfo("stats.info.initization", time = f"{(time.monotonic() - start):.2f}")
     Timer.delay(write_database, delay=time.time() % 1)
 
