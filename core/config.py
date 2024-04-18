@@ -10,12 +10,12 @@ defaults = {
     "cluster.public_port": 8800,
     "cluster.public_host": "",
     "cluster.byoc": False,
-    "cluster.enable": True,
-    "cluster.timeout.enable": 120,
+    "cluster.timeout.enable": 60,
     "cluster.timeout.keepalive": 300,
-    "cluster.reconnect.delay": 60,
+    "cluster.reconnect.delay": 5,
     "cluster.reconnect.retry": -1,
-    "advanced.skip_sign": False,
+    "cluster.skip_sign": False,
+    "cluster.url": "https://openbmclapi.bangbang93.com/",
     "cache.buffer": 536870912,
     "cache.time": 1800,
     "cache.check": 360,
@@ -55,12 +55,11 @@ class CFG:
 
     def get(self, key: str, def_: Any = None) -> Any:
         value = os.environ.get(key, None) or self._get_value(self.cfg, key.split("."))
-        if (value is None or value == "") and def_ is None:
+        if (value == None or value == "") and def_ is None:
             print(f"[Config] {key} is not set, does it exist?")
-            if key in defaults:
-                value = defaults.get(key, None)
-                if value is not None:
-                    self.set(key, value)
+            value = defaults[key] if key in defaults else def_ if def_ else False
+            if value != False:
+                self.set(key, value)
         return value if value else defaults.get(key, def_)
 
     def set(self, key: str, value: Any):

@@ -11,7 +11,6 @@ import aiofiles
 
 from core import web
 from core.config import Config
-from core.const import CACHE_BUFFER_COMPRESSION_MIN_LENGTH
 
 
 class FileCheckType(Enum):
@@ -51,7 +50,6 @@ class File:
     data: Optional[io.BytesIO] = None
     cache: bool = False
     headers: Optional["web.Header"] = None
-    compressed: bool = False
 
     def is_url(self):
         if not isinstance(self.path, str):
@@ -64,22 +62,12 @@ class File:
     def get_data(self):
         if not self.data:
             return io.BytesIO()
-        if not self.compressed:
-            return self.data
         return io.BytesIO(zstd.decompress(self.data.getbuffer()))
 
     def set_data(self, data: io.BytesIO | memoryview | bytes):
         if not isinstance(data, io.BytesIO):
             data = io.BytesIO(data)
-        data_length = len(data.getbuffer())
-        if data_length >= CACHE_BUFFER_COMPRESSION_MIN_LENGTH:
-            compressed_data = zstd.compress(data.getbuffer())
-            if data_length > len(compressed_data):
-                self.compressed = True
-                self.data = io.BytesIO(compressed_data)
-                return
-        self.compressed = False
-        self.data = data
+        self.data = io.BytesIO(zstd.compress(data.getbuffer()))
 
 
 @dataclass
