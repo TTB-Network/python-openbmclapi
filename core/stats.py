@@ -206,7 +206,7 @@ def read_storage():
     with open("./cache/storage.bin", "rb") as r:
         f = FileDataInputStream(r)
         last_hour = f.readVarInt()
-        last_day = last_hour // 24
+        last_day = (last_hour - last_hour % 24) // 24 - 1
         for _ in range(f.readVarInt()):
             storage = StorageStats(f.readString())
             (
