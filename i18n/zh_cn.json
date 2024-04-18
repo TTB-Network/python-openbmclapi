@@ -1,6 +1,4 @@
 {
-  "stats.info.init": "正在初始化 [统计] 模块中...",
-  "stats.info.initization": "初始化 [统计] 模块成功，耗时：$time 秒。",
   "cert.error.failed": "无法加载证书：$failure。",
   "cert.success.loaded_cert": "成功从本地文件中加载证书！",
   "web.info.serving_router": "正在 $router 上服务路由。",
