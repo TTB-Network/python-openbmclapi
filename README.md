@@ -17,17 +17,16 @@
 [![CodeQL](https://github.com/TTB-Network/python-openbmclapi/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/TTB-Network/python-openbmclapi/actions/workflows/github-code-scanning/codeql)
 [![Create tagged release](https://github.com/TTB-Network/python-openbmclapi/actions/workflows/build_and_publish.yml/badge.svg)](https://github.com/TTB-Network/python-openbmclapi/actions/workflows/build_and_publish.yml)
 
+[文档](https://python-openbmclapi.ttb-network.top/) | [API](https://python-openbmclapi.ttb-network.top/docs/api) | [赞助](https://afdian.net/a/atianxiua)
+
 ✨ 基于 [OpenBMCLAPI](https://github.com/bangbang93/openbmclapi) 的 Python 实现。
 
 🎨 **跨系统**、**跨架构**。这得益于 Python 强大的语言功能。
 
 ✨ **Docker** 支持。通过 Docker 更加**快捷地**部署 python-openbmclapi ~~（更支持一键跑路）~~
 
-🎉 __*新增功能！*__ WebDav 支持（实验性）。
+🎉 __*新增功能！*__ WebDAV 支持。通过基于 Web 的分布式编写和版本控制（英语：Web-based Distributed Authoring and Versioning，缩写：WebDAV），用户可以协同编辑和管理存储在万维网服务器文件。
 
-🎉 __*新增功能！*__ 多语言支持（实验性）。
-
-~~🎉 __*新增功能！*__ 由 tianxiu2b2t 强势驱动的 Dashboard。~~
 
 </div>
 
@@ -114,6 +113,7 @@
 
 ```yml
 advanced:
+  # 是否启用调试模式
   debug: false
   # 新连接读取数据头大小
   header_bytes: 4096
@@ -132,10 +132,11 @@ advanced:
   # 是否跳过签名检测
   skip_sign: false
 file:
-  # 文件检查模式，可选值为“exists”（存在，不推荐）、“size”（大小）和“hash”（哈希值）
+  # 文件检查模式，可选值为 exists（检查文件是否存在，不推荐）、
+  # size（检查文件大小）和 hash（检查文件哈希值）
   check: size
 cache:
-  # 缓存大小 （Bytes）
+  # 缓存大小（Bytes）
   buffer: 536870912
   # 检查过时文件时间，单位为秒
   check: 360
@@ -150,17 +151,17 @@ cluster:
   public_host: ''
   # 实际开放的公网端口, 同 CLUSTER_PUBLIC_PORT
   public_port: 8800
-  # 重新上线
+  # 重连
   reconnect:
-    # 多少秒重试，默认为5秒
+    # 重试间隔
     delay: 5
-    # 重试次数，-1为无限重试
+    # 重试次数，-1 为无限次数
     retry: -1
   # OpenBMCLAPI 的 CLUSTER_SECRET
   secret: ''
   # 超时设置
   timeout:
-    # 启用超时时间
+    # 发送启用数据包超时时间
     enable: 120
 dashboard:
   # 仪表盘密码
@@ -172,24 +173,25 @@ download:
   threads: 64
 # 存储设置
 storages:
-  bmclapi: # 是你的存储名字
+  bmclapi: # 你的存储名字
     # 存储路径
     path: ./bmclapi 
-    # 存储类型，目前为file（本地存储）和webdav
+    # 存储类型，可选值为 file（本地存储）和 webdav（WebDAV）
     type: file 
-    # 选用存储下载权重，-1为禁用，不选择，但会下载文件
+    # 选用存储下载权重，-1 为禁用，不选择，但会下载文件
     width: 0 
   bmclapi_webdav: 
     path: /bmclapidev
     type: webdav
     width: 2 
-    # 你的 webdav 端点
+    # 你的 WebDAV 端点
     endpoint: http://localhost:5244/dav
-    # webdav 用户名字
+    # WebDAV 用户名
     username: user
-    # webdav 用户密码
+    # WebDAV 用户密码
     password: password
 web:
+  # 是否强制使用 SSL
   force_ssl: false
   # 要监听的本地端口, 同 CLUSTER_PORT
   port: 8080

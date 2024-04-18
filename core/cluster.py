@@ -1218,26 +1218,24 @@ async def init():
             )
     Timer.delay(cluster.init)
     app = web.app
-    if DEBUG:
-        logger.tdebug("cluster.info.debug_mode")
 
-        @app.get("/files")
-        async def _():
-            files = sorted(cluster.downloader.files, key=lambda x: x.hash)
-            for file in files:
-                yield f'<a href="/dev_download/{file.hash}" target="_blank">{file}</a></br>'.encode()
+    @app.get("/files")
+    async def _():
+        files = sorted(cluster.downloader.files, key=lambda x: x.hash)
+        for file in files:
+            yield f'<a href="/dev_download/{file.hash}" target="_blank">{file}</a></br>'.encode()
 
-        @app.get("/dev_download/{hash}")
-        async def _(hash: str):
-            cur_time = int(time.time() * 1000.0) + 600
-            e = utils.base36_encode(cur_time)
-            s = hashlib.sha1()
-            s.update(CLUSTER_SECERT.encode("utf-8"))
-            s.update(hash.encode("utf-8"))
-            s.update(e.encode("utf-8"))
-            return web.RedirectResponse(
-                f"/download/{hash}?s={base64.urlsafe_b64encode(s.digest()).decode().strip('=')}&e={e}"
-            )
+    @app.get("/dev_download/{hash}")
+    async def _(hash: str):
+        cur_time = int(time.time() * 1000.0) + 600
+        e = utils.base36_encode(cur_time)
+        s = hashlib.sha1()
+        s.update(CLUSTER_SECERT.encode("utf-8"))
+        s.update(hash.encode("utf-8"))
+        s.update(e.encode("utf-8"))
+        return web.RedirectResponse(
+            f"/download/{hash}?s={base64.urlsafe_b64encode(s.digest()).decode().strip('=')}&e={e}"
+        )
 
     @app.get("/measure/{size}")
     async def _(request: web.Request, size: int, config: web.ResponseConfiguration):
@@ -1291,24 +1289,7 @@ async def init():
         ).set_headers(name)
 
     cache = io.BytesIO()
-
-    @app.get("/files")
-    async def _(request: web.Request):
-        if len(cache.getbuffer()) != 0:
-            return cache.getbuffer()
-        total = 0
-        buf = utils.DataOutputStream()
-        for root, dirs, files in os.walk("./bmclapi"):
-            for file in files:
-                total += 1
-                buf.writeString(file)
-                buf.writeVarInt(os.path.getsize(os.path.join(root, file)))
-        data = utils.DataOutputStream()
-        data.writeVarInt(total)
-        data.write(buf.io.getvalue())
-        cache.write(zstd.compress(data.io.getbuffer()))
-        return cache
-
+    
     @app.get("/sync_download/{hash}")
     async def _(request: web.Request, hash: str):
         return Path(f"./bmclapi/{hash[:2]}/{hash}")
@@ -1383,8 +1364,8 @@ async def init():
             ...
         return await dashboard.process(name, data.get("content"))
 
-    app.redirect("/", "/pages")
-    app.redirect("/pages/", "/pages")
+    app.redirect("/", "/pages/")
+    
     await check_update()
 
 
