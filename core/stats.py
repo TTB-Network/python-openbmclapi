@@ -5,8 +5,7 @@ import os
 from pathlib import Path
 import sqlite3
 import time
-import traceback
-from typing import Any
+import tracebackfrom typing import Any, Optional
 import pyzstd as zstd
 from tqdm import tqdm
 
@@ -191,8 +190,8 @@ cache.mkdir(exist_ok=True, parents=True)
 last_storages: dict[str, int] = {}
 last_ip: dict[str, int] = {}
 last_ua: int = 0
-last_hour: int = 0
-last_day: int = 0
+last_hour: Optional[int] = None
+last_day: Optional[int] = None
 db: sqlite3.Connection = sqlite3.Connection("./cache/stats.db", check_same_thread=False)
 
 
@@ -370,13 +369,16 @@ def _write_database(first: bool = False):
     executemany(*cmds)
     if first:
         logger.debug(f"执行SQL语句耗时 {time.monotonic() - start:.2f}")
-    if last_hour and last_hour != hour:
+    cur_day = get_day(0)
+    cur_hour = get_day(0)
+    if cur_hour != hour:
         for storage in storages.values():
             storage.reset()
-    if last_day and last_day != day:
+    if cur_day != day:
         globalStats.reset()
-    last_day = get_day(0)
-    last_hour = get_hour(0)
+    last_day = cur_day
+    last_hour = cur_hour
+
 
 
 def get_hour(hour: int) -> int:
