@@ -329,7 +329,7 @@ def _write_database(first: bool = False):
                 )
             )
             last_ip[ip] = day
-        if cache_sql_ip[ip] == c:
+        if ip in cache_sql_ip and cache_sql_ip[ip] == c:
             continue
         cmds.append(
             (
