@@ -20,7 +20,7 @@ from core.utils import (
 )
 from core.api import File
 from core import logger, timer as Timer
-from core.location import ipaddress as location
+import core.location as location
 class UserAgent(Enum):
     OPENBMCLAPI_CLUSTER = "openbmclapi-cluster"
     PYTHON              = "python-openbmclapi"
@@ -176,6 +176,12 @@ class SyncStorage:
     sync_bytes: int
     object: StorageStats
 
+@dataclass
+class GEOInfo:
+    country: str = ""
+    province: str = ""
+    value: int = 0
+
 
 storages: dict[str, StorageStats] = {}
 cache: Path = Path("./cache")
@@ -189,7 +195,7 @@ db: sqlite3.Connection = sqlite3.Connection("./cache/stats.db", check_same_threa
 
 
 def read_storage():
-    global storages, last_hour, globalStats
+    global storages, last_hour, globalStats, last_day
     if (
         not Path("./cache/storage.bin").exists()
         or Path("./cache/storage.bin").stat().st_size == 0
@@ -198,6 +204,7 @@ def read_storage():
     with open("./cache/storage.bin", "rb") as r:
         f = FileDataInputStream(r)
         last_hour = f.readVarInt()
+        last_day = last_hour // 24
         for _ in range(f.readVarInt()):
             storage = StorageStats(f.readString())
             (
@@ -533,9 +540,13 @@ def daily_global():
         if day not in ip:
             ip[day] = defaultdict(int)
         ip[day][q[1]] += q[2]
+    addresses: defaultdict[location.IPInfo, int] = defaultdict(int)
+    for ips in ip.values():
+        for address, count in ips.items():
+            addresses[location.query(address)] += count
     return {
         "useragents": s_ua,
-        "addresses": {},
+        "addresses": [GEOInfo(info.country, info.province, count) for info, count in sorted(addresses.items(), key=lambda x: x[0].country)],
         "distinct_ip": {
             day: len(ip) for day, ip in ip.items()
         }

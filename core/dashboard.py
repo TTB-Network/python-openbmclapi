@@ -173,10 +173,8 @@ async def process(type: str, data: Any):
                 )
         return data
     if type == "global_stats":
-        return {
-            "daily": stats.daily_global()
-        }
-    if type == "cpus":
+        return stats.daily_global()
+    if type == "system_details":
         return system.get_loads_detail()
 
 async def get_cache_stats() -> StatsCache:

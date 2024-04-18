@@ -8,26 +8,44 @@ from core.utils import get_uptime
 
 process: psutil.Process = psutil.Process(os.getpid())
 cpus: dict[float, float] = {}
+memories: dict[float, int] = {}
+connections: dict[float, list['psutil.pconn']] = {}
+length: int = 0
+last_curs: list[float] = []
 
 
-def _cpu():
-    global cpus
+def _run():
+    global cpus, memories, connections, length, last_curs
     while int(os.environ["ASYNCIO_STARTUP"]):
-        for _ in range(max(len(cpus) - 600, 0)):
-            cpus.pop(0)
-        cpus[get_uptime()] = process.cpu_percent(1)
+        for _ in range(max(length - 5, 0)):
+            cur = last_curs.pop(0)
+            cpus.pop(cur)
+            memories.pop(cur)
+            connections.pop(cur)
+            length -= 1
+        cur = get_uptime()
+        cpus[cur] = process.cpu_percent(1)
+        memories[cur] = process.memory_full_info().uss
+        connections[cur] = process.connections()
+        length += 1
+        last_curs.append(cur)
 
 
 def get_cpus():
     global cpus
     if not cpus:
         return 0
-    return sum(cpus) / len(cpus.copy().values())
+    arr = cpus.copy().values()
+    return sum(arr) / len(arr)
 
 
 def get_loads_detail():
+    global cpus, memories, connections
+    offset: float = float(os.getenv("STARTUP") or 0)
     return {
-        t + (float(os.getenv("STARTUP") or 0)): v for t, v in cpus.items()
+        "cpu": {t + offset: v for t, v in cpus.items()},
+        "memory": {t + offset: v for t, v in memories.items()},
+        "connections": {t + offset: len(v) for t, v in connections.items()}
     }
 
 def get_used_memory() -> int:
@@ -40,4 +58,4 @@ def get_connections() -> int:
 
 
 def init():
-    Timer.delay(_cpu)
+    Timer.delay(_run)
