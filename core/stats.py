@@ -276,8 +276,8 @@ def get_storage(name):
 def _write_database():
     global last_storages, last_hour, globalStats, last_ip, last_ua, last_day
     cmds: list[tuple[str, tuple[Any, ...]]] = []
-    hour = get_hour(0)
-    day = get_day(0)
+    hour = last_hour or get_hour(0)
+    day = last_day or get_day(0)
     for storage in storages.values():
         if (hour not in last_storages or hour != last_storages[storage.get_name()]) and not exists(
             "select storage from access where storage = ? and hour = ?",

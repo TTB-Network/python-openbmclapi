@@ -209,6 +209,7 @@ async def _calc_tqdm_speed():
             task_tqdm.block()
         cur_tqdm.show.block()
         cur_tqdm.object = None
+        await _set_status(blocked=True)
         return
     cur_tqdm.speed = (cur_tqdm.object.n - cur_tqdm.last_value) / 0.5
     cur_tqdm.last_value = cur_tqdm.object.n
