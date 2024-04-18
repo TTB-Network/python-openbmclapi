@@ -379,7 +379,12 @@ def _write_database():
         for storage in storages.values():
             storage.reset()
         globalStats.reset()
+<<<<<<< HEAD
     last_hour = hour
+=======
+    last_day = get_day(0)
+    last_hour = get_hour(0)
+>>>>>>> dev/dashboard
 
 
 def get_hour(hour: int) -> int:
@@ -394,8 +399,13 @@ def execute(cmd: str, *params) -> None:
 
 def executemany(*cmds: tuple[str, tuple[Any, ...]]) -> None:
     global db
+    pbar = None
+    if len(cmds) >= 512:
+        pbar = tqdm(total=pbar, unit_scale=True)
     for cmd in cmds:
         db.execute(*cmd)
+        if pbar is not None:
+            pbar.update(1)
     db.commit()
 
 
@@ -524,11 +534,49 @@ def daily():
     return data
 
 
+<<<<<<< HEAD
 for ua in UserAgent:
     addColumns("g_access_ua", f"`{ua.value}`", " unsigned bigint NOT NULL DEFAULT 0")
 
 read_storage()
 _write_database()
+=======
+def daily_global():
+    t = get_timestamp_from_day_today(30)
+    g_ua = ','.join((f"`{ua.value}`" for ua in UserAgent))
+    s_ua: dict[str, defaultdict[UserAgent, int]] = {}
+    ip: dict[int, defaultdict[str, int]] = {}
+    for q in queryAllData(
+        f"select day, {g_ua} from g_access_ua where day >= ?",
+        t,
+    ):
+        day = format_date((q[0] + 1) * 86400)
+        if day not in s_ua:
+            s_ua[day] = defaultdict(int)
+        for i, ua in enumerate(UserAgent):
+            if q[i + 1] == 0:
+                continue
+            s_ua[day][ua.value] = q[i + 1]
+    for q in queryAllData(
+        f"select day, ip, hit from g_access_ip where day >= ?",
+        t,
+    ):
+        day = format_date((q[0] + 1) * 86400)
+        if day not in ip:
+            ip[day] = defaultdict(int)
+        ip[day][q[1]] += q[2]
+    addresses: defaultdict[location.IPInfo, int] = defaultdict(int)
+    for ips in ip.values():
+        for address, count in ips.items():
+            addresses[location.query(address)] += count
+    return {
+        "useragents": s_ua,
+        "addresses": [GEOInfo(info.country, info.province, count) for info, count in sorted(addresses.items(), key=lambda x: x[0].country)],
+        "distinct_ip": {
+            day: len(ip) for day, ip in ip.items()
+        }
+    }
+>>>>>>> dev/dashboard
 
 
 def init():
