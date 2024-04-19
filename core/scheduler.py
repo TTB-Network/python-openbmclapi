@@ -32,6 +32,11 @@ async def init():
     async_scheduler = await get_async_scheduler()
     async_scheduler.start()
 
+def exit():
+    global sync_scheduler, async_scheduler
+    sync_scheduler.shutdown()
+    async_scheduler.shutdown(False)
+
 def _add_task_id(job: Job, isasync: bool = False) -> int:
     global sync_tasks, async_tasks, cur_id
     cur = (cur_id := cur_id + 1)

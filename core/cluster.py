@@ -91,6 +91,7 @@ class TokenManager:
                     return await self.fetchToken()
                 except asyncio.CancelledError:
                     logger.error(traceback.format_exc())
+                    await session.close()
                     return None
 
     async def getToken(self) -> str:
@@ -1012,11 +1013,16 @@ class Cluster:
         async def _(err, ack):
             self.disable_future.release()
             logger.tsuccess("cluster.success.cluster.disabled")
+            scheduler.cancel(task)
             if err and ack:
+                logger.tsuccess("cluster.warn.cluster.force_exit")
+                await self.sio.disconnect()
                 core.wait_exit.release()
 
+        task = scheduler.delay(_, args=(True, True), delay=5)
+
         await self.emit("disable", callback=_)
-        scheduler.delay(_, args=(True, True), delay=5)
+        await self.disable_future.wait()
 
     async def retry(self):
         if self.cur_token_timestamp != token.token_expires and self.sio.connected:
@@ -1235,7 +1241,8 @@ async def check_update():
         logger.tinfo("cluster.info.check_update.checking")
         try:
             async with session.get(
-                "/repos/TTB-Network/python-openbmclapi/releases/latest"
+                "/repos/TTB-Network/python-openbmclapi/releases/latest",
+                timeout=5
             ) as req:
                 req.raise_for_status()
                 data = await req.json()
@@ -1251,6 +1258,7 @@ async def check_update():
         except aiohttp.ClientError as e:
             logger.terror("cluster.error.check_update.failed", e=e)
         except asyncio.CancelledError:
+            await session.close()
             return
     scheduler.delay(check_update, delay=3600)
 

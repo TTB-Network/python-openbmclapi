@@ -4,6 +4,7 @@ from .env import env as env
 import atexit
 from .logger import logger
 from .scheduler import init as scheduler_init
+from .scheduler import exit as scheduler_exit
 from .utils import WaitLock
 
 env['MONOTONIC'] = time.monotonic()
@@ -32,6 +33,7 @@ async def async_init():
     await wait_exit.wait()
     network_exit()
     await cluster_exit()
+    scheduler_exit()
 
 
 def exit():
