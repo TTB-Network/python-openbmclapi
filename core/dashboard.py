@@ -105,11 +105,6 @@ def serialize(data: Any):
     return buf
 
 
-def _format_time(k: float):
-    local = time.localtime(k)
-    return f"{local.tm_hour:02d}:{local.tm_min:02d}:{local.tm_sec:02d}"
-
-
 async def process(type: str, data: Any):
     if type == "uptime":
         return float(os.getenv("STARTUP") or 0)
@@ -126,7 +121,7 @@ async def process(type: str, data: Any):
             resp_data[_] = 0
             for __ in range(5):
                 resp_data[_] += raw_data.get(__ + _, 0)
-        return {_format_time(k): v for k, v in resp_data.items()}
+        return {utils.format_time(k): v for k, v in resp_data.items()}
     if type == "status":
         resp: dict = {
             "key": last_status,
@@ -178,14 +173,9 @@ async def process(type: str, data: Any):
                 )
         return data
     if type == "global_stats":
-        return {
-            "ip": {
-
-            },
-            "ua": {
-                
-            }
-        }
+        return stats.daily_global()
+    if type == "system_details":
+        return system.get_loads_detail()
 
 async def get_cache_stats() -> StatsCache:
     stat = StatsCache()
@@ -204,6 +194,8 @@ async def set_status_by_tqdm(text: str, pbar: tqdm):
     if task_tqdm:
         task_tqdm.block()
         cur_tqdm.show.block()
+    cur_tqdm.speed = 0
+    cur_tqdm.last_value = 0
     task_tqdm = Timer.repeat(_calc_tqdm_speed, delay=0, interval=0.5)
     cur_tqdm.show = Timer.repeat(_set_status, kwargs={
         "blocked": True
@@ -217,6 +209,7 @@ async def _calc_tqdm_speed():
             task_tqdm.block()
         cur_tqdm.show.block()
         cur_tqdm.object = None
+        await _set_status(blocked=True)
         return
     cur_tqdm.speed = (cur_tqdm.object.n - cur_tqdm.last_value) / 0.5
     cur_tqdm.last_value = cur_tqdm.object.n

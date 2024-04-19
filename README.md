@@ -129,6 +129,8 @@ advanced:
   request_buffer: 8192
   # 超时时间
   timeout: 30
+  # 是否跳过签名检测
+  skip_sign: false
 file:
   # 文件检查模式，可选值为 exists（检查文件是否存在，不推荐）、
   # size（检查文件大小）和 hash（检查文件哈希值）
@@ -136,7 +138,9 @@ file:
 cache:
   # 缓存大小（Bytes）
   buffer: 536870912
+  # 检查过时文件时间，单位为秒
   check: 360
+  # 文件存在时间，单位为秒
   time: 1800
 cluster:
   # 是否不使用 BMCLAPI 分发的证书, 同 CLUSTER_BYOC
@@ -155,7 +159,7 @@ cluster:
     retry: -1
   # OpenBMCLAPI 的 CLUSTER_SECRET
   secret: ''
-  skip_sign: false
+  # 超时设置
   timeout:
     # 发送启用数据包超时时间
     enable: 120
@@ -167,6 +171,7 @@ dashboard:
 download:
   # 最高下载线程
   threads: 64
+# 存储设置
 storages:
   bmclapi: # 你的存储名字
     # 存储路径

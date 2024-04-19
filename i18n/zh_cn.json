@@ -1,4 +1,6 @@
 {
+  "stats.info.initializing": "正在初始化 [统计] 模块中...",
+  "stats.info.initialization": "初始化 [统计] 模块成功，耗时：$time 秒。",
   "cert.error.failed": "无法加载证书：$failure。",
   "cert.success.loaded_cert": "成功从本地文件中加载证书！",
   "web.info.serving_router": "正在 $router 上服务路由。",
@@ -15,6 +17,8 @@
   "cluster.info.get_files.modified_time": "文件最后修改时间：$time。",
   "cluster.error.mount_files.failed_to_copy": "在尝试下载文件时出错：无法复制文件：$hash ($file) => $hash ($target)。",
   "cluster.tqdm.desc.download": "下载文件中",
+  "cluster.debug.download_temp.downloading": "正在下载文件：$hash。",
+  "cluster.debug.download_temp.downloaded": "成功下载文件：$hash。",
   "cluster.info.download.finished": "成功下载所有文件。",
   "cluster.info.check_files.check_type": "当前文件检查模式：$type。",
   "cluster.warn.check_files.skipped": "当前并无可用文件，已跳过文件检查。",
