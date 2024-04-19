@@ -54,7 +54,7 @@
 2. 安装依赖：
 
     ```sh
-    pip install --no-deps -r requirements.txt
+    pip install -r requirements.txt
     ```
 
     > 你可能需要先安装 [Microsoft C++ 生成工具](https://visualstudio.microsoft.com/visual-cpp-build-tools/)。
