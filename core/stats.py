@@ -615,8 +615,14 @@ def init():
     logger.tinfo(
         "stats.info.initization", time = f"{(time.monotonic() - start):.2f}"
     )
-    scheduler.repeat(write_database, interval=1)
+    scheduler.delay(write_database)
 
 
 def write_database():
-    _write_database()
+    time.sleep(time.time() % 1)
+    while 1:
+        _write_database()
+        try:
+            time.sleep(time.time() % 1)
+        except:
+            break
