@@ -183,14 +183,14 @@ class FileDownloader:
                 "User-Agent": USER_AGENT
             }
         ) as session:
-            logger.debug(f"正在下载 {hash}")
+            logger.tdebug("cluster.debug.download_temp.downloading", hash=hash)
             content: io.BytesIO = io.BytesIO()
             async with session.get(f"/openbmclapi/download/{hash}") as resp:
                 while data := await resp.content.read(IO_BUFFER):
                     if not data:
                         break
                     content.write(data)
-            logger.debug(f"下载完成 {hash}")
+            logger.tdebug("cluster.debug.download_temp.downloaded", hash=hash)
             await self._mount_file(BMCLAPIFile(
                 path = f"/download/{hash}",
                 hash = hash,

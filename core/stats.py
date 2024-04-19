@@ -87,7 +87,6 @@ class GlobalStats:
         input = DataInputStream(zstd.decompress(data))
         ip_length = input.readVarInt()
         ua_length = input.readVarInt()
-        logger.debug(f"数据读取IP [{unit.format_number(ip_length)}] UA [{unit.format_number(ua_length)}]")
         cache_ip = {input.readString(): input.readVarInt() for _ in range(ip_length)}
         cache_ua = {UserAgent.get_ua(input.readString()): input.readVarInt() for _ in range(ua_length)}
         return GlobalStats(GlobalStats.convert_dict_to_defaultdict(cache_ua, int), GlobalStats.convert_dict_to_defaultdict(cache_ip, int))
@@ -364,12 +363,7 @@ def _write_database(first: bool = False):
             )
         )
     )
-    if first:
-        logger.debug(f"本地数据同步到数据库 [{unit.format_number(len(cmds))}]")
-        start = time.monotonic()
     executemany(*cmds)
-    if first:
-        logger.debug(f"执行SQL语句耗时 {time.monotonic() - start:.2f}")
     cur_day = get_day(0)
     cur_hour = get_hour(0)
     if cur_hour != hour:
@@ -572,7 +566,7 @@ def daily_global():
 
 def init():
     start = time.monotonic()
-    logger.tinfo("stats.info.init")
+    logger.tinfo("stats.info.initializing")
     db.execute("CREATE TABLE IF NOT EXISTS access (hour unsigned bigint NOT NULL, storage TEXT NOT NULL, hit unsigned bigint NOT NULL DEFAULT 0, bytes unsigned bigint NOT NULL DEFAULT 0, cache_hit unsigned bigint NOT NULL DEFAULT 0, cache_bytes unsigned bigint NOT NULL DEFAULT 0, last_hit unsigned bigint NOT NULL DEFAULT 0, last_bytes unsigned bigint NOT NULL DEFAULT 0, failed unsigned bigint NOT NULL DEFAULT 0);")
     db.execute("CREATE TABLE IF NOT EXISTS g_access_ip (day unsigned bigint NOT NULL, ip TEXT NOT NULL, hit unsigned bigint not null default 0);")
     db.execute("CREATE TABLE IF NOT EXISTS g_access_ua (day unsigned bigint NOT NULL);")
@@ -582,7 +576,7 @@ def init():
         addColumns("g_access_ua", f"`{ua.value}`", " unsigned bigint NOT NULL DEFAULT 0")
     read_storage()
     _write_database(True)
-    logger.tinfo("stats.info.initization", time = f"{(time.monotonic() - start):.2f}")
+    logger.tsuccess("stats.info.initialization", time = f"{(time.monotonic() - start):.2f}")
     Timer.delay(write_database, delay=time.time() % 1)
 
 
