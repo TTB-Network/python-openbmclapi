@@ -441,6 +441,11 @@ def format_date(k: float):
     return f"{local.tm_year:04d}-{local.tm_mon:02d}-{local.tm_mday:02d}"
 
 
+def format_datetime(k: float):
+    local = time.localtime(k)
+    return f"{local.tm_year:04d}-{local.tm_mon:02d}-{local.tm_mday:02d} {local.tm_hour:02d}:{local.tm_min:02d}"
+
+
 def get_env_monotonic():
     return env['MONOTONIC']
 

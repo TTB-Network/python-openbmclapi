@@ -14,6 +14,7 @@ from core.utils import (
     DataOutputStream,
     FileDataInputStream,
     format_date,
+    format_datetime,
     get_timestamp_from_day_today,
     get_timestamp_from_day_tohour,
     get_timestamp_from_hour_tohour,
@@ -118,6 +119,12 @@ class GlobalStats:
 
     def reset(self):
         self.useragent.clear()
+        self.ip.clear()
+
+    def reset_ua(self):
+        self.useragent.clear()
+
+    def reset_ip(self):
         self.ip.clear()
 
 
@@ -358,22 +365,22 @@ def _write_database():
         cmds.append(
             ("update g_access_ip set hit = ? where ip = ? and day = ?", (c, ip, day))
         )
-    if last_ua != day and not exists(
-        "select day from g_access_ua where day = ?",
-        day,
+    if last_ua != hour and not exists(
+        "select hour from g_access_ua where hour = ?",
+        hour,
     ):
         cmds.append(
             (
-                "insert into g_access_ua(day) values (?)",
-                (day,),
+                "insert into g_access_ua(hour) values (?)",
+                (hour,),
             )
         )
-        last_ua = day
+        last_ua = hour
     g_ua = ",".join((f"`{ua.value}` = ?" for ua in UserAgent))
     cmds.append(
         (
-            f"update g_access_ua set {g_ua} where day = ?",
-            (*(globalStats.useragent.get(ua, 0) for ua in UserAgent), day),
+            f"update g_access_ua set {g_ua} where hour = ?",
+            (*(globalStats.useragent.get(ua, 0) for ua in UserAgent), hour),
         )
     )
     executemany(*cmds)
@@ -382,8 +389,9 @@ def _write_database():
     if cur_hour != hour:
         for storage in storages.values():
             storage.reset()
+        globalStats.reset_ua()
     if cur_day != day:
-        globalStats.reset()
+        globalStats.reset_ip()
     last_day = cur_day
     last_hour = cur_hour
 
@@ -541,21 +549,22 @@ def daily():
 
 def daily_pro(day):
     t = get_timestamp_from_day_today(day)
+    thour = get_hour((day + 1) * 24)
     distincts = get_timestamp_from_day_today(30)
     g_ua = ",".join((f"`{ua.value}`" for ua in UserAgent))
     s_ua: dict[str, defaultdict[UserAgent, int]] = {}
     ip: dict[int, defaultdict[str, int]] = {}
     for q in queryAllData(
-        f"select day, {g_ua} from g_access_ua where day >= ?",
-        t,
+        f"select hour, {g_ua} from g_access_ua where hour >= ?",
+        thour,
     ):
-        day = format_date((q[0] + 1) * 86400)
-        if day not in s_ua:
-            s_ua[day] = defaultdict(int)
+        hour = format_datetime((q[0] + 1) * 3600)
+        if hour not in s_ua:
+            s_ua[hour] = defaultdict(int)
         for i, ua in enumerate(UserAgent):
             if q[i + 1] == 0:
                 continue
-            s_ua[day][ua.value] = q[i + 1]
+            s_ua[hour][ua.value] = q[i + 1]
     for q in queryAllData(
         f"select day, ip, hit from g_access_ip where day >= ?",
         distincts,
@@ -589,7 +598,12 @@ def init():
     db.execute(
         "CREATE TABLE IF NOT EXISTS g_access_ip (day unsigned bigint NOT NULL, ip TEXT NOT NULL, hit unsigned bigint not null default 0);"
     )
-    db.execute("CREATE TABLE IF NOT EXISTS g_access_ua (day unsigned bigint NOT NULL);")
+    try:
+        query("select day from g_access_ua limit 1")
+        db.execute("drop table g_access_ua")    
+    except:
+        ...
+    db.execute("CREATE TABLE IF NOT EXISTS g_access_ua (hour unsigned bigint NOT NULL);")
 
     db.commit()
     for ua in UserAgent:
