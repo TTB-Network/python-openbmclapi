@@ -406,7 +406,7 @@ def executemany(*cmds: tuple[str, tuple[Any, ...]]) -> None:
     global db
     pbar = None
     if len(cmds) >= 512:
-        pbar = tqdm(total=pbar, unit_scale=True)
+        pbar = tqdm(desc="SQL", total=len(cmds), unit_scale=True)
     for cmd in cmds:
         db.execute(*cmd)
         if pbar is not None:
