@@ -1004,6 +1004,7 @@ class Cluster:
             logger.tsuccess("cluster.success.cluster.disabled")
 
         await self.emit("disable", callback=_)
+        scheduler.delay(_, args=(None, None), delay=5)
 
     async def retry(self):
         if self.cur_token_timestamp != token.token_expires and self.sio.connected:
