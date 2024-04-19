@@ -182,24 +182,28 @@ class FileDownloader:
             BASE_URL,
             headers={
                 "Authorization": f"Bearar {await token.getToken()}",
-                "User-Agent": USER_AGENT
-            }
+                "User-Agent": USER_AGENT,
+            },
         ) as session:
-            logger.debug(f"正在下载 {hash}")
+            logger.tdebug("cluster.debug.download_temp.downloading", hash=hash)
             content: io.BytesIO = io.BytesIO()
             async with session.get(f"/openbmclapi/download/{hash}") as resp:
                 while data := await resp.content.read(IO_BUFFER):
                     if not data:
                         break
                     content.write(data)
-            logger.debug(f"下载完成 {hash}")
-            await self._mount_file(BMCLAPIFile(
-                path = f"/download/{hash}",
-                hash = hash,
-                size = len(content.getbuffer()),
-                mtime = int(time.time() * 1000)
-            ), content)
+            logger.tdebug("cluster.debug.download_temp.downloaded", hash=hash)
+            await self._mount_file(
+                BMCLAPIFile(
+                    path=f"/download/{hash}",
+                    hash=hash,
+                    size=len(content.getbuffer()),
+                    mtime=int(time.time() * 1000),
+                ),
+                content,
+            )
             return content
+
     async def _download(self, pbar: tqdm, session: aiohttp.ClientSession):
         while not self.queues.empty() and storages.available:
             file = await self.queues.get()
@@ -227,7 +231,9 @@ class FileDownloader:
                 await self.queues.put(file)
         await session.close()
 
-    async def _mount_file(self, file: BMCLAPIFile, buf: io.BytesIO) -> tuple[int, io.BytesIO]:
+    async def _mount_file(
+        self, file: BMCLAPIFile, buf: io.BytesIO
+    ) -> tuple[int, io.BytesIO]:
         for storage in storages.get_storages():
             result = -1
             try:
@@ -257,9 +263,7 @@ class FileDownloader:
             total=sum((file.size for file in miss)),
             unit_scale=True,
         ) as pbar:
-            await dashboard.set_status_by_tqdm(
-                "files.downloading", pbar
-            )
+            await dashboard.set_status_by_tqdm("files.downloading", pbar)
             for file in miss:
                 await self.queues.put(file)
             timers = []
@@ -772,7 +776,7 @@ class WebDav(Storage):
                             "Last-Modified",
                             "Content-Length",
                             "Content-Range",
-                            "Accept-Ranges"
+                            "Accept-Ranges",
                         ):
                             if field not in resp.headers:
                                 continue
@@ -795,7 +799,6 @@ class WebDav(Storage):
             self.fetch = True
             await self._list_all()
         return hash in self.files
-
 
     async def get_size(self, hash: str) -> int:
         await self._wait_lock()
@@ -923,7 +926,9 @@ class StorageManager:
         self.storage_widths[storage] += 1
         return storage
 
-    async def get(self, hash: str, offset: int, ip: str, ua: str = "") -> Optional[File]:
+    async def get(
+        self, hash: str, offset: int, ip: str, ua: str = ""
+    ) -> Optional[File]:
         first_storage = self.get_storage_width()
         storage = first_storage
         exists: bool = await storage.exists(hash)
@@ -951,7 +956,7 @@ class Cluster:
         self.downloader = FileDownloader()
         self.file_check = FileCheck(self.downloader)
         self.sio = socketio.AsyncClient()
-        self.sio.on("message", self._message)   
+        self.sio.on("message", self._message)
         self.sio.on("exception", self._exception)
         self.enabled: bool = False
         self.cert_valid: float = 0
@@ -963,6 +968,7 @@ class Cluster:
         self.keepalive_timer: Optional[int] = None
         self.keepalive_timeout_timer: Optional[int] = None
         self.keepalive_failed: int = 0
+
     async def connect(self):
         if not self.sio.connected:
             try:
@@ -981,20 +987,24 @@ class Cluster:
                 logger.debug(traceback.format_exc())
                 scheduler.delay(self.init, delay=5)
                 return False
+
     async def init(self):
         if not await self.connect():
             return
         await self.start()
+
     async def disable(self):
         if self.keepalive_timer is not None:
             scheduler.cancel(self.keepalive_timer)
         await self.disable_future.wait()
         self.disable_future.acquire()
+
         async def _(err, ack):
             self.disable_future.release()
             logger.tsuccess("cluster.success.cluster.disabled")
+
         await self.emit("disable", callback=_)
-        
+
     async def retry(self):
         if self.cur_token_timestamp != token.token_expires and self.sio.connected:
             self.sio.disconnect()
@@ -1022,10 +1032,12 @@ class Cluster:
         t = "%.2f" % (time.time() - start)
         logger.tsuccess("cluster.success.cluster.finished_file_check", time=t)
         await self.enable()
+
     async def cert(self):
         if self.cert_valid - 600 > time.time():
             return
         self.channel_lock.acquire()
+
         async def _(err, ack):
             if err:
                 logger.terror("cluster.error.cert.failed", ack=ack)
@@ -1033,10 +1045,12 @@ class Cluster:
             self.cert_valid = utils.parse_iso_time(ack["expires"])
             logger.tsuccess("cluster.success.cert.requested")
             certificate.load_text(ack["cert"], ack["key"])
-            await dashboard.set_status("cluster.got.cert") 
+            await dashboard.set_status("cluster.got.cert")
             self.channel_lock.release()
+
         await self.emit("request-cert", callback=_)
         await dashboard.set_status("cluster.get.cert")
+
     async def enable(self):
         if not ENABLE or (RECONNECT_RETRY != -1 and self._retry >= RECONNECT_RETRY) or not storages.available_width:
             logger.twarn("cluster.warn.cluster.disabled")
@@ -1045,6 +1059,7 @@ class Cluster:
             logger.tdebug("cluster.debug.cluster.enable_again")
             return
         timeoutTimer = None
+
         async def _(err, ack):
             if timeoutTimer is not None:
                 scheduler.cancel(timeoutTimer)
@@ -1063,11 +1078,15 @@ class Cluster:
                 id=CLUSTER_ID,
                 port=PUBLIC_PORT or PORT,
             )
-            await dashboard.set_status("cluster.enabled" + (".trusted" if self.trusted else ""))
+            await dashboard.set_status(
+                "cluster.enabled" + (".trusted" if self.trusted else "")
+            )
             await self.keepalive()
+
         async def _timeout():
             self.want_enable = False
             await self.retry()
+
         self.want_enable = True
         self.keepalive_failed = 0
         await self.channel_lock.wait()
@@ -1100,9 +1119,9 @@ class Cluster:
                     ),
                 },
             },
-            callback=_
+            callback=_,
         )
-        timeoutTimer = scheduler.delay(_timeout, delay=ENABLE_TIMEOUT)
+        timeoutTimer = Timer.delay(_timeout, delay=ENABLE_TIMEOUT)
     async def keepalive(self):
         def _clear():
             if self.keepalive_timer is not None:
@@ -1116,6 +1135,7 @@ class Cluster:
             else:
                 scheduler.delay(self.start, delay = 10)
             self.keepalive_failed += 1
+
         async def _(err, ack):
             if err:
                 logger.terror("cluster.error.cluster.keepalive_failed")
@@ -1142,24 +1162,26 @@ class Cluster:
                 count=storage_count,
                 ping=ping,
             )
+
         async def _start():
             data = {"hits": 0, "bytes": 0}
             for storage in cur_storages:
                 data["hits"] += storage.sync_hits
                 data["bytes"] += storage.sync_bytes
             await self.emit(
-                "keep-alive",
-                {"time": int(time.time() * 1000), **data},
-                callback=_
+                "keep-alive", {"time": int(time.time() * 1000), **data}, callback=_
             )
+
         _clear()
         cur_storages = stats.get_offset_storages().copy()
         self.keepalive_timer = scheduler.delay(self.keepalive, delay=60)
         await _start()
+
     def _message(self, message):
         logger.tinfo("cluster.info.cluster.remote_message", message=message)
         if "信任度过低" in message:
             self.trusted = False
+
     def _exception(self, message):
         logger.terror("cluster.error.cluster.remote_message", message=message)
         scheduler.delay(self.retry)
@@ -1168,7 +1190,9 @@ class Cluster:
         await self.sio.emit(
             channel, data, callback=lambda x: scheduler.delay(self.message, (channel, x, callback))
         )
-    async def message(self, channel, data: list[Any], callback = None):
+
+
+    async def message(self, channel, data: list[Any], callback=None):
         if len(data) == 1:
             data.append(None)
         err, ack = data
@@ -1218,9 +1242,9 @@ async def check_update():
 
 
 async def init():
-    if CLUSTER_ID == '':
+    if CLUSTER_ID == "":
         raise ClusterIdNotSet
-    if CLUSTER_SECERT == '':
+    if CLUSTER_SECERT == "":
         raise ClusterSecretNotSet
     global cluster
     cluster = Cluster()
@@ -1308,7 +1332,9 @@ async def init():
             name["Content-Disposition"] = (
                 f"attachment; filename={request.get_url_params().get('name')}"
             )
-        data = await storages.get(hash, start_bytes, request.get_ip(), request.get_user_agent())
+        data = await storages.get(
+            hash, start_bytes, request.get_ip(), request.get_user_agent()
+        )
         if not data:
             return web.Response(status_code=404)
         if data.is_url() and isinstance(data.get_path(), str):
@@ -1339,7 +1365,9 @@ async def init():
         if not auth:
             await ws.send(dashboard.to_bytes(0, "auth", None).io.getbuffer())
         else:
-            await ws.send(dashboard.to_bytes(0, "auth", DASHBOARD_USERNAME).io.getbuffer())
+            await ws.send(
+                dashboard.to_bytes(0, "auth", DASHBOARD_USERNAME).io.getbuffer()
+            )
         async for raw_data in ws:
             if isinstance(raw_data, str):
                 continue
@@ -1355,6 +1383,7 @@ async def init():
                 ).io.getbuffer()
             )
         dashboard.websockets.remove(ws)
+
     @app.get("/auth")
     async def _(request: web.Request):
         auth = (await request.get_headers("Authorization")).split(" ", 1)[1]

@@ -17,7 +17,11 @@ import tempfile
 import time
 import traceback
 import zlib
-from core.exceptions import WebSocketError, ServerWebSocketError, ServerWebSocketUnknownDataError
+from core.exceptions import (
+    WebSocketError,
+    ServerWebSocketError,
+    ServerWebSocketUnknownDataError,
+)
 from typing import (
     Any,
     AsyncGenerator,
@@ -236,9 +240,6 @@ class Resource:
         elif filepath.is_file():
             return filepath
         return Response("Not Found", status_code=404)
-
-
-
 
 
 class WebSocketOpcode(Enum):
@@ -846,7 +847,7 @@ class Response:
             self.content_type = self.content_type or self._get_content_type(content)
             compression: Compressor = compressor(
                 await request.get_headers("Accept-Encoding", ""),
-                content.getbuffer()[start_bytes:end_bytes + 1],
+                content.getbuffer()[start_bytes : end_bytes + 1],
             )
             if compression.type is None:
                 content = compression.data
@@ -894,7 +895,7 @@ class Response:
                 client.write(content.data)
                 await client.writer.drain()
             elif isinstance(content, io.BytesIO):
-                client.write(content.getbuffer()[start_bytes:end_bytes + 1])
+                client.write(content.getbuffer()[start_bytes : end_bytes + 1])
                 await client.writer.drain()
             elif isinstance(content, Path):
                 async with aiofiles.open(content, "rb") as r:

@@ -3,6 +3,7 @@ import json
 from string import Template
 from core.const import *
 
+
 class Locale:
     def __init__(self, lang: str):
         self.path = Path(f"./i18n/{lang}.json")

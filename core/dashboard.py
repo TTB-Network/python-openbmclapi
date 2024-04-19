@@ -40,7 +40,7 @@ class ProgressBar:
     show: Optional[int] = None
 
 
-websockets: list['web.WebSocket'] = []
+websockets: list["web.WebSocket"] = []
 last_status = ""
 last_text = ""
 cur_tqdm: ProgressBar = ProgressBar()
@@ -126,15 +126,17 @@ async def process(type: str, data: Any):
             "key": last_status,
         }
         if cur_tqdm is not None and cur_tqdm.object is not None:
-            resp.update({
-                "progress": {
-                    "value": cur_tqdm.object.n,
-                    "total": cur_tqdm.object.total,
-                    "speed": cur_tqdm.speed,
-                    "unit": cur_tqdm.object.unit,
-                    "desc": cur_tqdm.desc
+            resp.update(
+                {
+                    "progress": {
+                        "value": cur_tqdm.object.n,
+                        "total": cur_tqdm.object.total,
+                        "speed": cur_tqdm.speed,
+                        "unit": cur_tqdm.object.unit,
+                        "desc": cur_tqdm.desc,
+                    }
                 }
-            })
+            )
         return resp
     if type == "master":
         async with aiohttp.ClientSession(BASE_URL) as session:
@@ -146,9 +148,7 @@ async def process(type: str, data: Any):
             "connections": system.get_connections(),
             "cpu": system.get_cpus(),
             "cache": (
-                asdict(await get_cache_stats())
-                if cluster.cluster
-                else StatsCache()
+                asdict(await get_cache_stats()) if cluster.cluster else StatsCache()
             ),
         }
     if type == "version":
@@ -176,6 +176,7 @@ async def process(type: str, data: Any):
     if type == "system_details":
         return system.get_loads_detail()
 
+
 async def get_cache_stats() -> StatsCache:
     stat = StatsCache()
     for storage in cluster.storages.get_storages():
@@ -183,7 +184,6 @@ async def get_cache_stats() -> StatsCache:
         stat.total += t.total
         stat.bytes += t.bytes
     return stat
-
 
 
 async def set_status_by_tqdm(text: str, pbar: tqdm):
@@ -212,8 +212,6 @@ async def _calc_tqdm_speed():
         return
     cur_tqdm.speed = (cur_tqdm.object.n - cur_tqdm.last_value) / 0.5
     cur_tqdm.last_value = cur_tqdm.object.n
-
-       
 
 
 async def _set_status(text: Optional[str] = None, blocked: bool = False):
