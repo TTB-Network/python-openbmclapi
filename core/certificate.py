@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 import ssl
 import time
-from .i18n import locale
 import traceback
 
 from core.logger import logger

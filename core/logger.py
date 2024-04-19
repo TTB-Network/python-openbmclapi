@@ -64,22 +64,34 @@ class LoggingLogger:
         self._log_with_args("SUCCESS", *args, **kwargs)
 
     def tinfo(self, key: str, failed_prompt=True, *args, **kwargs):
-        self._log_with_args("INFO", locale.t(key=key, failed_prompt=failed_prompt, *args, **kwargs))
+        self._log_with_args(
+            "INFO", locale.t(key=key, failed_prompt=failed_prompt, *args, **kwargs)
+        )
 
     def terror(self, key: str, failed_prompt=True, *args, **kwargs):
-        self._log_with_args("ERROR", locale.t(key=key, failed_prompt=failed_prompt, *args, **kwargs))
+        self._log_with_args(
+            "ERROR", locale.t(key=key, failed_prompt=failed_prompt, *args, **kwargs)
+        )
 
     def tdebug(self, key: str, failed_prompt=True, *args, **kwargs):
-        self._log_with_args("DEBUG", locale.t(key=key, failed_prompt=failed_prompt, *args, **kwargs))
+        self._log_with_args(
+            "DEBUG", locale.t(key=key, failed_prompt=failed_prompt, *args, **kwargs)
+        )
 
     def twarn(self, key: str, failed_prompt=True, *args, **kwargs):
-        self._log_with_args("WARNING", locale.t(key=key, failed_prompt=failed_prompt, *args, **kwargs))
+        self._log_with_args(
+            "WARNING", locale.t(key=key, failed_prompt=failed_prompt, *args, **kwargs)
+        )
 
     def texception(self, key: str, failed_prompt=True, *args, **kwargs):
-        self._log_with_args("EXCEPTION", locale.t(key=key, failed_prompt=failed_prompt, *args, **kwargs))
+        self._log_with_args(
+            "EXCEPTION", locale.t(key=key, failed_prompt=failed_prompt, *args, **kwargs)
+        )
 
     def tsuccess(self, key: str, failed_prompt=True, *args, **kwargs):
-        self._log_with_args("SUCCESS", locale.t(key=key, failed_prompt=failed_prompt, *args, **kwargs))
+        self._log_with_args(
+            "SUCCESS", locale.t(key=key, failed_prompt=failed_prompt, *args, **kwargs)
+        )
 
     def depth(self, depth):
         return LoggingLogger(depth)

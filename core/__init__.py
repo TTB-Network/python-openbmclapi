@@ -3,12 +3,12 @@ from enum import Enum
 import os
 import signal
 import traceback
-from .config import Config
-from . import timer as Timer
-from .utils import Client
+from core.config import Config
+from core import timer as Timer
+from core.utils import Client
 from .certificate import *
-from . import web
-from .logger import logger
+from core import web
+from core.logger import logger
 
 import asyncio
 import ssl
@@ -208,11 +208,9 @@ async def check_ports():
                 await client.writer.drain()
                 key = await client.read(len(check_port_key), 5)
             except:
-                logger.warn(
-                    locale.t(
-                        "core.warn.port_closed",
-                        port=port[0].sockets[0].getsockname()[1],
-                    )
+                logger.twarn(
+                    "core.warn.port_closed",
+                    port=port[0].sockets[0].getsockname()[1],
                 )
                 logger.error(traceback.format_exc())
                 closed = True
@@ -229,7 +227,7 @@ async def main():
     await web.init()
     certificate.load_cert(Path(".ssl/cert"), Path(".ssl/key"))
     Timer.delay(check_ports, delay=5)
-    while 1:
+    while True:
         try:
             server = await asyncio.start_server(_handle, port=PORT)
             ssl_server = await asyncio.start_server(
@@ -237,12 +235,10 @@ async def main():
                 port=0 if SSL_PORT == PORT else SSL_PORT,
                 ssl=server_side_ssl if get_loaded() else None,
             )
-            logger.info(locale.t("core.info.listening", port=PORT))
-            logger.info(
-                locale.t(
-                    "core.info.listening_ssl",
-                    port=ssl_server.sockets[0].getsockname()[1],
-                )
+            logger.tinfo("core.info.listening", port=PORT)
+            logger.tinfo(
+                "core.info.listening_ssl",
+                port=ssl_server.sockets[0].getsockname()[1],
             )
             async with server, ssl_server:
                 await asyncio.gather(server.serve_forever(), ssl_server.serve_forever())
@@ -262,7 +258,7 @@ async def main():
             logger.error(traceback.format_exc())
             await asyncio.sleep(2)
     await close()
-    logger.info(locale.t("core.info.shutting_down_web_service"))
+    logger.tinfo("core.info.shutting_down_web_service")
     os.environ["ASYNCIO_STARTUP"] = str(0)
     os.kill(os.getpid(), signal.SIGINT)
 

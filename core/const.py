@@ -112,6 +112,7 @@ COMPRESSOR: dict[str, Any] = {
 }
 LANG: str = Config.get("advanced.language")
 
+
 @dataclass
 class StorageParse:
     name: str
