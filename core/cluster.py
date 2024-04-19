@@ -1133,6 +1133,7 @@ class Cluster:
                 await self.retry()
                 return
             else:
+                self.enabled = False
                 scheduler.delay(self.start, delay = 10)
             self.keepalive_failed += 1
 
@@ -1355,6 +1356,27 @@ async def init():
     @app.get("/pages/{name}")
     async def _(request: web.Request, name: str, sub: str = ""):
         return Path(f"./bmclapi_dashboard/index.html")
+
+    @app.post("/pages/{name}/{sub}")
+    @app.post("/pages/{name}")
+    async def _(request: web.Request, namespace: str, key: int = 0):
+        data = await dashboard.process(namespace, base64.b64decode(await request.read_all()))
+        if "binary" in await request.get_headers("X-Accept-Encoding", ""):
+            return web.Response(
+                dashboard.to_bytes(key, namespace, data).io,
+                headers={
+                    "X-Encoding": "binary"
+                }
+            )
+        else:
+            return web.Response(
+                {
+                    "data": data
+                },
+                headers={
+                    "X-Encoding": "json"
+                }
+            )
 
     @app.websocket("/pages/{name}/{sub}")
     @app.websocket("/pages/{name}")

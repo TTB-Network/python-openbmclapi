@@ -137,17 +137,18 @@ async def process(type: str, data: Any):
                 scheduler.cancel(task_tqdm)
                 scheduler.cancel(cur_tqdm.show)
                 cur_tqdm.object = None
-            resp.update(
-                {
-                    "progress": {
-                        "value": cur_tqdm.object.n,
-                        "total": cur_tqdm.object.total,
-                        "speed": cur_tqdm.speed,
-                        "unit": cur_tqdm.object.unit,
-                        "desc": cur_tqdm.desc,
+            if cur_tqdm.object is not None:
+                resp.update(
+                    {
+                        "progress": {
+                            "value": cur_tqdm.object.n,
+                            "total": cur_tqdm.object.total,
+                            "speed": cur_tqdm.speed,
+                            "unit": cur_tqdm.object.unit,
+                            "desc": cur_tqdm.desc,
+                        }
                     }
-                }
-            )
+                )
         return resp
     if type == "master":
         async with aiohttp.ClientSession(BASE_URL) as session:
@@ -164,7 +165,7 @@ async def process(type: str, data: Any):
         }
     if type == "version":
         return {"cur": cluster.VERSION, "latest": cluster.fetched_version, "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}", "os": platform.platform()}
-    if type == "global_stats":
+    if type == "pro_stats":
         day = 1
         if isinstance(data, dict):
             t = data.get("type", 0)
@@ -174,7 +175,7 @@ async def process(type: str, data: Any):
                 day == 30
             elif t >= 3:
                 day = -1
-        return stats.daily_global(day)
+        return stats.daily_pro(day)
     if type == "system_details":
         return system.get_loads_detail()
 

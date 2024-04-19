@@ -539,7 +539,7 @@ def daily():
     return data
 
 
-def daily_global(day):
+def daily_pro(day):
     t = get_timestamp_from_day_today(day)
     distincts = get_timestamp_from_day_today(30)
     g_ua = ",".join((f"`{ua.value}`" for ua in UserAgent))

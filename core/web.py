@@ -745,7 +745,7 @@ class Response:
 
     def _get_content_type(self, content):
         if isinstance(content, (AsyncGenerator, Iterator, AsyncIterator, Generator)):
-            return "bytes"
+            return "application/octet-stream"
         if isinstance(content, str):
             return "text/plain; charset=utf-8"
         content = (
@@ -1018,6 +1018,12 @@ class Request:
         ) and self._read_length < self._length:
             self._read_length += len(data)
             yield data
+
+    async def read_all(self) -> bytes:
+        buf = io.BytesIO()
+        async for data in self.content_iter():
+            buf.write(data)
+        return buf.getvalue()
 
     async def skip(self):
         if self._read_length and self._length == self._read_length:
