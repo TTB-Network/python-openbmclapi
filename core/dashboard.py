@@ -1,6 +1,8 @@
 from dataclasses import asdict, dataclass, is_dataclass
 import hashlib
 import os
+import platform
+import sys
 import time
 from typing import Any, Optional
 import zlib
@@ -46,6 +48,10 @@ last_text = ""
 cur_tqdm: ProgressBar = ProgressBar()
 task_tqdm: Optional[int] = None
 tokens: list[Token] = []
+authentication_module: list[str] = [
+    'storages',
+    'version',
+]
 
 
 def deserialize(data: utils.DataInputStream):
@@ -152,27 +158,16 @@ async def process(type: str, data: Any):
             ),
         }
     if type == "version":
-        return {"cur": cluster.VERSION, "latest": cluster.fetched_version}
-    if type == "storage":
-        data: list = []
-        for storage in cluster.storages.get_storages():
-            if isinstance(storage, cluster.FileStorage):
-                data.append(
-                    StorageInfo(storage.get_name(), "file", str(storage.dir), -1, -1)
-                )
-            elif isinstance(storage, cluster.WebDav):
-                data.append(
-                    StorageInfo(
-                        storage.get_name(),
-                        "webdav",
-                        storage.hostname + storage.endpoint,
-                        -1,
-                        -1,
-                    )
-                )
-        return data
+        return {"cur": cluster.VERSION, "latest": cluster.fetched_version, "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}", "os": platform.platform()}
     if type == "global_stats":
-        return stats.daily_global()
+        day = 1
+        if isinstance(data, dict):
+            t = data.get("type", 0)
+            if t == 1:
+                day = 7
+            elif t == 2:
+                day == 30
+        return stats.daily_global(day)
     if type == "system_details":
         return system.get_loads_detail()
 

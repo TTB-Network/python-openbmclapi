@@ -539,8 +539,9 @@ def daily():
     return data
 
 
-def daily_global():
-    t = get_timestamp_from_day_today(30)
+def daily_global(day):
+    t = get_timestamp_from_day_today(day)
+    distincts = get_timestamp_from_day_today(30)
     g_ua = ",".join((f"`{ua.value}`" for ua in UserAgent))
     s_ua: dict[str, defaultdict[UserAgent, int]] = {}
     ip: dict[int, defaultdict[str, int]] = {}
@@ -557,14 +558,16 @@ def daily_global():
             s_ua[day][ua.value] = q[i + 1]
     for q in queryAllData(
         f"select day, ip, hit from g_access_ip where day >= ?",
-        t,
+        distincts,
     ):
-        day = format_date((q[0] + 1) * 86400)
+        day = q[0] + 1
         if day not in ip:
             ip[day] = defaultdict(int)
         ip[day][q[1]] += q[2]
     addresses: defaultdict[location.IPInfo, int] = defaultdict(int)
-    for ips in ip.values():
+    for ipday, ips in ip.items():
+        if ipday < t:
+            continue
         for address, count in ips.items():
             addresses[location.query(address)] += count
     return {
@@ -573,7 +576,7 @@ def daily_global():
             GEOInfo(info.country, info.province, count)
             for info, count in sorted(addresses.items(), key=lambda x: x[0].country)
         ],
-        "distinct_ip": {day: len(ip) for day, ip in ip.items()},
+        "distinct_ip": {format_date(day * 86400): len(ip) for day, ip in ip.items()},
     }
 
 

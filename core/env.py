@@ -22,16 +22,3 @@ class Environment:
         return self._environments[key]
 
 env = Environment()
-env['libraries'] = sorted([
-    'apscheduler',
-    'aiohttp',
-    'aiofiles',
-    'pyyaml',
-    'aiowebdav',
-    'loguru',
-    'psutil',
-    'python-socketio',
-    'pyzstd',
-    'tqdm',
-    'async_timeout'
-])

@@ -14,20 +14,6 @@ memories: dict[float, int] = {}
 connections: dict[float, list["psutil.pconn"]] = {}
 length: int = 0
 last_curs: list[float] = []
-libraries: dict[str, str] = {}
-
-def get_libraries_version():
-    global libraries
-    if libraries:
-        return libraries
-    for library in env['libraries']:
-        try:
-            version = importlib_metadata.version(library)
-        except:
-            version = "Unknown"
-        logger.debug(f"Library [{library}] Version [{version}]")
-        libraries[library] = version
-
 
 
 def _run():
@@ -76,5 +62,4 @@ def get_connections() -> int:
 
 def init():
     logger.info("加载 [系统信息] 模块")
-    get_libraries_version()
     scheduler.repeat(_run)

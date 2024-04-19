@@ -1121,7 +1121,7 @@ class Cluster:
             },
             callback=_,
         )
-        timeoutTimer = Timer.delay(_timeout, delay=ENABLE_TIMEOUT)
+        timeoutTimer = scheduler.delay(_timeout, delay=ENABLE_TIMEOUT)
     async def keepalive(self):
         def _clear():
             if self.keepalive_timer is not None:
