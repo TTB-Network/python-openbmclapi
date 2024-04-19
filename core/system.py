@@ -3,10 +3,7 @@ import os
 import psutil
 
 from core import logger, scheduler
-from core.env import env
-import core
 from core.utils import get_uptime
-import importlib.metadata as importlib_metadata
 
 process: psutil.Process = psutil.Process(os.getpid())
 cpus: dict[float, float] = {}
@@ -18,19 +15,18 @@ last_curs: list[float] = []
 
 def _run():
     global cpus, memories, connections, length, last_curs
-    while core.wait_exit.locked:
-        for _ in range(max(length - 5, 0)):
-            cur = last_curs.pop(0)
-            cpus.pop(cur)
-            memories.pop(cur)
-            connections.pop(cur)
-            length -= 1
-        cur = get_uptime()
-        cpus[cur] = process.cpu_percent(1)
-        memories[cur] = process.memory_full_info().uss
-        connections[cur] = process.connections()
-        length += 1
-        last_curs.append(cur)
+    for _ in range(max(length - 5, 0)):
+        cur = last_curs.pop(0)
+        cpus.pop(cur)
+        memories.pop(cur)
+        connections.pop(cur)
+        length -= 1
+    cur = get_uptime()
+    cpus[cur] = process.cpu_percent(1)
+    memories[cur] = process.memory_full_info().uss
+    connections[cur] = process.connections()
+    length += 1
+    last_curs.append(cur)
 
 
 def get_cpus():

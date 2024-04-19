@@ -170,53 +170,50 @@ async def _handle_process(client: Client, ssl: bool = False):
 
 
 async def check_ports():
-    global ssl_server, server, client_side_ssl, restart, check_port_key
-    while int(os.environ["ASYNCIO_STARTUP"]):
-        ports: list[tuple[asyncio.Server, ssl.SSLContext | None]] = []
-        for service in (
-            (server, None),
-            (ssl_server, client_side_ssl if get_loaded() else None),
-        ):
-            if not service[0]:
+    global ssl_server, server, client_side_ssl, check_port_key
+    ports: list[tuple[asyncio.Server, ssl.SSLContext | None]] = []
+    for service in (
+        (server, None),
+        (ssl_server, client_side_ssl if get_loaded() else None),
+    ):
+        if not service[0]:
+            continue
+        ports.append((service[0], service[1]))
+    closed = False
+    for port in ports:
+        try:
+            kwargs = {}
+            if port[1] is not None:
+                kwargs["ssl"] = port[1]
+                kwargs["ssl_handshake_timeout"] = 5
+            if port[0] is None or not port[0].sockets:
+                closed = True
                 continue
-            ports.append((service[0], service[1]))
-        closed = False
-        for port in ports:
-            try:
-                kwargs = {}
-                if port[1] is not None:
-                    kwargs["ssl"] = port[1]
-                    kwargs["ssl_handshake_timeout"] = 5
-                if port[0] is None or not port[0].sockets:
-                    closed = True
-                    continue
-                client = Client(
-                    *(
-                        await asyncio.wait_for(
-                            asyncio.open_connection(
-                                "127.0.0.1",
-                                port[0].sockets[0].getsockname()[1],
-                                **kwargs,
-                            ),
-                            timeout=5,
-                        )
+            client = Client(
+                *(
+                    await asyncio.wait_for(
+                        asyncio.open_connection(
+                            "127.0.0.1",
+                            port[0].sockets[0].getsockname()[1],
+                            **kwargs,
+                        ),
+                        timeout=5,
                     )
                 )
-                client.write(check_port_key)
-                await client.writer.drain()
-                key = await client.read(len(check_port_key), 5)
-            except:
-                logger.twarn(
-                    "core.warn.port_closed",
-                    port=port[0].sockets[0].getsockname()[1],
-                )
-                logger.error(traceback.format_exc())
-                closed = True
-        if closed:
-            restart = True
-            for port in ports:
-                port[0].close()
-        await asyncio.sleep(5)
+            )
+            client.write(check_port_key)
+            await client.writer.drain()
+            key = await client.read(len(check_port_key), 5)
+        except:
+            logger.twarn(
+                "core.warn.port_closed",
+                port=port[0].sockets[0].getsockname()[1],
+            )
+            logger.error(traceback.format_exc())
+            closed = True
+    if closed:
+        restart()
+    await asyncio.sleep(5)
 
 
 async def start():
@@ -247,9 +244,13 @@ async def init():
     await start()
 
 def restart():
+    close()
+    scheduler.delay(start)
+
+
+def close():
     global server, ssl_server
     if server is not None:
         server.close()
     if ssl_server is not None:
         ssl_server.close()
-    scheduler.delay(start)

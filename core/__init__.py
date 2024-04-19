@@ -21,6 +21,7 @@ async def async_init():
     await scheduler_init()
     # load modules
     from .network import init as network_init
+    from .network import close as network_exit
     from .cluster import init as cluster_init
     from .cluster import exit as cluster_exit
     from .stats import init as stats_init
@@ -29,6 +30,7 @@ async def async_init():
     await cluster_init()
 
     await wait_exit.wait()
+    network_exit()
     await cluster_exit()
 
 

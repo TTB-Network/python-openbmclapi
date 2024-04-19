@@ -16,8 +16,10 @@ import aiohttp
 from typing import Any, Optional, Type
 import socketio
 from tqdm import tqdm
+import core
+from core import system
 from core.config import Config
-from core import certificate, dashboard, system, unit
+from core import certificate, dashboard, unit
 from core import scheduler
 import pyzstd as zstd
 import core.utils as utils
@@ -87,7 +89,8 @@ class TokenManager:
                 try:
                     await asyncio.sleep(RECONNECT_DELAY)
                     return await self.fetchToken()
-                except:
+                except asyncio.CancelledError:
+                    logger.error(traceback.format_exc())
                     return None
 
     async def getToken(self) -> str:
@@ -335,6 +338,7 @@ class FileCheck:
                     ]
                 )
             except asyncio.CancelledError:
+                del pbar
                 return
             missing_files_by_storage: dict[Storage, set[BMCLAPIFile]] = {}
             total_missing_bytes = 0
@@ -705,6 +709,7 @@ class WebDav(Storage):
                 r = await self._execute(self.session.list(self.endpoint))
                 if r is asyncio.CancelledError:
                     self.lock.acquire()
+                    del pbar
                     return
                 for dir in r[1:]:
                     pbar.update(1)
@@ -719,6 +724,7 @@ class WebDav(Storage):
                     )
                     if r is asyncio.CancelledError:
                         self.lock.acquire()
+                        del pbar
                         return
                     for file in r[1:]:
                         files[file["name"]] = File(
@@ -730,6 +736,7 @@ class WebDav(Storage):
                             await asyncio.sleep(0)
                         except asyncio.CancelledError:
                             self.lock.acquire()
+                            del pbar
                             return
                         except Exception as e:
                             raise e
@@ -981,6 +988,7 @@ class Cluster:
                 await self.cert()
                 return True
             except asyncio.CancelledError:
+                await self.sio.disconnect()
                 return False
             except:
                 logger.twarn("cluster.warn.cluster.failed_to_connect")
@@ -996,15 +1004,19 @@ class Cluster:
     async def disable(self):
         if self.keepalive_timer is not None:
             scheduler.cancel(self.keepalive_timer)
+        if not self.enabled:
+            return
         await self.disable_future.wait()
         self.disable_future.acquire()
 
         async def _(err, ack):
             self.disable_future.release()
             logger.tsuccess("cluster.success.cluster.disabled")
+            if err and ack:
+                core.wait_exit.release()
 
         await self.emit("disable", callback=_)
-        scheduler.delay(_, args=(None, None), delay=5)
+        scheduler.delay(_, args=(True, True), delay=5)
 
     async def retry(self):
         if self.cur_token_timestamp != token.token_expires and self.sio.connected:
@@ -1242,7 +1254,6 @@ async def check_update():
             return
     scheduler.delay(check_update, delay=3600)
 
-
 async def init():
     if CLUSTER_ID == "":
         raise ClusterIdNotSet
@@ -1274,24 +1285,6 @@ async def init():
     scheduler.delay(cluster.init)
     app = web.app
 
-    @app.get("/files")
-    async def _():
-        files = sorted(cluster.downloader.files, key=lambda x: x.hash)
-        for file in files:
-            yield f'<a href="/dev_download/{file.hash}" target="_blank">{file}</a></br>'.encode()
-
-    @app.get("/dev_download/{hash}")
-    async def _(hash: str):
-        cur_time = int(time.time() * 1000.0) + 600
-        e = utils.base36_encode(cur_time)
-        s = hashlib.sha1()
-        s.update(CLUSTER_SECERT.encode("utf-8"))
-        s.update(hash.encode("utf-8"))
-        s.update(e.encode("utf-8"))
-        return web.RedirectResponse(
-            f"/download/{hash}?s={base64.urlsafe_b64encode(s.digest()).decode().strip('=')}&e={e}"
-        )
-
     @app.get("/measure/{size}")
     async def _(request: web.Request, size: int, config: web.ResponseConfiguration):
         if not SIGN_SKIP and not utils.check_sign(
@@ -1306,7 +1299,7 @@ async def init():
         for _ in range(size):
             yield b"\x00" * 1024 * 1024
         return
-
+    
     @app.get("/download/{hash}", access_logs=False)
     async def _(request: web.Request, hash: str):
         if (
@@ -1344,10 +1337,6 @@ async def init():
         return web.Response(
             data.get_data().getbuffer(), headers=data.headers or {}
         ).set_headers(name)
-
-    @app.get("/sync_download/{hash}")
-    async def _(request: web.Request, hash: str):
-        return Path(f"./bmclapi/{hash[:2]}/{hash}")
 
     dir = Path("./bmclapi_dashboard/")
     dir.mkdir(exist_ok=True, parents=True)
