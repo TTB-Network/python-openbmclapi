@@ -10,14 +10,12 @@ import json
 from mimetypes import guess_type
 import os
 from pathlib import Path
-from core.i18n import locale
 import re
 import stat
 import struct
 import tempfile
 import time
 import traceback
-from core import cluster
 import zlib
 from core.exceptions import WebSocketError, ServerWebSocketError, ServerWebSocketUnknownDataError
 from typing import (
@@ -45,12 +43,12 @@ from core.utils import (
 )
 import filetype
 import urllib.parse as urlparse
-from core import timer as Timer
+#from core import timer as Timer
 from core.logger import logger
 from core.config import Config
 from core.utils import Client
-from core import cluster
 from core.const import *
+from . import scheduler
 
 
 @dataclass
@@ -1218,7 +1216,7 @@ class FormParse:
 class Statistics:
     def __init__(self) -> None:
         self.qps = {}
-        Timer.repeat(self._clear, delay=1, interval=1)
+        scheduler.repeat(self._clear, delay=1, interval=1)
 
     def _clear(self):
         t = self.get_time()
@@ -1272,6 +1270,11 @@ async def handle(data, client: Client):
     try:
         request: Request = Request(data, client)
         statistics.add_qps()
+        if FORCE_SSL and not client.is_ssl:
+            await RedirectResponse("https://" + await request.get_headers("Host") + request.url)(request, client)
+            await request.skip()
+            request.client.set_log_network(None)
+            return
         log = False
         async for resp in app.handle(request):
             await resp(request, client)
@@ -1302,13 +1305,3 @@ async def _():
     return zlib.decompress(
         b'x\x9cc``d`b\x10\x10`\x00\xd2\n\x0c\x19,\x0c\x0cj\x0c\x0c\x0c\n\n\x10\xbe\x86 \x03C\x1fPL\x03(&\x00\x12g\x80\x88\x83\x01\x0b\x03\x06\x90\xe1\xfd\xfd\x7f\x14\x0f\x1e\x0c\x8c\x12\xac\x98^\xfaG:F\x0f/r\xc3\x9f\\\xfd\x03\xe0_\x8a\x80\x06\xb4\x8cq@.g\x04F\xcb\x99Q<\x8aG\xf1(\x1e*X\x9a\xe7\x0bI\x98\xdav32\xf2\x01\xeb"v\xa20H-5\xdd\x002\x0bb6\xf6\xb6\x13&f\x1fv\xf6\x0fd\xf8\x0ft\xfa\x1b\xc5\xa3x\xa4cB\xf9\x8b\x9e\xe5?z\xf9BH\x9e\x1a\xf6\xa3\x96\xbf\xec\x18\xf6\xe3\x93\x1f\x0e\xf6\x0fd\xf8\x0ft\xfa\x1b\xc5\xb4\xc7\x94\x8e3\x0cu\x00\x00-\xd7@W'
     )
-
-
-async def init():
-    logger.tinfo("web.info.loading")
-    cluster.stats.init()
-    await cluster.init()
-
-
-async def close():
-    await cluster.close()

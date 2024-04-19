@@ -18,8 +18,7 @@ import socketio
 from tqdm import tqdm
 from core.config import Config
 from core import certificate, dashboard, system, unit
-from core import timer as Timer
-from core.timer import Task
+from core import scheduler
 import pyzstd as zstd
 import core.utils as utils
 import core.stats as stats
@@ -76,7 +75,7 @@ class TokenManager:
                     req.raise_for_status()
                     content: dict[str, Any] = await req.json()
                     self.token = content["token"]
-                    Timer.delay(
+                    scheduler.delay(
                         self.fetchToken, delay=float(content["ttl"]) / 1000.0 - 600
                     )
                     self.token_expires = content["ttl"] / 1000.0 - 600 + time.time()
@@ -85,8 +84,11 @@ class TokenManager:
 
             except aiohttp.ClientError as e:
                 logger.terror("cluster.error.token.failed", delay=RECONNECT_DELAY, e=e)
-                await asyncio.sleep(RECONNECT_DELAY)
-                return await self.fetchToken()
+                try:
+                    await asyncio.sleep(RECONNECT_DELAY)
+                    return await self.fetchToken()
+                except:
+                    return None
 
     async def getToken(self) -> str:
         if not self.token:
@@ -291,13 +293,13 @@ class FileCheck:
             self.check_type = FileCheckType.HASH
         self.files = []
         self.pbar: Optional[tqdm] = None
-        self.check_files_timer: Optional[Task] = None
+        self.check_files_timer: Optional[int] = None
         logger.tinfo("cluster.info.check_files.check_type", type=self.check_type.name)
 
     def start_task(self):
         if self.check_files_timer:
-            self.check_files_timer.block()
-        self.check_files_timer = Timer.repeat(self.__call__, delay=1800, interval=1800)
+            scheduler.cancel(self.check_files_timer)
+        self.check_files_timer = scheduler.repeat(self.__call__, delay=1800, interval=1800)
 
     async def __call__(
         self,
@@ -321,13 +323,15 @@ class FileCheck:
             self.files = files
             await dashboard.set_status_by_tqdm("files.checking", pbar)
             pbar.set_description(locale.t("cluster.tqdm.desc.check_files"))
-
-            miss_storage: list[list[BMCLAPIFile]] = await asyncio.gather(
-                *[
-                    self.check_missing_files(storage)
-                    for storage in storages.get_storages()
-                ]
-            )
+            try:
+                miss_storage: list[list[BMCLAPIFile]] = await asyncio.gather(
+                    *[
+                        self.check_missing_files(storage)
+                        for storage in storages.get_storages()
+                    ]
+                )
+            except asyncio.CancelledError:
+                return
             missing_files_by_storage: dict[Storage, set[BMCLAPIFile]] = {}
             total_missing_bytes = 0
 
@@ -478,7 +482,7 @@ class FileStorage(Storage):
             raise FileExistsError(f"Cannot copy file: '{self.dir}': Is a file.")
         self.dir.mkdir(exist_ok=True, parents=True)
         self.cache: dict[str, File] = {}
-        self.timer = Timer.repeat(
+        self.timer = scheduler.repeat(
             self.clear_cache, delay=CHECK_CACHE, interval=CHECK_CACHE
         )
 
@@ -609,8 +613,8 @@ class WebDav(Storage):
             }
         )
         self.session_lock = asyncio.Lock()
-        Timer.delay(self._list_all)
-        Timer.repeat(self._keepalive, interval=60)
+        scheduler.delay(self._list_all)
+        scheduler.repeat(self._keepalive, interval=60)
 
     async def _keepalive(self):
         try:
@@ -656,6 +660,8 @@ class WebDav(Storage):
             storages.disable(self)
             self.fetch = False
             raise e
+        except asyncio.CancelledError:
+            return asyncio.CancelledError
         except Exception as e:
             raise e
 
@@ -663,7 +669,8 @@ class WebDav(Storage):
         return f"{self.endpoint}/{file.removeprefix('/')}"
 
     async def _mkdir(self, dirs: str):
-        if await self._execute(self.session.check(dirs)):
+        r = await self._execute(self.session.check(dirs))
+        if r is asyncio.CancelledError or r:
             return
         await self.session_lock.acquire()
         d = ""
@@ -681,31 +688,47 @@ class WebDav(Storage):
         self.fetch = True
         try:
             await self._mkdir(self.endpoint)
-            dirs = (await self._execute(self.session.list(self.endpoint)))[1:]
+            r = await self._execute(self.session.list(self.endpoint))
+            if r is asyncio.CancelledError:
+                self.lock.acquire()
+                return
+            dirs = r[1:]
             with tqdm(
                 total=len(dirs),
                 desc=f"[WebDav List Files <endpoint: '{self.endpoint}'>]",
             ) as pbar:
                 await dashboard.set_status_by_tqdm("storage.webdav", pbar)
-                for dir in (await self._execute(self.session.list(self.endpoint)))[1:]:
+                r = await self._execute(self.session.list(self.endpoint))
+                if r is asyncio.CancelledError:
+                    self.lock.acquire()
+                    return
+                for dir in r[1:]:
                     pbar.update(1)
                     files: dict[str, File] = {}
-                    for file in (
-                        await self._execute(
-                            self.session.list(
-                                self._endpoint(
-                                    dir,
-                                ),
-                                get_info=True,
-                            )
+                    r = await self._execute(
+                        self.session.list(
+                            self._endpoint(
+                                dir,
+                            ),
+                            get_info=True,
                         )
-                    )[1:]:
+                    )
+                    if r is asyncio.CancelledError:
+                        self.lock.acquire()
+                        return
+                    for file in r[1:]:
                         files[file["name"]] = File(
                             file["path"].removeprefix(f"/dav/{self.endpoint}/"),
                             file["name"],
                             int(file["size"]),
                         )
-                        await asyncio.sleep(0)
+                        try:
+                            await asyncio.sleep(0)
+                        except asyncio.CancelledError:
+                            self.lock.acquire()
+                            return
+                        except Exception as e:
+                            raise e
                     for remove in set(
                         file for file in self.files.keys() if file.startswith(dir)
                     ) - set(files.keys()):
@@ -791,9 +814,12 @@ class WebDav(Storage):
 
     async def get_hash(self, hash: str) -> str:
         h = get_hash(hash)
-        async for data in await self._execute(
+        r = await self._execute(
             self.session.download_iter(self._endpoint(f"{hash[:2]}/{hash}"))
-        ):
+        )
+        if r is asyncio.CancelledError:
+            return
+        async for data in r:
             h.update(data)
         return h.hexdigest()
 
@@ -839,13 +865,13 @@ class StorageManager:
         storage.disabled = False
         if not self.available and not cluster.enabled:
             self.available = True
-            Timer.delay(cluster.start)
+            scheduler.delay(cluster.start)
 
     def disable(self, storage: Storage):
         storage.disabled = True
         if self.available and not self.get_storages():
             self.available = False
-            Timer.delay(cluster.disable)
+            scheduler.delay(cluster.disable)
 
     def add_storage(self, storage):
         self._storages.append(storage)
@@ -934,8 +960,8 @@ class Cluster:
         self.want_enable: bool = False
         self.disable_future: utils.WaitLock = utils.WaitLock()
         self.channel_lock: utils.WaitLock = utils.WaitLock()
-        self.keepalive_timer: Optional[Task] = None
-        self.keepalive_timeout_timer: Optional[Task] = None
+        self.keepalive_timer: Optional[int] = None
+        self.keepalive_timeout_timer: Optional[int] = None
         self.keepalive_failed: int = 0
     async def connect(self):
         if not self.sio.connected:
@@ -948,10 +974,12 @@ class Cluster:
                 self.cur_token_timestamp = token.token_expires
                 await self.cert()
                 return True
+            except asyncio.CancelledError:
+                return False
             except:
                 logger.twarn("cluster.warn.cluster.failed_to_connect")
                 logger.debug(traceback.format_exc())
-                Timer.delay(self.init, delay=5)
+                scheduler.delay(self.init, delay=5)
                 return False
     async def init(self):
         if not await self.connect():
@@ -959,7 +987,7 @@ class Cluster:
         await self.start()
     async def disable(self):
         if self.keepalive_timer is not None:
-            self.keepalive_timer.block()
+            scheduler.cancel(self.keepalive_timer)
         await self.disable_future.wait()
         self.disable_future.acquire()
         async def _(err, ack):
@@ -983,8 +1011,7 @@ class Cluster:
             self.enabled = False
         self._retry += 1
         logger.tinfo("cluster.info.cluster.retry", t=RECONNECT_DELAY)
-        await asyncio.sleep(RECONNECT_DELAY)
-        await self.enable()
+        scheduler.delay(self.enable, delay = RECONNECT_DELAY)
     async def start(self):
         if not storages.available:
             await self.disable()
@@ -1011,15 +1038,16 @@ class Cluster:
         await self.emit("request-cert", callback=_)
         await dashboard.set_status("cluster.get.cert")
     async def enable(self):
-        if not ENABLE or self._retry >= RECONNECT_RETRY or not storages.available_width:
+        if not ENABLE or (RECONNECT_RETRY != -1 and self._retry >= RECONNECT_RETRY) or not storages.available_width:
             logger.twarn("cluster.warn.cluster.disabled")
+            return
         if self.want_enable or self.enabled:
             logger.tdebug("cluster.debug.cluster.enable_again")
             return
         timeoutTimer = None
         async def _(err, ack):
             if timeoutTimer is not None:
-                timeoutTimer.block()
+                scheduler.cancel(timeoutTimer)
             self.want_enable = False
             if err:
                 logger.terror(
@@ -1074,20 +1102,19 @@ class Cluster:
             },
             callback=_
         )
-        timeoutTimer = Timer.delay(_timeout, delay=ENABLE_TIMEOUT)
+        timeoutTimer = scheduler.delay(_timeout, delay=ENABLE_TIMEOUT)
     async def keepalive(self):
         def _clear():
             if self.keepalive_timer is not None:
-                self.keepalive_timer.block()
+                scheduler.cancel(self.keepalive_timer)
             if self.keepalive_timeout_timer is not None:
-                self.keepalive_timeout_timer.block()
+                scheduler.cancel(self.keepalive_timeout_timer)
         async def _failed():
             if self.keepalive_failed >= 3:
                 await self.retry()
                 return
             else:
-                await asyncio.sleep(10)
-                await _start()
+                scheduler.delay(self.start, delay = 10)
             self.keepalive_failed += 1
         async def _(err, ack):
             if err:
@@ -1127,7 +1154,7 @@ class Cluster:
             )
         _clear()
         cur_storages = stats.get_offset_storages().copy()
-        self.keepalive_timer = Timer.delay(self.keepalive, delay=60)
+        self.keepalive_timer = scheduler.delay(self.keepalive, delay=60)
         await _start()
     def _message(self, message):
         logger.tinfo("cluster.info.cluster.remote_message", message=message)
@@ -1135,11 +1162,11 @@ class Cluster:
             self.trusted = False
     def _exception(self, message):
         logger.terror("cluster.error.cluster.remote_message", message=message)
-        Timer.delay(self.retry)
+        scheduler.delay(self.retry)
     async def emit(self, channel, data=None, callback = None):
         logger.tdebug("cluster.debug.cluster.emit.send", channel=channel, data=data,)
         await self.sio.emit(
-            channel, data, callback=lambda x: Timer.delay(self.message, (channel, x, callback))
+            channel, data, callback=lambda x: scheduler.delay(self.message, (channel, x, callback))
         )
     async def message(self, channel, data: list[Any], callback = None):
         if len(data) == 1:
@@ -1185,7 +1212,9 @@ async def check_update():
                 logger.tinfo("cluster.info.check_update.already_up_to_date")
         except aiohttp.ClientError as e:
             logger.terror("cluster.error.check_update.failed", e=e)
-    Timer.delay(check_update, delay=3600)
+        except asyncio.CancelledError:
+            return
+    scheduler.delay(check_update, delay=3600)
 
 
 async def init():
@@ -1216,7 +1245,7 @@ async def init():
                     storage.path,
                 )
             )
-    Timer.delay(cluster.init)
+    scheduler.delay(cluster.init)
     app = web.app
 
     @app.get("/files")
@@ -1364,10 +1393,10 @@ async def init():
 
     app.redirect("/", "/pages/")
 
-    await check_update()
+    scheduler.delay(check_update)
 
 
-async def close():
+async def exit():
     global cluster
     for plugin in plugins.get_enable_plugins():
         await plugin.disable()

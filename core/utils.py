@@ -5,7 +5,7 @@ import datetime
 import hashlib
 import inspect
 import io
-import os
+
 import re
 import time
 from typing import (
@@ -25,6 +25,7 @@ from typing import (
 import typing
 
 from core.config import Config
+from core.env import env
 
 bytes_unit = ["K", "M", "G", "T", "E"]
 
@@ -188,7 +189,8 @@ class WaitLock:
             return
         self.locked = False
         for waiter in self.waiters:
-            waiter.set_result(True)
+            if waiter._state == "PENDING":
+                waiter.set_result(True)
         self.waiters.clear()
     async def wait(self):
         if not self.locked:
@@ -439,7 +441,7 @@ def format_date(k: float):
 
 
 def get_env_monotonic():
-    return float(os.environ.get("MONOTONIC"))
+    return env['MONOTONIC']
 
 def get_uptime():
     return time.monotonic() - get_env_monotonic()

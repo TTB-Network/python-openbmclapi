@@ -1,7 +1,6 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-import os
 from pathlib import Path
 import sqlite3
 import time
@@ -20,7 +19,8 @@ from core.utils import (
     get_timestamp_from_hour_tohour,
 )
 from core.api import File
-from core import logger, timer as Timer, unit
+from core.logger import logger
+from core import unit, scheduler
 import core.location as location
 class UserAgent(Enum):
     OPENBMCLAPI_CLUSTER = "openbmclapi-cluster"
@@ -583,10 +583,8 @@ def init():
     read_storage()
     _write_database(True)
     logger.tinfo("stats.info.initization", time = f"{(time.monotonic() - start):.2f}")
-    Timer.delay(write_database, delay=time.time() % 1)
+    scheduler.repeat(write_database, delay=time.time() % 1, interval=1)
 
 
 def write_database():
-    while int(os.environ["ASYNCIO_STARTUP"]):
-        _write_database()
-        time.sleep(1)
+    _write_database()

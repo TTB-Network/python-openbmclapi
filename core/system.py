@@ -1,10 +1,12 @@
 import os
-import time
 
 import psutil
 
-from core import timer as Timer
+from core import logger, scheduler
+from core.env import env
+import core
 from core.utils import get_uptime
+import importlib.metadata as importlib_metadata
 
 process: psutil.Process = psutil.Process(os.getpid())
 cpus: dict[float, float] = {}
@@ -12,11 +14,25 @@ memories: dict[float, int] = {}
 connections: dict[float, list['psutil.pconn']] = {}
 length: int = 0
 last_curs: list[float] = []
+libraries: dict[str, str] = {}
+
+def get_libraries_version():
+    global libraries
+    if libraries:
+        return libraries
+    for library in env['libraries']:
+        try:
+            version = importlib_metadata.version(library)
+        except:
+            version = "Unknown"
+        logger.debug(f"Library [{library}] Version [{version}]")
+        libraries[library] = version
+
 
 
 def _run():
     global cpus, memories, connections, length, last_curs
-    while int(os.environ["ASYNCIO_STARTUP"]):
+    while core.wait_exit.locked:
         for _ in range(max(length - 5, 0)):
             cur = last_curs.pop(0)
             cpus.pop(cur)
@@ -58,4 +74,6 @@ def get_connections() -> int:
 
 
 def init():
-    Timer.delay(_run)
+    logger.info("加载 [系统信息] 模块")
+    get_libraries_version()
+    scheduler.repeat(_run)

@@ -8,11 +8,10 @@ import zlib
 import aiohttp
 from tqdm import tqdm
 
-from core import stats, system, unit, utils, web
+from core import stats, system, utils, web
 from core import cluster
 from core.api import StatsCache
-from core import timer as Timer
-from core.timer import Task
+from core import scheduler
 
 from core.const import *
 
@@ -38,14 +37,14 @@ class ProgressBar:
     desc: str = ""
     last_value: float = 0
     speed: float = 0
-    show: Optional[Task] = None
+    show: Optional[int] = None
 
 
 websockets: list['web.WebSocket'] = []
 last_status = ""
 last_text = ""
 cur_tqdm: ProgressBar = ProgressBar()
-task_tqdm: Optional[Task] = None
+task_tqdm: Optional[int] = None
 tokens: list[Token] = []
 
 
@@ -192,12 +191,12 @@ async def set_status_by_tqdm(text: str, pbar: tqdm):
     cur_tqdm.object = pbar
     cur_tqdm.desc = text
     if task_tqdm:
-        task_tqdm.block()
-        cur_tqdm.show.block()
+        scheduler.cancel(task_tqdm)
+        scheduler.cancel(cur_tqdm.show)
     cur_tqdm.speed = 0
     cur_tqdm.last_value = 0
-    task_tqdm = Timer.repeat(_calc_tqdm_speed, delay=0, interval=0.5)
-    cur_tqdm.show = Timer.repeat(_set_status, kwargs={
+    task_tqdm = scheduler.repeat(_calc_tqdm_speed, delay=0, interval=0.5)
+    cur_tqdm.show = scheduler.repeat(_set_status, kwargs={
         "blocked": True
     }, delay=0, interval=1)
 

@@ -4,7 +4,6 @@ import re
 import socket
 import struct
 
-from core import logger
 from core.const import (
     XDB_HeaderInfoLength as HeaderInfoLength,
     XDB_VectorIndexRows as VectorIndexRows,

@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 import yaml
@@ -87,5 +86,7 @@ class CFG:
             dict_obj = dict_obj[key]
         dict_obj[keys[-1]] = value
 
-
+if not os.path.exists("./config"):
+    print("The config dir is not exists.")
+    os.mkdir("./config")
 Config: CFG = CFG("./config/config.yml")
