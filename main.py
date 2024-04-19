@@ -2,6 +2,7 @@ from datetime import datetime
 import os
 import sys
 import time
+from core.i18n import locale
 
 cur = time.time()
 os.environ["UTC"] = str(
@@ -10,19 +11,13 @@ os.environ["UTC"] = str(
         / 3600
     )
 )
-os.environ["STARTUP"] = str(
-    cur
-)
-os.environ["ASYNCIO_STARTUP"] = str(
-    0
-)
-os.environ["MONOTONIC"] = str(
-    time.monotonic()
-)
+os.environ["STARTUP"] = str(cur)
+os.environ["ASYNCIO_STARTUP"] = str(0)
+os.environ["MONOTONIC"] = str(time.monotonic())
 
 if __name__ == "__main__":
     if sys.version_info <= (3, 9):
-        print(f"Not support version: {sys.version}. Please update python to 3.10+")
+        print(locale.t("main.unsupported_version"))
         exit(-1)
     import core
 

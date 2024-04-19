@@ -1,4 +1,5 @@
 {
+  "main.unsupported_version": "该程序不支持当前版本：$cur， 请更新至 Python 3.10+。",
   "stats.info.initializing": "正在初始化统计数据库……",
   "stats.info.initialization": "初始化统计数据库成功，耗时：$time 秒。",
   "cert.error.failed": "无法加载证书：$failure。",
