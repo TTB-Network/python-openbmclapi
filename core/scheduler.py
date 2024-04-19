@@ -99,5 +99,7 @@ def cancel(task_id: int) -> None:
     global sync_tasks, async_tasks
     if task_id in sync_tasks:
         sync_tasks[task_id].remove()
+        sync_tasks.pop(task_id)
     if task_id in async_tasks:
         async_tasks[task_id].remove()
+        async_tasks.pop(task_id)

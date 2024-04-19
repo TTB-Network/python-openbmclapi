@@ -205,8 +205,8 @@ async def _calc_tqdm_speed():
     global cur_tqdm
     if cur_tqdm.object is None or cur_tqdm.object.disable:
         if task_tqdm is not None:
-            task_tqdm.block()
-        cur_tqdm.show.block()
+            scheduler.cancel(task_tqdm)
+        scheduler.cancel(cur_tqdm.show)
         cur_tqdm.object = None
         await _set_status(blocked=True)
         return
