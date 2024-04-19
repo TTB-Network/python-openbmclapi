@@ -227,7 +227,7 @@ async def main():
     await web.init()
     certificate.load_cert(Path(".ssl/cert"), Path(".ssl/key"))
     Timer.delay(check_ports, delay=5)
-    while 1:
+    while True:
         try:
             server = await asyncio.start_server(_handle, port=PORT)
             ssl_server = await asyncio.start_server(

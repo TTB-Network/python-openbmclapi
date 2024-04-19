@@ -44,13 +44,15 @@ class XdbSearcher(object):
 
     def search(self, ip):
         if isinstance(ip, str):
-            if not ip.isdigit(): ip = self.ip2long(ip)
+            if not ip.isdigit():
+                ip = self.ip2long(ip)
             return self.searchByIPLong(ip)
         else:
             return self.searchByIPLong(ip)
 
     def searchByIPStr(self, ip):
-        if not ip.isdigit(): ip = self.ip2long(ip)
+        if not ip.isdigit():
+            ip = self.ip2long(ip)
         if ip in self.cache:
             return self.cache[ip]
         self.cache[ip] = self.searchByIPLong(ip)
@@ -70,8 +72,8 @@ class XdbSearcher(object):
             sPtr = self.getLong(self.contentBuff, HeaderInfoLength + idx)
             ePtr = self.getLong(self.contentBuff, HeaderInfoLength + idx + 4)
         else:
-            self.__f.seek(HeaderInfoLength + idx) # type: ignore
-            buffer_ptr = self.__f.read(8) # type: ignore
+            self.__f.seek(HeaderInfoLength + idx)  # type: ignore
+            buffer_ptr = self.__f.read(8)  # type: ignore
             sPtr = self.getLong(buffer_ptr, 0)
             ePtr = self.getLong(buffer_ptr, 4)
 
@@ -101,14 +103,14 @@ class XdbSearcher(object):
             return ""
 
         buffer_string = self.readBuffer(dataPtr, dataLen)
-        return_string = buffer_string.decode("utf-8") # type: ignore
+        return_string = buffer_string.decode("utf-8")  # type: ignore
         return return_string
 
     def readBuffer(self, offset, length):
         buffer = None
         # check the in-memory buffer first
         if self.contentBuff is not None:
-            buffer = self.contentBuff[offset:offset + length]
+            buffer = self.contentBuff[offset : offset + length]
             return buffer
 
         # read from the file handle
@@ -137,20 +139,24 @@ class XdbSearcher(object):
     def isip(self, ip):
         p = ip.split(".")
 
-        if len(p) != 4: return False
+        if len(p) != 4:
+            return False
         for pp in p:
-            if not pp.isdigit(): return False
-            if len(pp) > 3: return False
-            if int(pp) > 255: return False
+            if not pp.isdigit():
+                return False
+            if len(pp) > 3:
+                return False
+            if int(pp) > 255:
+                return False
         return True
 
     def getLong(self, b, offset):
-        if len(b[offset:offset + 4]) == 4:
-            return struct.unpack("I", b[offset:offset + 4])[0]
+        if len(b[offset : offset + 4]) == 4:
+            return struct.unpack("I", b[offset : offset + 4])[0]
         return 0
 
     def getInt2(self, b, offset):
-        return ((b[offset] & 0x000000FF) | (b[offset+1] & 0x0000FF00))
+        return (b[offset] & 0x000000FF) | (b[offset + 1] & 0x0000FF00)
 
     def close(self):
         if self.__f is not None:
@@ -158,17 +164,24 @@ class XdbSearcher(object):
         self.vectorIndex = None
         self.contentBuff = None
 
+
 @dataclass
 class IPInfo:
     country: str = ""
     province: str = ""
+
     def __hash__(self):
         return hash(self.country.encode("utf-8") + self.province.encode("utf-8"))
+
     def __eq__(self, value: object) -> bool:
-        return isinstance(value, IPInfo) and self.country == value.country and self.province == value.province
-fixed_ip: dict[str, str] = {
-    "104.166.": "美国|0|0|0|0"
-}
+        return (
+            isinstance(value, IPInfo)
+            and self.country == value.country
+            and self.province == value.province
+        )
+
+
+fixed_ip: dict[str, str] = {"104.166.": "美国|0|0|0|0"}
 country_iso = {
     "安道尔": "AD",
     "阿联酋": "AE",
@@ -421,21 +434,29 @@ country_iso = {
     "毛里求斯": "MU",
     "科特迪瓦": "CI",
     "肯尼亚": "KE",
-    "蒙古": "MN"
+    "蒙古": "MN",
 }
 cache: dict[str, IPInfo] = {}
 empty: IPInfo = IPInfo()
 
-ipaddress: XdbSearcher = XdbSearcher(contentBuff=XdbSearcher.loadContentFromFile("assets/ip.xdb"))
-cn_level: str = r"(省|市|自治区|壮族自治区|回族自治区|维吾尔自治区|藏族自治区|蒙古族自治区|林区)"
+ipaddress: XdbSearcher = XdbSearcher(
+    contentBuff=XdbSearcher.loadContentFromFile("assets/ip.xdb")
+)
+cn_level: str = (
+    r"(省|市|自治区|壮族自治区|回族自治区|维吾尔自治区|藏族自治区|蒙古族自治区|林区)"
+)
+
 
 def query(ip: str) -> IPInfo:
     if ip in cache:
         return cache[ip]
-    data = ["" if data == "0" else data for data in fixed_ip.get(".".join(ip.split(".", 3)[0:2]) + ".", ipaddress.searchByIPStr(ip)).split("|")]
+    data = [
+        "" if data == "0" else data
+        for data in fixed_ip.get(
+            ".".join(ip.split(".", 3)[0:2]) + ".", ipaddress.searchByIPStr(ip)
+        ).split("|")
+    ]
     country = country_iso.get(data[0], data[0])
-    info = IPInfo(
-        country, re.sub(cn_level, "", data[2]) if country == "CN" else ""
-    )
+    info = IPInfo(country, re.sub(cn_level, "", data[2]) if country == "CN" else "")
     cache[ip] = info
     return info

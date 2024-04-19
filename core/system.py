@@ -9,7 +9,7 @@ from core.utils import get_uptime
 process: psutil.Process = psutil.Process(os.getpid())
 cpus: dict[float, float] = {}
 memories: dict[float, int] = {}
-connections: dict[float, list['psutil.pconn']] = {}
+connections: dict[float, list["psutil.pconn"]] = {}
 length: int = 0
 last_curs: list[float] = []
 
@@ -45,8 +45,9 @@ def get_loads_detail():
     return {
         "cpu": {t + offset: v for t, v in cpus.items()},
         "memory": {t + offset: v for t, v in memories.items()},
-        "connections": {t + offset: len(v) for t, v in connections.items()}
+        "connections": {t + offset: len(v) for t, v in connections.items()},
     }
+
 
 def get_used_memory() -> int:
     info = process.memory_full_info()

@@ -179,10 +179,12 @@ class WaitLock:
     def __init__(self) -> None:
         self.waiters: list[asyncio.Future] = []
         self.locked = False
+
     def acquire(self):
         if self.locked:
             return
         self.locked = True
+
     def release(self):
         if not self.locked:
             return
@@ -190,6 +192,7 @@ class WaitLock:
         for waiter in self.waiters:
             waiter.set_result(True)
         self.waiters.clear()
+
     async def wait(self):
         if not self.locked:
             return
@@ -199,9 +202,6 @@ class WaitLock:
             await fut
         except:
             ...
-        
-        
-
 
 
 def parse_obj_as_type(obj: Any, type_: Type[Any]) -> Any:
@@ -364,6 +364,7 @@ def get_timestamp_from_hour_tohour(hour: int):
     t = int(time.time())
     return (t - (t - time.timezone) % 3600 - 3600 * hour) / 3600
 
+
 def get_timestamp_from_day_today(day: int):
     t = int(time.time())
     return (t - (t - time.timezone) % 86400 - 86400 * day) / 86400
@@ -440,6 +441,7 @@ def format_date(k: float):
 
 def get_env_monotonic():
     return float(os.environ.get("MONOTONIC"))
+
 
 def get_uptime():
     return time.monotonic() - get_env_monotonic()
