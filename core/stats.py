@@ -304,7 +304,7 @@ def get_storage(name):
     return storages[name]
 
 
-def _write_database(first: bool = False):
+def _write_database():
     global last_storages, last_hour, globalStats, last_ip, last_ua, last_day
     cmds: list[tuple[str, tuple[Any, ...]]] = []
     hour = last_hour or get_hour(0)
@@ -597,12 +597,19 @@ def init():
             "g_access_ua", f"`{ua.value}`", " unsigned bigint NOT NULL DEFAULT 0"
         )
     read_storage()
-    _write_database(True)
+    _write_database()
     logger.tinfo(
         "stats.info.initization", time = f"{(time.monotonic() - start):.2f}"
     )
-    scheduler.repeat(write_database, delay=time.time() % 1, interval=1)
+    scheduler.delay(write_database)
 
 
 def write_database():
-    _write_database()
+    time.sleep(time.time() % 1)
+    while 1:
+        _write_database()
+        try:
+            time.sleep(1)
+        except:
+            print(traceback.format_exc())
+            break

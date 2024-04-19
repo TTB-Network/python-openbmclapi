@@ -12,6 +12,7 @@ async_scheduler: AsyncIOScheduler = None
 # 存储任务
 sync_tasks: dict[int, Job] = {}
 async_tasks: dict[int, Job] = {}
+repeated: dict[int, bool] = {}
 cur_id: int = 0
 
 # 根据当前环境创建异步调度器实例  
@@ -65,9 +66,23 @@ def repeat(handler, args = (), kwargs = {}, delay: float = 0, interval: float = 
     安排一个重复执行的任务。  
     """  
     def wrapper():  
+        global repeated
+        if id not in repeated:
+            try:
+                time.sleep(delay)
+            except (KeyboardInterrupt, asyncio.CancelledError):
+                return
+            repeated[id] = True
         handler(*args, **kwargs)  
 
     async def wrapper_async():  
+        global repeated
+        if id not in repeated:
+            try:
+                asyncio.sleep(delay)
+            except (KeyboardInterrupt, asyncio.CancelledError):
+                return
+            repeated[id] = True
         await handler(*args, **kwargs)  
     
       
@@ -78,7 +93,9 @@ def repeat(handler, args = (), kwargs = {}, delay: float = 0, interval: float = 
         job = async_scheduler.add_job(wrapper_async, trigger, seconds=interval, next_run_time=start_time)  
     else:  
         job = sync_scheduler.add_job(wrapper, trigger, seconds=interval, next_run_time=start_time)  
-    return _add_task_id(job, is_coroutine(handler))
+
+    id = _add_task_id(job, is_coroutine(handler))
+    return id
   
 def task(handler, sec: float = 0, *args, **kwargs) -> int:  
     def wrapper():  
@@ -96,10 +113,15 @@ def task(handler, sec: float = 0, *args, **kwargs) -> int:
     
 
 def cancel(task_id: int) -> None:
-    global sync_tasks, async_tasks
-    if task_id in sync_tasks:
-        sync_tasks[task_id].remove()
-        sync_tasks.pop(task_id)
-    if task_id in async_tasks:
-        async_tasks[task_id].remove()
-        async_tasks.pop(task_id)
+    global sync_tasks, async_tasks, repeated
+    try:
+        if task_id in repeated:
+            repeated.pop(task_id)
+        if task_id in sync_tasks:
+            sync_tasks.pop(task_id).remove()
+        if task_id in async_tasks:
+            async_tasks.pop(task_id).remove()
+    except KeyError as e:
+        ...
+    except Exception as e:
+        raise e

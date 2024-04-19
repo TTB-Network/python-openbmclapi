@@ -16,6 +16,7 @@ from core.api import StatsCache
 from core import scheduler
 
 from core.const import *
+from core.env import env
 
 
 @dataclass
@@ -112,7 +113,7 @@ def serialize(data: Any):
 
 async def process(type: str, data: Any):
     if type == "uptime":
-        return float(os.getenv("STARTUP") or 0)
+        return float(env['STARTUP'] or 0)
     if type == "dashboard":
         return {"hourly": stats.hourly(), "days": stats.daily()}
     if type == "qps":
@@ -132,6 +133,10 @@ async def process(type: str, data: Any):
             "key": last_status,
         }
         if cur_tqdm is not None and cur_tqdm.object is not None:
+            if cur_tqdm.object is None or cur_tqdm.object.disable:
+                scheduler.cancel(task_tqdm)
+                scheduler.cancel(cur_tqdm.show)
+                cur_tqdm.object = None
             resp.update(
                 {
                     "progress": {
@@ -167,6 +172,8 @@ async def process(type: str, data: Any):
                 day = 7
             elif t == 2:
                 day == 30
+            elif t >= 3:
+                day = -1
         return stats.daily_global(day)
     if type == "system_details":
         return system.get_loads_detail()
@@ -185,12 +192,11 @@ async def set_status_by_tqdm(text: str, pbar: tqdm):
     global cur_tqdm, task_tqdm
     cur_tqdm.object = pbar
     cur_tqdm.desc = text
-    if task_tqdm:
-        scheduler.cancel(task_tqdm)
-        scheduler.cancel(cur_tqdm.show)
+    scheduler.cancel(task_tqdm)
+    scheduler.cancel(cur_tqdm.show)
     cur_tqdm.speed = 0
     cur_tqdm.last_value = 0
-    task_tqdm = scheduler.repeat(_calc_tqdm_speed, delay=0, interval=0.5)
+    task_tqdm = scheduler.repeat(_calc_tqdm_speed, delay=0, interval=1)
     cur_tqdm.show = scheduler.repeat(_set_status, kwargs={
         "blocked": True
     }, delay=0, interval=1)
@@ -199,13 +205,12 @@ async def set_status_by_tqdm(text: str, pbar: tqdm):
 async def _calc_tqdm_speed():
     global cur_tqdm
     if cur_tqdm.object is None or cur_tqdm.object.disable:
-        if task_tqdm is not None:
-            scheduler.cancel(task_tqdm)
+        scheduler.cancel(task_tqdm)
         scheduler.cancel(cur_tqdm.show)
         cur_tqdm.object = None
         await _set_status(blocked=True)
         return
-    cur_tqdm.speed = (cur_tqdm.object.n - cur_tqdm.last_value) / 0.5
+    cur_tqdm.speed = cur_tqdm.object.n - cur_tqdm.last_value
     cur_tqdm.last_value = cur_tqdm.object.n
 
 

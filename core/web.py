@@ -868,7 +868,6 @@ class Response:
             }
         )
         if isinstance(content, Compressor):
-            print()
             self.set_headers(
                 {
                     "Content-Encoding": compression.type,

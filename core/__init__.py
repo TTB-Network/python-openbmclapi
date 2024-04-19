@@ -7,6 +7,7 @@ from .scheduler import init as scheduler_init
 from .utils import WaitLock
 
 env['MONOTONIC'] = time.monotonic()
+env['STARTUP'] = time.time()
 
 wait_exit: WaitLock = WaitLock()
 
