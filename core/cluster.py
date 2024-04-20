@@ -1159,10 +1159,10 @@ class Cluster:
 
         async def _(err, ack):
             if err:
-                logger.terror("cluster.error.cluster.keepalive_failed", count=self.keepalive_failed)
                 await self.retry()
                 return
             if not ack:
+                logger.terror("cluster.error.cluster.keepalive_failed", count=self.keepalive_failed)
                 await _failed()
                 return
             self.keepalive_failed = 0
@@ -1189,8 +1189,8 @@ class Cluster:
         async def _start():
             data = {"hits": 0, "bytes": 0}
             for storage in cur_storages:
-                data["hits"] += storage.sync_hits
-                data["bytes"] += storage.sync_bytes
+                data["hits"] += max(0, storage.sync_hits)
+                data["bytes"] += max(0, storage.sync_bytes)
             await self.emit(
                 "keep-alive", {"time": int(time.time() * 1000), **data}, callback=_
             )
