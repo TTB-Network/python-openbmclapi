@@ -217,8 +217,11 @@ async def check_ports():
     except:
         logger.error(traceback.format_exc())
     finally:
-        scheduler.delay(check_ports, delay=5)
-
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            return
+        scheduler.delay(check_ports)
 
 async def start():
     global server, ssl_server
@@ -248,8 +251,8 @@ async def start():
 
 
 async def init():
+    scheduler.delay(check_ports)
     await start()
-    scheduler.delay(check_ports, delay=5)
 
 def restart():
     close()
