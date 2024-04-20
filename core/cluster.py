@@ -1169,10 +1169,12 @@ class Cluster:
             ping = int((time.time() - utils.parse_iso_time(ack).timestamp()) * 1000)
             storage_data = {"hits": 0, "bytes": 0}
             for storage in cur_storages:
-                storage.object.add_last_hits(storage.sync_hits)
-                storage.object.add_last_bytes(storage.sync_bytes)
-                storage_data["hits"] += storage.sync_hits
-                storage_data["bytes"] += storage.sync_bytes
+                shits = max(0, storage.sync_hits)
+                sbytes = max(0, storage.sync_bytes)
+                storage.object.add_last_hits(shits)
+                storage.object.add_last_bytes(sbytes)
+                storage_data["hits"] += shits
+                storage_data["bytes"] += sbytes
             hits = unit.format_number(storage_data["hits"])
             bytes = unit.format_bytes(storage_data["bytes"])
             storage_count = len(cur_storages)
