@@ -9,6 +9,7 @@ from typing import Any, Optional
 import pyzstd as zstd
 from tqdm import tqdm
 
+from core import utils
 from core.utils import (
     DataInputStream,
     DataOutputStream,
@@ -620,9 +621,10 @@ def init():
 
 def write_database():
     time.sleep(time.time() % 1)
-    while 1:
-        _write_database()
-        try:
-            time.sleep(time.time() % 1)
-        except:
-            break
+    start = utils.get_uptime()
+    _write_database()
+    cur = utils.get_uptime()
+    if cur - start > 1:
+        scheduler.delay(write_database)
+    else:
+        scheduler.delay(write_database, delay=1)

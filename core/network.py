@@ -172,6 +172,7 @@ async def _handle_process(client: Client, ssl: bool = False):
 async def check_ports():
     global ssl_server, server, client_side_ssl, check_port_key
     ports: list[tuple[asyncio.Server, ssl.SSLContext | None]] = []
+    logger.debug("开始检测端口存活")
     for service in (
         (server, None),
         (ssl_server, client_side_ssl if get_loaded() else None),
@@ -213,7 +214,7 @@ async def check_ports():
             closed = True
     if closed:
         restart()
-    await asyncio.sleep(5)
+    logger.debug("结束检测端口存活")
 
 
 async def start():
@@ -242,6 +243,7 @@ async def start():
 
 async def init():
     await start()
+    scheduler.repeat(check_ports, interval=5)
 
 def restart():
     close()

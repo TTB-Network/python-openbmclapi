@@ -112,7 +112,7 @@ COMPRESSOR: dict[str, Any] = {
 }
 LANG: str = Config.get("advanced.language")
 FORCE_SSL: bool = Config.get("web.force_ssl")
-
+MAX_INSTANCES: int = 9999
 
 @dataclass
 class StorageParse:
