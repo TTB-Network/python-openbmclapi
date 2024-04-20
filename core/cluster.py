@@ -1159,7 +1159,7 @@ class Cluster:
 
         async def _(err, ack):
             if err:
-                logger.terror("cluster.error.cluster.keepalive_failed")
+                logger.terror("cluster.error.cluster.keepalive_failed", count=self.keepalive_failed)
                 await self.retry()
                 return
             if not ack:
