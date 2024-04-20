@@ -215,10 +215,10 @@ async def check_ports():
         if closed:
             restart()
     except:
-        logger.error(traceback.format_exc())
+        ...
     finally:
         try:
-            await asyncio.sleep(10)
+            await asyncio.sleep(5)
         except asyncio.CancelledError:
             return
         scheduler.delay(check_ports)
