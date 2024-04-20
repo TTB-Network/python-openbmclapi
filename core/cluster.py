@@ -1154,7 +1154,6 @@ class Cluster:
                 await self.retry()
                 return
             else:
-                self.enabled = False
                 scheduler.delay(_start, delay = 10)
             self.keepalive_failed += 1
 
