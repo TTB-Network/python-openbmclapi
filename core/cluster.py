@@ -230,6 +230,8 @@ class FileDownloader:
                 r = await self._mount_file(file, content)
                 if r[0] == -1:
                     raise EOFError
+            except asyncio.CancelledError:
+                break
             except:
                 pbar.update(-size)
                 await self.queues.put(file)
@@ -285,7 +287,10 @@ class FileDownloader:
                             ),
                         ),
                     )
-            await asyncio.gather(*timers)
+            try:
+                await asyncio.gather(*timers)
+            except asyncio.CancelledError:
+                raise asyncio.CancelledError
             # pbar.set_postfix_str(" " * 40)
         logger.tsuccess("cluster.info.download.finished")
 
@@ -1074,7 +1079,10 @@ class Cluster:
             logger.twarn("cluster.warn.cluster.no_storage")
             return
         start = time.time()
-        await self.file_check()
+        try:
+            await self.file_check()
+        except asyncio.CancelledError:
+            return
         t = "%.2f" % (time.time() - start)
         logger.tsuccess("cluster.success.cluster.finished_file_check", time=t)
         await self.enable()

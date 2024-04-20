@@ -15,7 +15,11 @@ wait_exit: WaitLock = WaitLock()
 def init():
     wait_exit.acquire()
     atexit.register(exit)
-    asyncio.run(async_init())
+    try:
+        asyncio.run(async_init())
+    except KeyboardInterrupt:
+        if wait_exit.locked:
+            wait_exit.release()
 
 async def async_init():
     # first init
