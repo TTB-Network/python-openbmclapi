@@ -307,13 +307,15 @@ class FileCheck:
     def start_task(self):
         if self.check_files_timer:
             scheduler.cancel(self.check_files_timer)
-        self.check_files_timer = scheduler.repeat(self.__call__, delay=1800, interval=1800)
+        self.check_files_timer = scheduler.delay(self.__call__, delay=1800)
 
     async def __call__(
         self,
     ) -> Any:
         if not self.checked:
             await dashboard.set_status("files.fetching")
+        scheduler.cancel(self.check_files_timer)
+        self.check_files_timer = scheduler.delay(self.__call__, delay=1800)
         files = await self.downloader.get_files()
         sorted(files, key=lambda x: x.hash)
         if not self.checked:
@@ -1153,7 +1155,7 @@ class Cluster:
                 return
             else:
                 self.enabled = False
-                scheduler.delay(self.start, delay = 10)
+                scheduler.delay(_start, delay = 10)
             self.keepalive_failed += 1
 
         async def _(err, ack):

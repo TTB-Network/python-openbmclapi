@@ -225,7 +225,18 @@ async def check_ports():
 
 async def start():
     global server, ssl_server
-    close()
+    if server is not None:
+        server.close()
+        try:
+            await server.wait_closed()
+        except:
+            ...
+    if ssl_server is not None:
+        ssl_server.close()
+        try:
+            await ssl_server.wait_closed()
+        except:
+            ...
     try:
         server = await asyncio.start_server(_handle, port=PORT)
         ssl_server = await asyncio.start_server(
