@@ -241,11 +241,9 @@ async def start():
             close()
             if "EXIT" in env:
                 return
-            logger.warn(traceback.format_exc())
         except:
             close()
             logger.error(traceback.format_exc())
-        await asyncio.sleep(5)
 
 async def init():
     scheduler.repeat(check_ports, delay=5, interval=5)
