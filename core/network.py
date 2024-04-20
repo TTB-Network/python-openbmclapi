@@ -240,7 +240,7 @@ async def start():
         async with server, ssl_server:
             await asyncio.gather(server.serve_forever(), ssl_server.serve_forever())
     except asyncio.CancelledError:
-        if "EXIT" not in env.env:
+        if "EXIT" not in env:
             await start()
         logger.warn(traceback.format_exc())
     except:
