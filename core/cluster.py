@@ -1196,8 +1196,8 @@ class Cluster:
             for storage in cur_storages:
                 shits = max(0, storage.sync_hits)
                 sbytes = max(0, storage.sync_bytes)
-                #storage.object.add_last_hits(shits)
-                #torage.object.add_last_bytes(sbytes)
+                storage.object.add_last_hits(shits)
+                storage.object.add_last_bytes(sbytes)
                 storage_data["hits"] += shits
                 storage_data["bytes"] += sbytes
             hits = unit.format_number(storage_data["hits"])
@@ -1214,8 +1214,8 @@ class Cluster:
         async def _start():
             data = {"hits": 0, "bytes": 0}
             for storage in cur_storages:
-                data["hits"] += 0#max(0, storage.sync_hits)
-                data["bytes"] += 0#max(0, storage.sync_bytes)
+                data["hits"] += max(0, storage.sync_hits)
+                data["bytes"] += max(0, storage.sync_bytes)
             await self.emit(
                 "keep-alive", {"time": int(time.time() * 1000), **data}, callback=_
             )
