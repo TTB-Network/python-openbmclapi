@@ -42,8 +42,6 @@
 
 建议 Python 版本：3.10+。
 
-建议运行内存：10G+。
-
 1. 克隆仓库或从 [Releases](https://github.com/TTB-Network/python-openbmclapi/releases) 中下载代码：
 
     温馨提示：master 分支提供的代码暂不稳定，建议下载稳定的 Release 版本。
