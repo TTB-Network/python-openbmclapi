@@ -1195,6 +1195,7 @@ class Cluster:
         _clear()
         cur_storages = stats.get_offset_storages().copy()
         self.keepalive_timer = scheduler.delay(self.keepalive, delay=60)
+        self.keepalive_timeout_timer = scheduler.delay(_failed, delay=10)
         await _start()
 
     def _message(self, message):
