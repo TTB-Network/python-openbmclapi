@@ -10,6 +10,7 @@ import pyzstd as zstd
 from tqdm import tqdm
 
 from core import utils
+from core.timings import timing
 from core.utils import (
     DataInputStream,
     DataOutputStream,
@@ -266,7 +267,7 @@ def read_storage():
             return
         globalStats = GlobalStats.from_binary(bdata)
 
-
+@timing
 def write_storage():
     global storages, globalStats, last_hour
     f = DataOutputStream()
@@ -311,7 +312,7 @@ def get_storage(name):
         storages[name] = StorageStats(name)
     return storages[name]
 
-
+@timing
 def _write_database():
     global last_storages, last_hour, globalStats, last_ip, last_ua, last_day
     cmds: list[tuple[str, tuple[Any, ...]]] = []
