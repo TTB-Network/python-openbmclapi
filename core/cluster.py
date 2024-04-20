@@ -494,7 +494,9 @@ class FileStorage(Storage):
         self.dir.mkdir(exist_ok=True, parents=True)
         self.cache: dict[str, File] = {}
         self.timer = scheduler.repeat(
-            self.clear_cache, delay=CHECK_CACHE, interval=CHECK_CACHE
+            self.clear_cache,
+            delay=CHECK_CACHE,
+            interval=CHECK_CACHE
         )
 
     async def get(self, hash: str, offset: int = 0) -> File:
@@ -613,6 +615,7 @@ class WebDav(Storage):
         self.dirs: list[str] = []
         self.fetch: bool = False
         self.cache: dict[str, File] = {}
+        self.timer = scheduler.repeat(self.clear_cache, delay=CHECK_CACHE, interval=CHECK_CACHE)
         self.empty = File("", "", 0)
         self.lock = utils.WaitLock()
         self.session = webdav3_client.Client(
@@ -626,7 +629,29 @@ class WebDav(Storage):
         self.session_lock = asyncio.Lock()
         scheduler.delay(self._list_all)
         scheduler.repeat(self._keepalive, interval=60)
-
+        
+    async def clear_cache(self):
+        size: int = 0
+        old_keys: list[str] = []
+        old_size: int = 0
+        file: File
+        key: str
+        for key, file in sorted(
+            self.cache.items(), key=lambda x: x[1].last_access, reverse=True
+        ):
+            if size <= CACHE_BUFFER and file.last_access + CACHE_TIME >= time.time():
+                continue
+            old_keys.append(key)
+            old_size += file.size
+        if not old_keys:
+            return
+        for key in old_keys:
+            self.cache.pop(key)
+        logger.tinfo(
+            "cluster.info.clear_cache.count",
+            count=unit.format_number(len(old_keys)),
+            size=unit.format_bytes(old_size),
+        )
     async def _keepalive(self):
         try:
             hostname = self.hostname
@@ -1171,8 +1196,8 @@ class Cluster:
             for storage in cur_storages:
                 shits = max(0, storage.sync_hits)
                 sbytes = max(0, storage.sync_bytes)
-                storage.object.add_last_hits(shits)
-                storage.object.add_last_bytes(sbytes)
+                #storage.object.add_last_hits(shits)
+                #torage.object.add_last_bytes(sbytes)
                 storage_data["hits"] += shits
                 storage_data["bytes"] += sbytes
             hits = unit.format_number(storage_data["hits"])
@@ -1189,8 +1214,8 @@ class Cluster:
         async def _start():
             data = {"hits": 0, "bytes": 0}
             for storage in cur_storages:
-                data["hits"] += max(0, storage.sync_hits)
-                data["bytes"] += max(0, storage.sync_bytes)
+                data["hits"] += 0#max(0, storage.sync_hits)
+                data["bytes"] += 0#max(0, storage.sync_bytes)
             await self.emit(
                 "keep-alive", {"time": int(time.time() * 1000), **data}, callback=_
             )
@@ -1264,7 +1289,6 @@ async def check_update():
         except asyncio.CancelledError:
             await session.close()
             return
-    scheduler.delay(check_update, delay=3600)
 
 async def init():
     if CLUSTER_ID == "":
@@ -1446,7 +1470,7 @@ async def init():
 
     app.redirect("/", "/pages/")
 
-    scheduler.delay(check_update)
+    scheduler.repeat(check_update, interval=3600)
 
 
 async def exit():

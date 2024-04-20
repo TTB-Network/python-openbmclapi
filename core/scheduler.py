@@ -79,8 +79,8 @@ def repeat(handler, args = (), kwargs = {}, delay: float = 0, interval: float = 
 
     async def wrapper_async():  
         await handler(*args, **kwargs)  
-      
-    trigger = IntervalTrigger(interval, start_date=datetime.fromtimestamp(time.time() + delay))
+
+    trigger = IntervalTrigger(seconds=interval, start_date=datetime.fromtimestamp(time.time() + delay))
     if is_coroutine(handler):  
         job = async_scheduler.add_job(wrapper_async, trigger, max_instances=MAX_INSTANCES)  
     else:  

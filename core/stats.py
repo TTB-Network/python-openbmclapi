@@ -30,16 +30,9 @@ import core.location as location
 class UserAgent(Enum):
     OPENBMCLAPI_CLUSTER = "openbmclapi-cluster"
     PYTHON = "python-openbmclapi"
-    TECHNIC = "TechnicLauncher"
+    PHP = "PHP-OpenBmclApi"
     WARDEN = "bmclapi-warden"
-    BADLION = "Badlion Client"
     POJAV = "PojavLauncher"
-    LUNAR = "Lunar Client"
-    ATLAUNCHER = "ATLauncher"
-    CURSEFORGE = "CurseForge"
-    TLAUNCHER = "TLauncher"
-    MULTIMC = "MultiMC"
-    MAGNET = "Magnet"
     DALVIK = "Dalvik"
     BAKAXL = "BakaXL"
     OTHER = "Other"
@@ -313,7 +306,7 @@ def get_storage(name):
     return storages[name]
 
 @timing
-def _write_database():
+def write_database():
     global last_storages, last_hour, globalStats, last_ip, last_ua, last_day
     cmds: list[tuple[str, tuple[Any, ...]]] = []
     hour = last_hour or get_hour(0)
@@ -613,19 +606,8 @@ def init():
             "g_access_ua", f"`{ua.value}`", " unsigned bigint NOT NULL DEFAULT 0"
         )
     read_storage()
-    _write_database()
+    write_database()
     logger.tinfo(
         "stats.info.initization", time = f"{(time.monotonic() - start):.2f}"
     )
-    scheduler.delay(write_database)
-
-
-def write_database():
-    time.sleep(time.time() % 1)
-    start = utils.get_uptime()
-    _write_database()
-    cur = utils.get_uptime()
-    if cur - start > 1:
-        scheduler.delay(write_database)
-    else:
-        scheduler.delay(write_database, delay=1)
+    scheduler.repeat(write_database, delay=time.time() % 1, interval=1)

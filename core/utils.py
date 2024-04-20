@@ -141,6 +141,14 @@ class Client:
         except:
             self.close()
         return -1
+    
+    async def drain(self):
+        if self.is_closed():
+            return
+        try:
+            await self.writer.drain()
+        except:
+            self.close()
 
     def writelines(self, data: Iterable[bytes | bytearray | memoryview]):
         if self.is_closed():

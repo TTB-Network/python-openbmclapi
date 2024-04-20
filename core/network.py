@@ -52,7 +52,7 @@ class ProxyClient:
             ):
                 self.target.write(buffer)
                 self.before = b""
-                await self.target.writer.drain()
+                await self.target.drain()
         except:
             ...
         self.close()
@@ -65,7 +65,7 @@ class ProxyClient:
                 and not self.target.is_closed()
             ):
                 self.origin.write(buffer)
-                await self.origin.writer.drain()
+                await self.origin.drain()
         except:
             ...
         self.close()
@@ -139,7 +139,7 @@ async def _handle_process(client: Client, ssl: bool = False):
             protocol = Protocol.get(header)
             if protocol == Protocol.DETECT:
                 client.write(check_port_key)
-                await client.writer.drain()
+                await client.drain()
                 break
             if protocol == Protocol.Unknown and not ssl and ssl_server:
                 target = Client(
@@ -203,7 +203,7 @@ async def check_ports():
                     )
                 )
                 client.write(check_port_key)
-                await client.writer.drain()
+                await client.drain()
                 key = await client.read(len(check_port_key), 5)
             except:
                 logger.twarn(
@@ -216,58 +216,43 @@ async def check_ports():
             restart()
     except:
         ...
-    finally:
-        try:
-            await asyncio.sleep(5)
-        except asyncio.CancelledError:
-            return
-        scheduler.delay(check_ports)
 
 async def start():
     global server, ssl_server
-    if server is not None:
-        server.close()
+    while "EXIT" not in env:
+        close()
         try:
-            await server.wait_closed()
-        except:
-            ...
-    if ssl_server is not None:
-        ssl_server.close()
-        try:
-            await ssl_server.wait_closed()
-        except:
-            ...
-    try:
-        server = await asyncio.start_server(_handle, port=PORT)
-        ssl_server = await asyncio.start_server(
-            _handle_ssl,
-            port=0 if SSL_PORT == PORT else SSL_PORT,
-            ssl=server_side_ssl if get_loaded() else None,
-        )
-        logger.info(locale.t("core.info.listening", port=PORT))
-        logger.info(
-            locale.t(
-                "core.info.listening_ssl",
-                port=ssl_server.sockets[0].getsockname()[1],
+            server = await asyncio.start_server(_handle, port=PORT)
+            ssl_server = await asyncio.start_server(
+                _handle_ssl,
+                port=0 if SSL_PORT == PORT else SSL_PORT,
+                ssl=server_side_ssl if get_loaded() else None,
             )
-        )
-        async with server, ssl_server:
-            await asyncio.gather(server.serve_forever(), ssl_server.serve_forever())
-    except asyncio.CancelledError:
-        if "EXIT" not in env:
-            await start()
-        logger.warn(traceback.format_exc())
-    except:
-        logger.error(traceback.format_exc())
-
+            logger.info(locale.t("core.info.listening", port=PORT))
+            logger.info(
+                locale.t(
+                    "core.info.listening_ssl",
+                    port=ssl_server.sockets[0].getsockname()[1],
+                )
+            )
+            async with server, ssl_server:
+                await asyncio.gather(server.serve_forever(), ssl_server.serve_forever())
+        except asyncio.CancelledError:
+            close()
+            if "EXIT" in env:
+                return
+            logger.warn(traceback.format_exc())
+        except:
+            close()
+            logger.error(traceback.format_exc())
+        await asyncio.sleep(5)
 
 async def init():
-    scheduler.delay(check_ports)
+    scheduler.repeat(check_ports, delay=5, interval=5)
     await start()
 
 def restart():
     close()
-    scheduler.delay(start)
 
 
 def close():
