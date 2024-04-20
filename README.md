@@ -173,13 +173,15 @@ download:
   threads: 64
 # 存储设置
 storages:
+  # 本地储存
   bmclapi: # 你的存储名字
     # 存储路径
     path: ./bmclapi 
     # 存储类型，可选值为 file（本地存储）和 webdav（WebDAV）
     type: file 
     # 选用存储下载权重，-1 为禁用，不选择，但会下载文件
-    width: 0 
+    width: 0
+  # WebDAV 储存
   bmclapi_webdav: 
     path: /bmclapidev
     type: webdav
