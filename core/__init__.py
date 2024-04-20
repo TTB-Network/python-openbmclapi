@@ -31,6 +31,7 @@ async def async_init():
     await cluster_init()
 
     await wait_exit.wait()
+    env['EXIT'] = True
     network_exit()
     await cluster_exit()
     scheduler_exit()

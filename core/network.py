@@ -9,7 +9,7 @@ from core.certificate import get_loaded, client_side_ssl, server_side_ssl
 from core.config import Config
 from core.utils import Client
 from core.i18n import locale
-from core import logger, scheduler, web
+from core import env, logger, scheduler, web
 
 
 class Protocol(Enum):
@@ -240,7 +240,9 @@ async def start():
         async with server, ssl_server:
             await asyncio.gather(server.serve_forever(), ssl_server.serve_forever())
     except asyncio.CancelledError:
-        ...
+        if "EXIT" not in env.env:
+            await start()
+        logger.warn(traceback.format_exc())
     except:
         logger.error(traceback.format_exc())
 
