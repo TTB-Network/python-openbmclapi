@@ -815,7 +815,11 @@ class Response:
         else:
             content = self.content
         if isinstance(content, Path):
+            self.content_type = self.content_type or self._get_content_type(content)
             length = content.stat().st_size
+            if length <= RESPONSE_COMPRESSION_IGNORE_SIZE_THRESHOLD:
+                async with aiofiles.open(content, "rb") as r:
+                    content = io.BytesIO(await r.read())
         elif isinstance(content, io.BytesIO):
             length = len(content.getbuffer())
         start_bytes, end_bytes = 0, 0

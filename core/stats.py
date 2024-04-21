@@ -450,10 +450,18 @@ def addColumns(table, params, data, default=None):
 def get_utc_offset():
     return -(time.timezone / 3600)
 
+def get_query_day_tohour(day):
+    t = int(time.time())
+    return (t - ((t + get_utc_offset() * 3600) % 86400) - 86400 * day) / 3600
+
+def get_query_hour_tohour(hour):
+    t = int(time.time())
+    return int((t - ((t + get_utc_offset() * 3600) % 3600) - 3600 * hour) / 3600)
+
 def hourly():
     data = []
     hours: dict[int, StorageStats] = {}
-    t = get_timestamp_from_day_tohour(0) - get_utc_offset()
+    t = get_query_day_tohour(0)
     for r in queryAllData(
         "select storage, hour, hit, bytes, cache_hit, cache_bytes, last_hit, last_bytes, failed from access_storage where hour >= ?",
         t,
@@ -486,15 +494,15 @@ def hourly():
 
 def daily():
     data = []
-    t = get_timestamp_from_day_tohour(30) - get_utc_offset()
-    to_t = get_timestamp_from_day_tohour(-1) - get_utc_offset()
+    t = get_query_day_tohour(30)
+    to_t = get_query_day_tohour(-1)
     days: dict[int, StorageStats] = {}
     for r in queryAllData(
         "select storage, hour, hit, bytes, cache_hit, cache_bytes, last_hit, last_bytes, failed from access_storage where hour >= ? and hour <= ?",
         t,
         to_t
     ):
-        hour = r[1] // 24
+        hour = (r[1] + get_utc_offset()) // 24
         if hour not in days:
             days[hour] = StorageStats("Total")
         days[hour]._hits += r[2]
@@ -521,26 +529,23 @@ def daily():
 
 def daily_pro(day):
     format_day = (day == 30)
-    t = get_hour(0) - (day * 24)
+    t = get_query_hour_tohour(0) - (day * 24)
     g_ua = ",".join((f"`{ua.value}`" for ua in UserAgent))
-    s_ua: dict[str, defaultdict[UserAgent, int]] = {}
+    s_ua: defaultdict[str, int] = defaultdict(int)
     s_ip: dict[int, defaultdict[str, int]] = {}
     for q in queryAllData(
         f"select hour, {g_ua} from access_ua where hour >= ?",
         t,
     ):
-        hour = format_datetime((q[0] + get_utc_offset()) * 3600)
-        if hour not in s_ua:
-            s_ua[hour] = defaultdict(int)
         for i, ua in enumerate(UserAgent):
             if q[i + 1] == 0:
                 continue
-            s_ua[hour][ua.value] = q[i + 1]
+            s_ua[ua.value] += q[i + 1]
     for q in queryAllData(
         f"select hour, data from access_ip where hour >= ?",
         t,
     ):
-        hour = q[0] if not format_day else q[0] // 24
+        hour = (q[0] + get_utc_offset()) if not format_day else (q[0] + get_utc_offset()) // 24
         data = DataInputStream(zstd.decompress(q[1]))
         for ip, c in {data.readString(): data.readVarInt() for _ in range(data.readVarInt())}.items():
             if hour not in s_ip:
@@ -556,5 +561,5 @@ def daily_pro(day):
             GEOInfo(info.country, info.province, count)
             for info, count in sorted(addresses.items(), key=lambda x: x[0].country)
         ],
-        "distinct_ip": {(format_datetime((hour + get_utc_offset()) * 3600) if not format_day else format_date(hour * 86400)): len(ip) for hour, ip in sorted(s_ip.items())},
+        "distinct_ip": {(format_datetime(hour * 3600) if not format_day else format_date(hour * 86400)): len(ip) for hour, ip in sorted(s_ip.items())},
     }

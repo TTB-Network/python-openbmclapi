@@ -48,6 +48,7 @@ RESPONSE_HEADERS = {
     "Server": Config.get("web.server_name"),
 }
 RESPONSE_DATE = "%a, %d %b %Y %H:%M:%S GMT"
+RESPONSE_COMPRESSION_IGNORE_SIZE_THRESHOLD: int = 16777216
 STATUS_CODES: dict[int, str] = {
     100: "Continue",
     101: "Switching Protocols",
