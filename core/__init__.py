@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import time
 from .env import env as env
 import atexit
@@ -14,6 +15,7 @@ wait_exit: WaitLock = WaitLock()
 
 def init():
     wait_exit.acquire()
+    logger.info(f"Loading... Python Version: {sys.version}")
     atexit.register(exit)
     try:
         asyncio.run(async_init())

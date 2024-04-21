@@ -304,7 +304,7 @@ def parseObject(data: Any):
 
 
 def parse_iso_time(text: str):
-    if sys.version_info <= (3, 10):
+    if sys.version_info < (3, 11):
         date_part, time_part = text.split('T')  
         year, month, day = map(int, date_part.split('-'))  
         hours, minutes, seconds = map(int, time_part.split('.')[0].split(':'))  
