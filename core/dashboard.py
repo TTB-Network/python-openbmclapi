@@ -1,3 +1,4 @@
+from collections import defaultdict
 from dataclasses import asdict, dataclass, is_dataclass
 import hashlib
 import os
@@ -122,12 +123,13 @@ async def process(type: str, data: Any):
         raw_data = {
             k: v for k, v in web.statistics.get_all_qps().items() if k > c - 300
         }
-        resp_data: dict = {}
-        for _ in range(c - 300, c, 5):
-            resp_data[_] = 0
-            for __ in range(5):
-                resp_data[_] += raw_data.get(__ + _, 0)
-        return {utils.format_time(k): v for k, v in resp_data.items()}
+        return {
+            utils.format_time(i): (
+                sum((
+                    raw_data.get(i + j, 0) for j in range(5)
+                ))
+            ) for i in range(c - 300, c, 5)
+        }
     if type == "status":
         resp: dict = {
             "key": last_status,

@@ -322,7 +322,7 @@ def parse_iso_time(text: str):
 
 
 def parse_datetime_to_gmt(date: time.struct_time):
-    return f"{date.tm_year:04d}:{date.tm_mon:02d}:{date.tm_mday:02d} {date.tm_hour:02d}:{date.tm_min:02d}:{date.tm_sec:02d}"
+    return f"{date.tm_year:04d}-{date.tm_mon:02d}-{date.tm_mday:02d} {date.tm_hour:02d}:{date.tm_min:02d}:{date.tm_sec:02d}"
 
 
 def parse_time_to_gmt(time_: float):
@@ -455,17 +455,17 @@ def format_stime(n):
 
 
 def format_time(k: float):
-    local = time.localtime(k)
+    local = datetime.datetime.fromtimestamp(k).astimezone().utctimetuple()
     return f"{local.tm_hour:02d}:{local.tm_min:02d}:{local.tm_sec:02d}"
 
 
 def format_date(k: float):
-    local = time.localtime(k)
+    local = datetime.datetime.fromtimestamp(k).astimezone().utctimetuple()
     return f"{local.tm_year:04d}-{local.tm_mon:02d}-{local.tm_mday:02d}"
 
 
 def format_datetime(k: float):
-    local = time.localtime(k)
+    local = datetime.datetime.fromtimestamp(k).astimezone().utctimetuple()
     return f"{local.tm_year:04d}-{local.tm_mon:02d}-{local.tm_mday:02d} {local.tm_hour:02d}:{local.tm_min:02d}"
 
 
