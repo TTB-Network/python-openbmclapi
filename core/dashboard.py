@@ -174,7 +174,7 @@ async def process(type: str, data: Any):
             if t == 1:
                 day = 7
             elif t == 2:
-                day == 30
+                day = 30
             elif t >= 3:
                 day = -1
         return stats.daily_pro(day)

@@ -520,6 +520,7 @@ def daily():
     return data
 
 def daily_pro(day):
+    format_day = (day == 30)
     t = get_hour(0) - (day * 24)
     g_ua = ",".join((f"`{ua.value}`" for ua in UserAgent))
     s_ua: dict[str, defaultdict[UserAgent, int]] = {}
@@ -539,16 +540,14 @@ def daily_pro(day):
         f"select hour, data from access_ip where hour >= ?",
         t,
     ):
-        hour = q[0] + 1
+        hour = q[0] if not format_day else q[0] // 24
         data = DataInputStream(zstd.decompress(q[1]))
         for ip, c in {data.readString(): data.readVarInt() for _ in range(data.readVarInt())}.items():
             if hour not in s_ip:
                 s_ip[hour] = defaultdict(int)
             s_ip[hour][ip] += c
     addresses: defaultdict[location.IPInfo, int] = defaultdict(int)
-    for ipday, ips in s_ip.items():
-        if ipday < t:
-            continue
+    for ips in s_ip.values():
         for address, count in ips.items():
             addresses[location.query(address)] += count
     return {
@@ -557,5 +556,5 @@ def daily_pro(day):
             GEOInfo(info.country, info.province, count)
             for info, count in sorted(addresses.items(), key=lambda x: x[0].country)
         ],
-        "distinct_ip": {format_datetime((hour + get_utc_offset()) * 3600): len(ip) for hour, ip in sorted(s_ip.items())},
+        "distinct_ip": {(format_datetime((hour + get_utc_offset()) * 3600) if not format_day else format_date(hour * 86400)): len(ip) for hour, ip in sorted(s_ip.items())},
     }
