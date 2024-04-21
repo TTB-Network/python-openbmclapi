@@ -240,10 +240,10 @@ class FileDownloader:
     async def _mount_file(
         self, file: BMCLAPIFile, buf: io.BytesIO
     ) -> tuple[int, io.BytesIO]:
+        result = None
         for storage in storages.get_storages():
-            result = -1
             try:
-                result = await storage.write(file.hash, buf)
+                result = result or await storage.write(file.hash, buf)
             except:
                 logger.error(traceback.format_exc())
             if result != file.size:
@@ -256,7 +256,7 @@ class FileDownloader:
                     file=file_size,
                     target=target_size,
                 )
-        return buf, result
+        return buf, result or -1
 
     async def download(self, miss: list[BMCLAPIFile]):
         if not storages.available:
@@ -1005,9 +1005,10 @@ class Cluster:
         self.want_enable: bool = False
         self.disable_future: utils.WaitLock = utils.WaitLock()
         self.channel_lock: utils.WaitLock = utils.WaitLock()
-        self.keepalive_timer: Optional[int] = None
+        self.keepalive_timer: Optional[asyncio.TimerHandle] = None
         self.keepalive_timeout_timer: Optional[int] = None
         self.keepalive_failed: int = 0
+        self.last_keepalive: Optional[float] = None
 
     async def connect(self):
         if not self.sio.connected:
@@ -1035,8 +1036,8 @@ class Cluster:
         await self.start()
 
     async def disable(self):
-        if self.keepalive_timer is not None:
-            scheduler.cancel(self.keepalive_timer)
+        if self.keepalive_timer is not None and not self.keepalive_timer.cancelled():
+            self.keepalive_timer.cancel()
         if not self.enabled:
             return
         await self.disable_future.wait()
@@ -1178,8 +1179,8 @@ class Cluster:
         timeoutTimer = scheduler.delay(_timeout, delay=ENABLE_TIMEOUT)
     async def keepalive(self):
         def _clear():
-            if self.keepalive_timer is not None:
-                scheduler.cancel(self.keepalive_timer)
+            if self.keepalive_timer is not None and not self.keepalive_timer.cancelled():
+                self.keepalive_timer.cancel()
             if self.keepalive_timeout_timer is not None:
                 scheduler.cancel(self.keepalive_timeout_timer)
         async def _failed():
@@ -1229,8 +1230,8 @@ class Cluster:
             )
 
         _clear()
+        self.keepalive_timer = asyncio.get_running_loop().call_later(60, lambda: asyncio.create_task(self.keepalive()))
         cur_storages = stats.get_offset_storages().copy()
-        self.keepalive_timer = scheduler.delay(self.keepalive, delay=60)
         self.keepalive_timeout_timer = scheduler.delay(_failed, delay=10)
         await _start()
 
