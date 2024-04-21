@@ -11,7 +11,7 @@
   "cluster.success.token.fetched": "成功获取 token。有效时长：$tll。",
   "cluster.error.token.failed": "在尝试获取 token 时发生错误，将在 $delay 秒后重试：$e。",
   "cluster.error.cert.failed": "无法获取证书。$ack。",
-  "cluster.success.cert.requested": "成功获取证书！",
+  "cluster.success.cert.requested": "成功获取证书！到期时间：$time",
   "cluster.debug.get_files.created_session": "成功创建客户端会话。",
   "cluster.debug.get_files.response_status": "文件列表请求状态：$status。",
   "cluster.success.get_files.requested_filelist": "成功获取文件列表！",

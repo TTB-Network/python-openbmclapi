@@ -7,6 +7,7 @@ import inspect
 import io
 
 import re
+import sys
 import time
 from typing import (
     Any,
@@ -303,6 +304,26 @@ def parseObject(data: Any):
 
 
 def parse_iso_time(text: str):
+    if sys.version_info <= (3, 10):
+        date_part, time_part = text.split('T')  
+
+        # 分割日期部分的年、月、日  
+        year, month, day = map(int, date_part.split('-'))  
+
+        # 分割时间部分的时、分、秒和毫秒  
+        hours, minutes, seconds = map(int, time_part.split('.')[0].split(':'))  
+        milliseconds = int(time_part.split('.')[1][:-1])  
+
+        # 创建没有时区信息的datetime对象  
+        naive_dt = datetime.datetime(year, month, day, hours, minutes, seconds, milliseconds * 1000)  
+
+        # 处理时区（Z表示UTC时间）  
+        if text.endswith('Z'):  
+            tz = datetime.timezone.utc  
+            aware_dt = naive_dt.replace(tzinfo=tz)  
+            return aware_dt  
+        else:  
+            return naive_dt  
     return datetime.datetime.fromisoformat(text)
 
 
@@ -362,22 +383,22 @@ def content_next(iterator: typing.Iterator):
 
 def get_timestamp_from_day(day: int):
     t = int(time.time())
-    return t - (t - time.timezone) % 86400 - 86400 * day
+    return t - (t % 86400) - 86400 * day
 
 
 def get_timestamp_from_day_tohour(day: int):
     t = int(time.time())
-    return (t - (t - time.timezone) % 86400 - 86400 * day) / 3600
+    return (t - (t % 86400) - 86400 * day) / 3600
 
 
 def get_timestamp_from_hour_tohour(hour: int):
     t = int(time.time())
-    return (t - (t - time.timezone) % 3600 - 3600 * hour) / 3600
+    return (t - (t % 3600) - 3600 * hour) / 3600
 
 
 def get_timestamp_from_day_today(day: int):
     t = int(time.time())
-    return (t - (t - time.timezone) % 86400 - 86400 * day) / 86400
+    return (t - (t % 86400) - 86400 * day) / 86400
 
 
 def calc_bytes(v):

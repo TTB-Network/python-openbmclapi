@@ -1097,7 +1097,7 @@ class Cluster:
                 logger.terror("cluster.error.cert.failed", ack=ack)
                 return
             self.cert_valid = utils.parse_iso_time(ack["expires"])
-            logger.tsuccess("cluster.success.cert.requested")
+            logger.tsuccess("cluster.success.cert.requested", time=utils.parse_datetime_to_gmt(self.cert_valid.timetuple()))
             certificate.load_text(ack["cert"], ack["key"])
             await dashboard.set_status("cluster.got.cert")
             self.channel_lock.release()
