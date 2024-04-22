@@ -221,30 +221,33 @@ def read_cache():
     if not cache.exists():
         return
     with open(cache, "rb") as r:
-        input = FileDataInputStream(r)
-        last_hour = input.readVarInt()
-        for _ in range(input.readVarInt()):
-            storage_data = DataInputStream(zstd.decompress(input.readBytes(input.readVarInt())))
-            storage = StorageStats(storage_data.readString())
-            (
-                storage._hits,
-                storage._bytes,
-                storage._cache_hits,
-                storage._cache_bytes,
-                storage._failed,
-                storage._last_hits,
-                storage._last_bytes,
-            ) = (
-                storage_data.readVarInt(),
-                storage_data.readVarInt(),
-                storage_data.readVarInt(),
-                storage_data.readVarInt(),
-                storage_data.readVarInt(),
-                storage_data.readVarInt(),
-                storage_data.readVarInt(),
-            )
-            storages[storage.get_name()] = storage
-        globalStats = GlobalStats.from_binary(input.readBytes(input.readVarInt()))
+        try:
+            input = FileDataInputStream(r)
+            last_hour = input.readVarInt()
+            for _ in range(input.readVarInt()):
+                storage_data = DataInputStream(zstd.decompress(input.readBytes(input.readVarInt())))
+                storage = StorageStats(storage_data.readString())
+                (
+                    storage._hits,
+                    storage._bytes,
+                    storage._cache_hits,
+                    storage._cache_bytes,
+                    storage._failed,
+                    storage._last_hits,
+                    storage._last_bytes,
+                ) = (
+                    storage_data.readVarInt(),
+                    storage_data.readVarInt(),
+                    storage_data.readVarInt(),
+                    storage_data.readVarInt(),
+                    storage_data.readVarInt(),
+                    storage_data.readVarInt(),
+                    storage_data.readVarInt(),
+                )
+                storages[storage.get_name()] = storage
+            globalStats = GlobalStats.from_binary(input.readBytes(input.readVarInt()))
+        except:
+            logger.error("统计文件已损坏")
 
 def write_cache():
     data = DataOutputStream()

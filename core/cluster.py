@@ -1,5 +1,6 @@
 import asyncio
 import base64
+from collections import defaultdict
 from enum import Enum
 import hashlib
 import hmac
@@ -22,6 +23,7 @@ from core.config import Config
 from core import certificate, dashboard, unit
 from core import scheduler
 import pyzstd as zstd
+from core.timings import logTqdm, logTqdmType
 import core.utils as utils
 import core.stats as stats
 import core.web as web
@@ -109,7 +111,7 @@ class ParseFileList:
             desc=locale.t("cluster.tqdm.desc.parsing_file_list"),
             unit_scale=True,
             unit=locale.t("cluster.tqdm.unit.file"),
-        ) as pbar:
+        ) as pbar, logTqdm(pbar):
             for _ in range(pbar.total):
                 self.files.append(
                     BMCLAPIFile(
@@ -268,7 +270,7 @@ class FileDownloader:
             unit_divisor=1024,
             total=sum((file.size for file in miss)),
             unit_scale=True,
-        ) as pbar:
+        ) as pbar, logTqdm(pbar, logTqdmType.BYTES):
             await dashboard.set_status_by_tqdm("files.downloading", pbar)
             for file in miss:
                 await self.queues.put(file)
@@ -333,7 +335,7 @@ class FileCheck:
             total=len(files) * len(storages.get_storages()),
             unit=locale.t("cluster.tqdm.unit.file"),
             unit_scale=True,
-        ) as pbar:
+        ) as pbar, logTqdm(pbar):
             self.pbar = pbar
             self.files = files
             await dashboard.set_status_by_tqdm("files.checking", pbar)
@@ -388,7 +390,7 @@ class FileCheck:
                     desc=locale.t("cluster.tqdm.desc.delete_old_files"),
                     unit=locale.t("cluster.tqdm.unit.file"),
                     unit_scale=True,
-                ) as pbar:
+                ) as pbar, logTqdm(pbar):
                     await dashboard.set_status_by_tqdm("files.delete_old", pbar)
                     for storage, filelist in more_files.items():
                         removed = await storage.removes(filelist)
@@ -403,13 +405,14 @@ class FileCheck:
                 with tqdm(
                     total=total_missing_bytes,
                     desc=locale.t(
-                        "cluster.tqdm.desc.copying_files_from_local_storages"
+                        "cluster.tqdm.desc.copying_files_from_other_storages"
                     ),
                     unit="B",
                     unit_divisor=1024,
                     unit_scale=True,
-                ) as pbar:
+                ) as pbar, logTqdm(pbar):
                     await dashboard.set_status_by_tqdm("files.copying", pbar)
+                    removes: defaultdict[Storage, set[BMCLAPIFile]] = defaultdict(set)
                     for storage, files in missing_files_by_storage.items():
                         for file in files:
                             for other_storage in storages.get_storages():
@@ -420,9 +423,12 @@ class FileCheck:
                                     and await other_storage.get_size(file.hash)
                                     == file.size
                                 ):
+                                    data = await other_storage.get(file.hash)
+                                    if data is None:
+                                        continue
                                     size = await storage.write(
                                         file.hash,
-                                        (await other_storage.get(file.hash)).get_data(),
+                                        data.get_data(),
                                     )
                                     if size == -1:
                                         hash = file.hash
@@ -435,8 +441,11 @@ class FileCheck:
                                             target=target_size,
                                         )
                                     else:
-                                        missing_files_by_storage[storage].remove(file)
+                                        removes[storage].add(file)
                                         pbar.update(size)
+                    for storage, files in removes.items():
+                        for file in files:
+                            missing_files_by_storage[storage].remove(file)
         miss = set().union(*missing_files_by_storage.values())
         if not miss:
             file_count = len(files) * len(storages.get_storages())
@@ -615,7 +624,7 @@ class WebDav(Storage):
         self.username = username
         self.password = password
         self.hostname = hostname
-        self.endpoint = endpoint
+        self.endpoint = endpoint.removesuffix("/").removesuffix("\\")
         self.files: dict[str, File] = {}
         self.dirs: list[str] = []
         self.fetch: bool = False
@@ -706,8 +715,8 @@ class WebDav(Storage):
         except Exception as e:
             raise e
 
-    def _endpoint(self, file: str):
-        return f"{self.endpoint}/{file.removeprefix('/')}"
+    def _file_endpoint(self, file: str):
+        return f"{self.endpoint}/download/{file.removeprefix('/')}".replace("//", "/")
 
     async def _mkdir(self, dirs: str):
         r = await self._execute(self.session.check(dirs))
@@ -737,9 +746,9 @@ class WebDav(Storage):
             with tqdm(
                 total=len(dirs),
                 desc=f"[WebDav List Files <endpoint: '{self.endpoint}'>]",
-            ) as pbar:
+            ) as pbar, logTqdm(pbar):
                 await dashboard.set_status_by_tqdm("storage.webdav", pbar)
-                r = await self._execute(self.session.list(self.endpoint))
+                r = await self._execute(self.session.list(self.endpoint + "/download"))
                 if r is asyncio.CancelledError:
                     self.lock.acquire()
                     del pbar
@@ -749,7 +758,7 @@ class WebDav(Storage):
                     files: dict[str, File] = {}
                     r = await self._execute(
                         self.session.list(
-                            self._endpoint(
+                            self._file_endpoint(
                                 dir,
                             ),
                             get_info=True,
@@ -801,7 +810,7 @@ class WebDav(Storage):
                 auth=aiohttp.BasicAuth(self.username, self.password)
             ) as session:
                 async with session.get(
-                    self.hostname + self._endpoint(file[:2] + "/" + file),
+                    self.hostname + self._file_endpoint(file[:2] + "/" + file),
                     allow_redirects=False,
                 ) as resp:
                     f = File(
@@ -845,8 +854,8 @@ class WebDav(Storage):
         return self.files.get(hash, self.empty).size
 
     async def write(self, hash: str, io: io.BytesIO) -> int:
-        path = self._endpoint(f"{hash[:2]}/{hash}")
-        await self._mkdir(self._endpoint(f"{hash[:2]}"))
+        path = self._file_endpoint(f"{hash[:2]}/{hash}")
+        await self._mkdir(self._file_endpoint(f"{hash[:2]}"))
         await self._execute(self.session.upload_to(io.getbuffer(), path))
         self.files[hash] = File(path, hash, len(io.getbuffer()))
         return self.files[hash].size
@@ -858,7 +867,7 @@ class WebDav(Storage):
     async def get_hash(self, hash: str) -> str:
         h = get_hash(hash)
         r = await self._execute(
-            self.session.download_iter(self._endpoint(f"{hash[:2]}/{hash}"))
+            self.session.download_iter(self._file_endpoint(f"{hash[:2]}/{hash}"))
         )
         if r is asyncio.CancelledError:
             return
@@ -876,7 +885,7 @@ class WebDav(Storage):
         success = 0
         for hash in hashs:
             await self._execute(
-                self.session.clean(self._endpoint(f"{hash[:2]}/{hash}"))
+                self.session.clean(self._file_endpoint(f"{hash[:2]}/{hash}"))
             )
             success += 1
         return success

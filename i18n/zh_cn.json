@@ -28,7 +28,7 @@
   "cluster.tqdm.desc.check_files": "检查文件中",
   "cluster.tqdm.desc.delete_old_files": "删除旧文件中",
   "cluster.warn.check_files.failed": "无法删除所有文件！($cur / $total)",
-  "cluster.tqdm.desc.copying_files_from_local_storages": "从本地储存复制文件中",
+  "cluster.tqdm.desc.copying_files_from_other_storages": "从其它储存复制文件中",
   "cluster.error.check_files.failed_to_copy": "无法复制缺失文件：$hash ($file) => $hash ($target)。",
   "cluster.success.check_files.finished": "文件已全部检查成功！文件数量：$count ($size)。",
   "cluster.info.check_files.missing": "文件缺失：$count。",
