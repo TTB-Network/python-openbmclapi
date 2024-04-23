@@ -6,6 +6,7 @@ import hashlib
 import inspect
 import io
 
+import random
 import re
 import sys
 import time
@@ -27,9 +28,11 @@ import typing
 
 from core.config import Config
 from core.env import env
-
+import string
 bytes_unit = ["K", "M", "G", "T", "E"]
 
+def random_string(length: int = 0):
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
 @dataclass
 class Client:

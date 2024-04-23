@@ -1,4 +1,6 @@
 from pathlib import Path
+import random
+import string
 from typing import Any
 import yaml
 import os
@@ -34,7 +36,7 @@ defaults = {
     "advanced.debug": False,
     "advanced.language": "zh_cn",
     "dashboard.username": "admin",
-    "dashboard.password": "123456",
+    "dashboard.password": ''.join(random.choices(string.ascii_letters + string.digits, k=6)),
     "storages": {"bmclapi": {"type": "file", "path": "./bmclapi", "width": 0}},
 }
 
@@ -57,6 +59,8 @@ class CFG:
         value = os.environ.get(key, None) or self._get_value(self.cfg, key.split("."))
         if (value is None or value == "") and def_ is None:
             print(f"[Config] {key} is not set, does it exist?")
+            if key == "dashboard.password":
+                print(f"面板密码为 {defaults[key]}")
             if key in defaults:
                 value = defaults.get(key, None)
                 if value is not None:
