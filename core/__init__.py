@@ -15,7 +15,7 @@ wait_exit: WaitLock = WaitLock()
 
 def init():
     wait_exit.acquire()
-    logger.info(f"Loading... Python Version: {sys.version}")
+    logger.tinfo("core.info.loading", v=sys.version)
     atexit.register(exit)
     try:
         asyncio.run(async_init())
@@ -46,4 +46,4 @@ async def async_init():
 def exit():
     if wait_exit.locked:
         wait_exit.release()
-    logger.success("成功退出")
+    logger.tsuccess("core.success.exit")
