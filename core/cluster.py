@@ -349,7 +349,7 @@ class FileCheck:
                 )
             except asyncio.CancelledError:
                 del pbar
-                return
+                raise asyncio.CancelledError
             missing_files_by_storage: dict[Storage, set[BMCLAPIFile]] = {}
             total_missing_bytes = 0
 
@@ -745,7 +745,7 @@ class WebDav(Storage):
             r = await self._execute(self.session.list(self._download_endpoint()))
             if r is asyncio.CancelledError:
                 self.lock.acquire()
-                return
+                raise asyncio.CancelledError
             dirs = r[1:]
             with tqdm(
                 total=len(dirs),
@@ -1063,7 +1063,6 @@ class Cluster:
             if err and ack:
                 logger.tsuccess("cluster.warn.cluster.force_exit")
                 await self.sio.disconnect()
-                core.wait_exit.release()
 
         task = scheduler.delay(_, args=(True, True), delay=5)
 
