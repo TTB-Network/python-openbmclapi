@@ -624,7 +624,7 @@ class WebDav(Storage):
         self.username = username
         self.password = password
         self.hostname = hostname
-        self.endpoint = endpoint.removesuffix("/").removesuffix("\\")
+        self.endpoint = endpoint.replace("\\", "/").replace("//", "/").removesuffix("/")
         self.files: dict[str, File] = {}
         self.dirs: list[str] = []
         self.fetch: bool = False
@@ -716,7 +716,11 @@ class WebDav(Storage):
             raise e
 
     def _file_endpoint(self, file: str):
-        return f"{self.endpoint}/download/{file.removeprefix('/')}".replace("//", "/")
+        return f"{self._download_endpoint()}/{file.removeprefix('/')}".replace("//", "/")
+
+    def _download_endpoint(self):
+        return f"{self.endpoint}/download"
+
 
     async def _mkdir(self, dirs: str):
         r = await self._execute(self.session.check(dirs))
@@ -737,18 +741,18 @@ class WebDav(Storage):
             self.lock.acquire()
         self.fetch = True
         try:
-            await self._mkdir(self.endpoint)
-            r = await self._execute(self.session.list(self.endpoint))
+            await self._mkdir(self._download_endpoint())
+            r = await self._execute(self.session.list(self._download_endpoint()))
             if r is asyncio.CancelledError:
                 self.lock.acquire()
                 return
             dirs = r[1:]
             with tqdm(
                 total=len(dirs),
-                desc=f"[WebDav List Files <endpoint: '{self.endpoint}'>]",
+                desc=f"[WebDav List Files <endpoint: '{self._download_endpoint()}'>]",
             ) as pbar, logTqdm(pbar):
                 await dashboard.set_status_by_tqdm("storage.webdav", pbar)
-                r = await self._execute(self.session.list(self.endpoint + "/download"))
+                r = await self._execute(self.session.list(self._download_endpoint()))
                 if r is asyncio.CancelledError:
                     self.lock.acquire()
                     del pbar
