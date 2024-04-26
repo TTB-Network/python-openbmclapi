@@ -1,4 +1,5 @@
 import asyncio
+from asyncio import exceptions
 import base64
 from collections import defaultdict
 from enum import Enum
@@ -670,6 +671,7 @@ class WebDav(Storage):
         try:
             hostname = self.hostname
             endpoint = self.endpoint
+            await self._list_all()
             if not self.disabled:
                 logger.tsuccess(
                     "cluster.success.webdav.keepalive",
@@ -683,7 +685,6 @@ class WebDav(Storage):
                     hostname=hostname,
                     endpoint=endpoint,
                 )
-                await self._list_all()
         except webdav3_exceptions.NoConnection:
             if not self.disabled:
                 logger.twarn(
@@ -698,7 +699,7 @@ class WebDav(Storage):
 
     async def _execute(self, target):
         try:
-            return await target
+            return await asyncio.wait_for(target, timeout=5)
         except webdav3_exceptions.NoConnection as e:
             hostname = self.hostname
             endpoint = self.endpoint
@@ -710,7 +711,7 @@ class WebDav(Storage):
             storages.disable(self)
             self.fetch = False
             raise e
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, asyncio.TimeoutError, TimeoutError, exceptions.TimeoutError):
             return asyncio.CancelledError
         except Exception as e:
             raise e
@@ -756,7 +757,7 @@ class WebDav(Storage):
                 if r is asyncio.CancelledError:
                     self.lock.acquire()
                     del pbar
-                    return
+                    raise asyncio.CancelledError
                 for dir in r[1:]:
                     pbar.update(1)
                     files: dict[str, File] = {}
@@ -771,7 +772,7 @@ class WebDav(Storage):
                     if r is asyncio.CancelledError:
                         self.lock.acquire()
                         del pbar
-                        return
+                        raise asyncio.CancelledError
                     for file in r[1:]:
                         files[file["name"]] = File(
                             file["path"].removeprefix(f"/dav/{self.endpoint}/"),
@@ -783,7 +784,7 @@ class WebDav(Storage):
                         except asyncio.CancelledError:
                             self.lock.acquire()
                             del pbar
-                            return
+                            raise asyncio.CancelledError
                         except Exception as e:
                             raise e
                     for remove in set(
