@@ -216,8 +216,8 @@ class FileDownloader:
             file = await self.queues.get()
             hash = get_hash(file.hash)
             size = 0
+            content: io.BytesIO = io.BytesIO()
             try:
-                content: io.BytesIO = io.BytesIO()
                 async with session.get(file.path) as resp:
                     while data := await resp.content.read(IO_BUFFER):
                         if not data:
@@ -652,9 +652,9 @@ class WebDav(Storage):
         file: File
         key: str
         for key, file in sorted(
-            self.cache.items(), key=lambda x: x[1].last_access, reverse=True
+            self.cache.items(), key=lambda x: x[1].expiry, reverse=True
         ):
-            if size <= CACHE_BUFFER and file.last_access + CACHE_TIME >= time.time():
+            if size <= CACHE_BUFFER and file.expiry < time.time() - 600:
                 continue
             old_keys.append(key)
             old_size += file.size
@@ -839,16 +839,19 @@ class WebDav(Storage):
                         f.expiry = time.time() + CACHE_TIME
                     elif resp.status // 100 == 3:
                         f.path = resp.headers.get("Location")
-                        f.expiry = time.time() + float(
-                            min(
-                                (
+                        expiry = float(
+                            min((0, *(
                                     n for n in utils.parse_cache_control(
                                         resp.headers.get("Cache-Control", "")
                                     ).values() if str(n).isnumeric()
-                                ) or 0
+                                ))
                             )
                         )
-                    self.cache[file] = f
+                        if expiry != 0:
+                            f.expiry = time.time() + expiry
+                            self.cache[file] = f
+                        else:
+                            return f
             return self.cache[file]
         except Exception:
             storages.disable(self)
