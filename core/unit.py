@@ -33,7 +33,7 @@ def format_number(number):
         return f"{number}{_NUMBER_[0]}"
     i = min(int(math.floor(math.log(number, 1000))), len(_NUMBER_))
     if i != 0:
-        number = round(number // (1000**i), 2)
+        number = round(number / (1000 ** i), 2)
     return f"{number}{_NUMBER_[i]}"
 
 

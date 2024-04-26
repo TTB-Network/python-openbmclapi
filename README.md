@@ -44,6 +44,8 @@
 
 1. 克隆仓库或从 [Releases](https://github.com/TTB-Network/python-openbmclapi/releases) 中下载代码：
 
+    温馨提示：master 分支提供的代码暂不稳定，建议下载稳定的 Release 版本。
+   
     ```sh
     git clone https://github.com/tianxiu2b2t/python-openbmclapi.git
     cd python-openbmclapi
@@ -51,7 +53,7 @@
 
     仓库镜像地址：https://gitee.com/ttb-network/python-openbmclapi
 
-2. 安装依赖：
+3. 安装依赖：
 
     ```sh
     pip install -r requirements.txt
@@ -59,7 +61,7 @@
 
     > 你可能需要先安装 [Microsoft C++ 生成工具](https://visualstudio.microsoft.com/visual-cpp-build-tools/)。
 
-3. 运行一次主程序生成配置文件：
+4. 运行一次主程序生成配置文件：
 
     ```sh
     python main.py
@@ -67,9 +69,9 @@
 
     如果你看到以下报错信息：`core.exceptions.ClusterIdNotSet`，那么你就可以进行下一步的配置。
 
-4. 在 `config/config.yml` 中，填写你的 `id`（即 `CLUSTER_ID`）和 `secret`（即 `CLUSTER_SECRET`）。
+5. 在 `config/config.yml` 中，填写你的 `id`（即 `CLUSTER_ID`）和 `secret`（即 `CLUSTER_SECRET`）。
 
-5. 重新启动程序。
+6. 重新启动程序。
 
 ## 使用 Docker 部署
 

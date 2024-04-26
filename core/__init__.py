@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import time
 from .env import env as env
 import atexit
@@ -13,7 +14,14 @@ env['STARTUP'] = time.time()
 wait_exit: WaitLock = WaitLock()
 
 def init():
-    asyncio.run(async_init())
+    wait_exit.acquire()
+    logger.tinfo("core.info.loading", v=sys.version)
+    atexit.register(exit)
+    try:
+        asyncio.run(async_init())
+    except KeyboardInterrupt:
+        if wait_exit.locked:
+            wait_exit.release()
 
 async def async_init():
     # first init
@@ -27,3 +35,15 @@ async def async_init():
     scheduler.delay(network_init)
     stats_init()
     await cluster_init()
+
+    await wait_exit.wait()
+    env['EXIT'] = True
+    network_exit()
+    await cluster_exit()
+    scheduler_exit()
+
+
+def exit():
+    if wait_exit.locked:
+        wait_exit.release()
+    logger.tsuccess("core.success.exit")

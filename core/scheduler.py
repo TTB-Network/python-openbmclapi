@@ -1,9 +1,13 @@
 import asyncio
 import time  
 from datetime import datetime
+import traceback
 from apscheduler.schedulers.background import BackgroundScheduler  
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  
+from apscheduler.triggers.interval import IntervalTrigger  
 from apscheduler.job import Job
+
+from core.const import MAX_INSTANCES
 
   
 # 创建一个全局的同步调度器实例  
@@ -12,7 +16,6 @@ async_scheduler: AsyncIOScheduler = None
 # 存储任务
 sync_tasks: dict[int, Job] = {}
 async_tasks: dict[int, Job] = {}
-repeated: dict[int, bool] = {}
 cur_id: int = 0
 
 # 根据当前环境创建异步调度器实例  
@@ -61,47 +64,30 @@ def delay(handler, args = (), kwargs = {}, delay: float = 0) -> int:
         await handler(*args, **kwargs)  
       
     if is_coroutine(handler):  
-        job = async_scheduler.add_job(wrapper_async, 'date', run_date=datetime.fromtimestamp(time.time() + delay))  
+        job = async_scheduler.add_job(wrapper_async, 'date', run_date=datetime.fromtimestamp(time.time() + delay), max_instances=MAX_INSTANCES)  
     else:  
-        job = sync_scheduler.add_job(wrapper, 'date', run_date=datetime.fromtimestamp(time.time() + delay))  
+        job = sync_scheduler.add_job(wrapper, 'date', run_date=datetime.fromtimestamp(time.time() + delay), max_instances=MAX_INSTANCES)  
     return _add_task_id(job, is_coroutine(handler))
   
 def repeat(handler, args = (), kwargs = {}, delay: float = 0, interval: float = 0) -> int:  
     """  
     安排一个重复执行的任务。  
+    如果handler是异步的，使用异步调度器；否则，使用同步调度器。  
     """  
     def wrapper():  
-        global repeated
-        if id not in repeated:
-            try:
-                time.sleep(delay)
-            except (KeyboardInterrupt, asyncio.CancelledError):
-                return
-            repeated[id] = True
         handler(*args, **kwargs)  
 
     async def wrapper_async():  
-        global repeated
-        if id not in repeated:
-            try:
-                asyncio.sleep(delay)
-            except (KeyboardInterrupt, asyncio.CancelledError):
-                return
-            repeated[id] = True
         await handler(*args, **kwargs)  
-    
-      
-    trigger = 'interval' if interval >= 0 else 'date'  
-    start_time = time.time() + delay if trigger == 'date' else None  
 
+    trigger = IntervalTrigger(seconds=interval, start_date=datetime.fromtimestamp(time.time() + delay))
     if is_coroutine(handler):  
-        job = async_scheduler.add_job(wrapper_async, trigger, seconds=interval, next_run_time=start_time)  
+        job = async_scheduler.add_job(wrapper_async, trigger, max_instances=MAX_INSTANCES)  
     else:  
-        job = sync_scheduler.add_job(wrapper, trigger, seconds=interval, next_run_time=start_time)  
+        job = sync_scheduler.add_job(wrapper, trigger, max_instances=MAX_INSTANCES)  
+    return _add_task_id(job, is_coroutine(handler))
 
-    id = _add_task_id(job, is_coroutine(handler))
-    return id
-  
+
 def task(handler, sec: float = 0, *args, **kwargs) -> int:  
     def wrapper():  
         handler(*args, **kwargs)  
@@ -118,10 +104,8 @@ def task(handler, sec: float = 0, *args, **kwargs) -> int:
     
 
 def cancel(task_id: int) -> None:
-    global sync_tasks, async_tasks, repeated
+    global sync_tasks, async_tasks
     try:
-        if task_id in repeated:
-            repeated.pop(task_id)
         if task_id in sync_tasks:
             sync_tasks.pop(task_id).remove()
         if task_id in async_tasks:

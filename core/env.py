@@ -21,4 +21,7 @@ class Environment:
             raise EnvironmentVariableNotExistsError(f"'{key}' is not in environments!")
         return self._environments[key]
 
+    def __contains__(self, key: str) -> bool:
+        return key in self._environments
+
 env = Environment()

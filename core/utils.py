@@ -6,7 +6,9 @@ import hashlib
 import inspect
 import io
 
+import random
 import re
+import sys
 import time
 from typing import (
     Any,
@@ -26,9 +28,11 @@ import typing
 
 from core.config import Config
 from core.env import env
-
+import string
 bytes_unit = ["K", "M", "G", "T", "E"]
 
+def random_string(length: int = 0):
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
 @dataclass
 class Client:
@@ -141,6 +145,14 @@ class Client:
         except:
             self.close()
         return -1
+    
+    async def drain(self):
+        if self.is_closed():
+            return
+        try:
+            await self.writer.drain()
+        except:
+            self.close()
 
     def writelines(self, data: Iterable[bytes | bytearray | memoryview]):
         if self.is_closed():
@@ -295,11 +307,25 @@ def parseObject(data: Any):
 
 
 def parse_iso_time(text: str):
+    if sys.version_info < (3, 11):
+        date_part, time_part = text.split('T')  
+        year, month, day = map(int, date_part.split('-'))  
+        hours, minutes, seconds = map(int, time_part.split('.')[0].split(':'))  
+        milliseconds = int(time_part.split('.')[1][:-1])  
+
+        naive_dt = datetime.datetime(year, month, day, hours, minutes, seconds, milliseconds * 1000)  
+
+        if text.endswith('Z'):  
+            tz = datetime.timezone.utc  
+            aware_dt = naive_dt.replace(tzinfo=tz)  
+            return aware_dt  
+        else:  
+            return naive_dt  
     return datetime.datetime.fromisoformat(text)
 
 
 def parse_datetime_to_gmt(date: time.struct_time):
-    return f"{date.tm_year:04d}:{date.tm_mon:02d}:{date.tm_mday:02d} {date.tm_hour:02d}:{date.tm_min:02d}:{date.tm_sec:02d}"
+    return f"{date.tm_year:04d}-{date.tm_mon:02d}-{date.tm_mday:02d} {date.tm_hour:02d}:{date.tm_min:02d}:{date.tm_sec:02d}"
 
 
 def parse_time_to_gmt(time_: float):
@@ -354,22 +380,22 @@ def content_next(iterator: typing.Iterator):
 
 def get_timestamp_from_day(day: int):
     t = int(time.time())
-    return t - (t - time.timezone) % 86400 - 86400 * day
+    return t - (t % 86400) - 86400 * day
 
 
 def get_timestamp_from_day_tohour(day: int):
     t = int(time.time())
-    return (t - (t - time.timezone) % 86400 - 86400 * day) / 3600
+    return (t - (t % 86400) - 86400 * day) / 3600
 
 
 def get_timestamp_from_hour_tohour(hour: int):
     t = int(time.time())
-    return (t - (t - time.timezone) % 3600 - 3600 * hour) / 3600
+    return (t - (t % 3600) - 3600 * hour) / 3600
 
 
 def get_timestamp_from_day_today(day: int):
     t = int(time.time())
-    return (t - (t - time.timezone) % 86400 - 86400 * day) / 86400
+    return (t - (t % 86400) - 86400 * day) / 86400
 
 
 def calc_bytes(v):
@@ -432,17 +458,17 @@ def format_stime(n):
 
 
 def format_time(k: float):
-    local = time.localtime(k)
+    local = datetime.datetime.fromtimestamp(k).astimezone().utctimetuple()
     return f"{local.tm_hour:02d}:{local.tm_min:02d}:{local.tm_sec:02d}"
 
 
 def format_date(k: float):
-    local = time.localtime(k)
+    local = datetime.datetime.fromtimestamp(k).astimezone().utctimetuple()
     return f"{local.tm_year:04d}-{local.tm_mon:02d}-{local.tm_mday:02d}"
 
 
 def format_datetime(k: float):
-    local = time.localtime(k)
+    local = datetime.datetime.fromtimestamp(k).astimezone().utctimetuple()
     return f"{local.tm_year:04d}-{local.tm_mon:02d}-{local.tm_mday:02d} {local.tm_hour:02d}:{local.tm_min:02d}"
 
 

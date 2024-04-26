@@ -19,7 +19,7 @@ else:
 CACHE_BUFFER_COMPRESSION_MIN_LENGTH: int = 64
 DEBUG: bool = Config.get("advanced.debug")
 ROOT = os.getcwd()
-API_VERSION = "1.10.3"
+API_VERSION = "1.10.4"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
 BASE_URL = Config.get("advanced.url")
 CLUSTER_ID: str = Config.get("cluster.id")
@@ -48,6 +48,7 @@ RESPONSE_HEADERS = {
     "Server": Config.get("web.server_name"),
 }
 RESPONSE_DATE = "%a, %d %b %Y %H:%M:%S GMT"
+RESPONSE_COMPRESSION_IGNORE_SIZE_THRESHOLD: int = 16777216
 STATUS_CODES: dict[int, str] = {
     100: "Continue",
     101: "Switching Protocols",
@@ -112,7 +113,7 @@ COMPRESSOR: dict[str, Any] = {
 }
 LANG: str = Config.get("advanced.language")
 FORCE_SSL: bool = Config.get("web.force_ssl")
-
+MAX_INSTANCES: int = 9999
 
 @dataclass
 class StorageParse:

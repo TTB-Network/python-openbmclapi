@@ -9,7 +9,7 @@ from core.certificate import get_loaded, client_side_ssl, server_side_ssl
 from core.config import Config
 from core.utils import Client
 from core.i18n import locale
-from core import logger, scheduler, web
+from core import env, logger, scheduler, web
 
 
 class Protocol(Enum):
@@ -52,7 +52,7 @@ class ProxyClient:
             ):
                 self.target.write(buffer)
                 self.before = b""
-                await self.target.writer.drain()
+                await self.target.drain()
         except:
             ...
         self.close()
@@ -65,7 +65,7 @@ class ProxyClient:
                 and not self.target.is_closed()
             ):
                 self.origin.write(buffer)
-                await self.origin.writer.drain()
+                await self.origin.drain()
         except:
             ...
         self.close()
@@ -139,7 +139,7 @@ async def _handle_process(client: Client, ssl: bool = False):
             protocol = Protocol.get(header)
             if protocol == Protocol.DETECT:
                 client.write(check_port_key)
-                await client.writer.drain()
+                await client.drain()
                 break
             if protocol == Protocol.Unknown and not ssl and ssl_server:
                 target = Client(
@@ -171,81 +171,86 @@ async def _handle_process(client: Client, ssl: bool = False):
 
 async def check_ports():
     global ssl_server, server, client_side_ssl, check_port_key
-    ports: list[tuple[asyncio.Server, ssl.SSLContext | None]] = []
-    for service in (
-        (server, None),
-        (ssl_server, client_side_ssl if get_loaded() else None),
-    ):
-        if not service[0]:
-            continue
-        ports.append((service[0], service[1]))
-    closed = False
-    for port in ports:
-        try:
-            kwargs = {}
-            if port[1] is not None:
-                kwargs["ssl"] = port[1]
-                kwargs["ssl_handshake_timeout"] = 5
-            if port[0] is None or not port[0].sockets:
-                closed = True
+    try:
+        ports: list[tuple[asyncio.Server, ssl.SSLContext | None]] = []
+        for service in (
+            (server, None),
+            (ssl_server, client_side_ssl if get_loaded() else None),
+        ):
+            if not service[0]:
                 continue
-            client = Client(
-                *(
-                    await asyncio.wait_for(
-                        asyncio.open_connection(
-                            "127.0.0.1",
-                            port[0].sockets[0].getsockname()[1],
-                            **kwargs,
-                        ),
-                        timeout=5,
+            ports.append((service[0], service[1]))
+        closed = False
+        for port in ports:
+            try:
+                kwargs = {}
+                if port[1] is not None:
+                    kwargs["ssl"] = port[1]
+                    kwargs["ssl_handshake_timeout"] = 5
+                if port[0] is None or not port[0].sockets:
+                    closed = True
+                    continue
+                client = Client(
+                    *(
+                        await asyncio.wait_for(
+                            asyncio.open_connection(
+                                "127.0.0.1",
+                                port[0].sockets[0].getsockname()[1],
+                                **kwargs,
+                            ),
+                            timeout=5,
+                        )
                     )
                 )
-            )
-            client.write(check_port_key)
-            await client.writer.drain()
-            key = await client.read(len(check_port_key), 5)
-        except:
-            logger.twarn(
-                "core.warn.port_closed",
-                port=port[0].sockets[0].getsockname()[1],
-            )
-            logger.error(traceback.format_exc())
-            closed = True
-    if closed:
-        restart()
-    await asyncio.sleep(5)
-
+                client.write(check_port_key)
+                await client.drain()
+                key = await client.read(len(check_port_key), 5)
+            except:
+                logger.twarn(
+                    "core.warn.port_closed",
+                    port=port[0].sockets[0].getsockname()[1],
+                )
+                logger.error(traceback.format_exc())
+                closed = True
+        if closed:
+            restart()
+    except:
+        ...
 
 async def start():
     global server, ssl_server
-    try:
-        server = await asyncio.start_server(_handle, port=PORT)
-        ssl_server = await asyncio.start_server(
-            _handle_ssl,
-            port=0 if SSL_PORT == PORT else SSL_PORT,
-            ssl=server_side_ssl if get_loaded() else None,
-        )
-        logger.info(locale.t("core.info.listening", port=PORT))
-        logger.info(
-            locale.t(
-                "core.info.listening_ssl",
-                port=ssl_server.sockets[0].getsockname()[1],
+    while "EXIT" not in env:
+        close()
+        try:
+            server = await asyncio.start_server(_handle, port=PORT)
+            ssl_server = await asyncio.start_server(
+                _handle_ssl,
+                port=0 if SSL_PORT == PORT else SSL_PORT,
+                ssl=server_side_ssl if get_loaded() else None,
             )
-        )
-        async with server, ssl_server:
-            await asyncio.gather(server.serve_forever(), ssl_server.serve_forever())
-    except asyncio.CancelledError:
-        ...
-    except:
-        logger.error(traceback.format_exc())
-
+            logger.info(locale.t("core.info.listening", port=PORT))
+            logger.info(
+                locale.t(
+                    "core.info.listening_ssl",
+                    port=ssl_server.sockets[0].getsockname()[1],
+                )
+            )
+            async with server, ssl_server:
+                await asyncio.gather(server.serve_forever(), ssl_server.serve_forever())
+        except asyncio.CancelledError:
+            close()
+            if "EXIT" in env:
+                return
+        except:
+            close()
+            logger.error(traceback.format_exc())
 
 async def init():
+    scheduler.repeat(check_ports, delay=5, interval=5)
     await start()
 
 def restart():
     close()
-    scheduler.delay(start)
 
 
 def close():

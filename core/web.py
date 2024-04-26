@@ -378,7 +378,7 @@ class WebSocket:
                 0,
             ).getbuffer()
         )
-        await self.conn.writer.drain()
+        await self.conn.drain()
 
     async def close(self, data: WEBSOCKETCONTENT = b"", status: int = 1000):
         if self.is_closed():
@@ -390,7 +390,7 @@ class WebSocket:
                 status,
             ).getbuffer()
         )
-        await self.conn.writer.drain()
+        await self.conn.drain()
         self.keepalive_thread.cancel()
         self.closed = True
         await self.conn.writer.wait_closed()
@@ -815,7 +815,11 @@ class Response:
         else:
             content = self.content
         if isinstance(content, Path):
+            self.content_type = self.content_type or self._get_content_type(content)
             length = content.stat().st_size
+            if length <= RESPONSE_COMPRESSION_IGNORE_SIZE_THRESHOLD:
+                async with aiofiles.open(content, "rb") as r:
+                    content = io.BytesIO(await r.read())
         elif isinstance(content, io.BytesIO):
             length = len(content.getbuffer())
         start_bytes, end_bytes = 0, 0
@@ -892,10 +896,10 @@ class Response:
         if length != 0:
             if isinstance(content, Compressor):
                 client.write(content.data)
-                await client.writer.drain()
+                await client.drain()
             elif isinstance(content, io.BytesIO):
                 client.write(content.getbuffer()[start_bytes : end_bytes + 1])
-                await client.writer.drain()
+                await client.drain()
             elif isinstance(content, Path):
                 async with aiofiles.open(content, "rb") as r:
                     cur_length: int = 0
@@ -903,7 +907,7 @@ class Response:
                     while data := await r.read(min(IO_BUFFER, length - cur_length)):
                         cur_length += len(data)
                         client.write(data)
-                        await client.writer.drain()
+                        await client.drain()
             else:
                 cur_length: int = 0
                 bound: bool = False
@@ -913,10 +917,10 @@ class Response:
                         data = data[: cur_length - length]
                         bound = True
                     client.write(data)
-                    await client.writer.drain()
+                    await client.drain()
                     if bound:
                         break
-        if (self._headers.get("Connection") or "Closed").lower() == "closed":
+        if (self._headers.get("Connection") or "keep-alive").lower() == "closed":
             client.close()
 
 
