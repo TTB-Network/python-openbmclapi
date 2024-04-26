@@ -44,7 +44,7 @@
   "cluster.erorr.cluster.storage.available": "当前没有可用存储。",
   "cluster.success.cluster.finished_file_check": "文件检查已完成，耗时：$time 秒。",
   "cluster.debug.cluster.blocked": "还在再次尝试上线节点？已阻止这次尝试。 (\nFrom bangbang93:\n 谁他妈\n 一秒钟发了好几百个enable请求\n ban了解一下等我回杭州再看\n ban了先\n\n > 2024/3/30 14:07 GMT+8\n)",
-  "cluster.warn.cluster.disabled": "已关闭节点。",
+  "cluster.success.cluster.disabled": "已关闭节点。",
   "cluster.error.cluster.reached_maximum_retry_count": "重试次数已到达 $count 次，已关闭节点。",
   "cluster.info.cluster.retry": "将在 $t 秒后重试。",
   "cluster.info.cluster.storage_count": "当前总计有 $total 个储存，$local 个本地储存，$webdav 个 WebDav 储存。",

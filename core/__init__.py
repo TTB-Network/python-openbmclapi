@@ -13,8 +13,6 @@ env['STARTUP'] = time.time()
 wait_exit: WaitLock = WaitLock()
 
 def init():
-    wait_exit.acquire()
-    atexit.register(exit)
     asyncio.run(async_init())
 
 async def async_init():
@@ -29,14 +27,3 @@ async def async_init():
     scheduler.delay(network_init)
     stats_init()
     await cluster_init()
-
-    await wait_exit.wait()
-    network_exit()
-    await cluster_exit()
-    scheduler_exit()
-
-
-def exit():
-    if wait_exit.locked:
-        wait_exit.release()
-    logger.success("成功退出")

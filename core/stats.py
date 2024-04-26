@@ -613,7 +613,7 @@ def init():
     read_storage()
     _write_database()
     logger.tinfo(
-        "stats.info.initization", time = f"{(time.monotonic() - start):.2f}"
+        "stats.info.initialization", time = f"{(time.monotonic() - start):.2f}"
     )
     scheduler.delay(write_database)
 
