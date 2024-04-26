@@ -530,12 +530,19 @@ def daily():
         )
     return data
 
-def daily_pro(day):
+def stats_pro(day):
     format_day = (day == 30)
     t = get_query_hour_tohour(0) - (day * 24)
     g_ua = ",".join((f"`{ua.value}`" for ua in UserAgent))
     s_ua: defaultdict[str, int] = defaultdict(int)
     s_ip: dict[int, defaultdict[str, int]] = {}
+    file_bytes, file_download = 0, 0
+    for q in queryAllData(
+        "select bytes, hit from access_storage where hour >= ?", 
+        t
+    ):
+        file_bytes += q[0]
+        file_download += q[1]
     for q in queryAllData(
         f"select hour, {g_ua} from access_ua where hour >= ?",
         t,
@@ -565,4 +572,6 @@ def daily_pro(day):
             for info, count in sorted(addresses.items(), key=lambda x: x[0].country)
         ],
         "distinct_ip": {(format_datetime(hour * 3600) if not format_day else format_date(hour * 86400)): len(ip) for hour, ip in sorted(s_ip.items())},
+        "bytes": file_bytes,
+        "downloads": file_download
     }

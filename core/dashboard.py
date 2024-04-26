@@ -177,7 +177,7 @@ async def process(type: str, data: Any):
                 day = 30
             elif t >= 3:
                 day = -1
-        return stats.daily_pro(day)
+        return stats.stats_pro(day)
     if type == "system_details":
         return system.get_loads_detail()
 

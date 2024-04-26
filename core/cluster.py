@@ -1,4 +1,5 @@
 import asyncio
+from asyncio import exceptions
 import base64
 from collections import defaultdict
 from enum import Enum
@@ -215,8 +216,8 @@ class FileDownloader:
             file = await self.queues.get()
             hash = get_hash(file.hash)
             size = 0
+            content: io.BytesIO = io.BytesIO()
             try:
-                content: io.BytesIO = io.BytesIO()
                 async with session.get(file.path) as resp:
                     while data := await resp.content.read(IO_BUFFER):
                         if not data:
@@ -651,9 +652,9 @@ class WebDav(Storage):
         file: File
         key: str
         for key, file in sorted(
-            self.cache.items(), key=lambda x: x[1].last_access, reverse=True
+            self.cache.items(), key=lambda x: x[1].expiry, reverse=True
         ):
-            if size <= CACHE_BUFFER and file.last_access + CACHE_TIME >= time.time():
+            if size <= CACHE_BUFFER and file.expiry < time.time() - 600:
                 continue
             old_keys.append(key)
             old_size += file.size
@@ -670,6 +671,7 @@ class WebDav(Storage):
         try:
             hostname = self.hostname
             endpoint = self.endpoint
+            await self._list_all()
             if not self.disabled:
                 logger.tsuccess(
                     "cluster.success.webdav.keepalive",
@@ -683,7 +685,6 @@ class WebDav(Storage):
                     hostname=hostname,
                     endpoint=endpoint,
                 )
-                await self._list_all()
         except webdav3_exceptions.NoConnection:
             if not self.disabled:
                 logger.twarn(
@@ -698,7 +699,7 @@ class WebDav(Storage):
 
     async def _execute(self, target):
         try:
-            return await target
+            return await asyncio.wait_for(target, timeout=5)
         except webdav3_exceptions.NoConnection as e:
             hostname = self.hostname
             endpoint = self.endpoint
@@ -710,7 +711,7 @@ class WebDav(Storage):
             storages.disable(self)
             self.fetch = False
             raise e
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, asyncio.TimeoutError, TimeoutError, exceptions.TimeoutError):
             return asyncio.CancelledError
         except Exception as e:
             raise e
@@ -756,7 +757,7 @@ class WebDav(Storage):
                 if r is asyncio.CancelledError:
                     self.lock.acquire()
                     del pbar
-                    return
+                    raise asyncio.CancelledError
                 for dir in r[1:]:
                     pbar.update(1)
                     files: dict[str, File] = {}
@@ -771,7 +772,7 @@ class WebDav(Storage):
                     if r is asyncio.CancelledError:
                         self.lock.acquire()
                         del pbar
-                        return
+                        raise asyncio.CancelledError
                     for file in r[1:]:
                         files[file["name"]] = File(
                             file["path"].removeprefix(f"/dav/{self.endpoint}/"),
@@ -783,7 +784,7 @@ class WebDav(Storage):
                         except asyncio.CancelledError:
                             self.lock.acquire()
                             del pbar
-                            return
+                            raise asyncio.CancelledError
                         except Exception as e:
                             raise e
                     for remove in set(
@@ -838,13 +839,23 @@ class WebDav(Storage):
                         f.expiry = time.time() + CACHE_TIME
                     elif resp.status // 100 == 3:
                         f.path = resp.headers.get("Location")
-                        f.expiry = time.time() + utils.parse_cache_control(
-                            resp.headers.get("Cache-Control", "")
+                        expiry = float(
+                            min((0, *(
+                                    n for n in utils.parse_cache_control(
+                                        resp.headers.get("Cache-Control", "")
+                                    ).values() if str(n).isnumeric()
+                                ))
+                            )
                         )
-                    self.cache[file] = f
+                        if expiry != 0:
+                            f.expiry = time.time() + expiry
+                            self.cache[file] = f
+                        else:
+                            return f
             return self.cache[file]
-        except Exception as e:
+        except Exception:
             storages.disable(self)
+            logger.error(traceback.format_exc())
 
     async def exists(self, hash: str) -> bool:
         await self._wait_lock()
@@ -927,7 +938,7 @@ class StorageManager:
         storage.disabled = True
         if self.available and not self.get_storages():
             self.available = False
-            scheduler.delay(cluster.disable)
+            scheduler.delay(cluster.retry)
 
     def add_storage(self, storage):
         self._storages.append(storage)
@@ -1243,7 +1254,7 @@ class Cluster:
 
         _clear()
         self.keepalive_timer = asyncio.get_running_loop().call_later(60, lambda: asyncio.create_task(self.keepalive()))
-        cur_storages = stats.get_offset_storages().copy()
+        cur_storages = stats.get_offset_storages()
         self.keepalive_timeout_timer = scheduler.delay(_failed, delay=10)
         await _start()
 
@@ -1452,6 +1463,13 @@ async def init():
                 ).io.getbuffer()
             )
         dashboard.websockets.remove(ws)
+
+    @app.get("/config/dashboard.js")
+    async def _():
+        config = {
+            "websocket": DASHBOARD_WEBSOCKET
+        }
+        return f'const __CONFIG__={json.dumps(config)}'
 
     @app.get("/auth")
     async def _(request: web.Request):
