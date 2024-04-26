@@ -837,6 +837,7 @@ class WebDav(Storage):
                             f.headers[field] = resp.headers.get(field)
                         f.set_data(await resp.read())
                         f.expiry = time.time() + CACHE_TIME
+                        self.cache[file] = f
                     elif resp.status // 100 == 3:
                         f.path = resp.headers.get("Location")
                         expiry = float(
@@ -847,11 +848,10 @@ class WebDav(Storage):
                                 ))
                             )
                         )
-                        if expiry != 0:
-                            f.expiry = time.time() + expiry
-                            self.cache[file] = f
-                        else:
+                        if expiry == 0:
                             return f
+                        f.expiry = time.time() + expiry
+                    self.cache[file] = f
             return self.cache[file]
         except Exception:
             storages.disable(self)
