@@ -1001,7 +1001,6 @@ class StorageManager:
                 break
         if not exists:
             return None
-        print("exists")
         file = await storage.get(hash, offset)
         if file is not None:
             self._storage_stats[storage].hit(file, offset, ip, ua)
@@ -1394,7 +1393,6 @@ async def init():
         data = await storages.get(
             hash, start_bytes, request.get_ip(), request.get_user_agent()
         )
-        print(data)
         if not data:
             return web.Response(status_code=404)
         if data.is_url() and isinstance(data.get_path(), str):
@@ -1496,24 +1494,6 @@ async def init():
         except:
             ...
         return await dashboard.process(name, data.get("content"))
-
-
-    @app.get("/files")
-    async def _():
-        files = sorted(cluster.downloader.files, key=lambda x: x.hash)
-        return web.Response(''.join((f'<a href="/dev_download/{file.hash}" target="_blank">{file}</a></br>' for file in files)), content_type="text/html")
-
-    @app.get("/dev_download/{hash}")
-    async def _(hash: str):
-        cur_time = int(time.time() * 1000.0) + 600
-        e = utils.base36_encode(cur_time)
-        s = hashlib.sha1()
-        s.update(CLUSTER_SECERT.encode("utf-8"))
-        s.update(hash.encode("utf-8"))
-        s.update(e.encode("utf-8"))
-        return web.RedirectResponse(
-            f"/download/{hash}?s={base64.urlsafe_b64encode(s.digest()).decode().strip('=')}&e={e}"
-        )
 
     app.redirect("/", "/pages/")
 
