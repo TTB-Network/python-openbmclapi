@@ -841,9 +841,11 @@ class WebDav(Storage):
                         f.path = resp.headers.get("Location")
                         f.expiry = time.time() + float(
                             min(
-                                n for n in utils.parse_cache_control(
-                                    resp.headers.get("Cache-Control", "")
-                                ).values() if str(n).isnumeric()
+                                (
+                                    n for n in utils.parse_cache_control(
+                                        resp.headers.get("Cache-Control", "")
+                                    ).values() if str(n).isnumeric()
+                                ) or 0
                             )
                         )
                     self.cache[file] = f
@@ -1249,7 +1251,7 @@ class Cluster:
 
         _clear()
         self.keepalive_timer = asyncio.get_running_loop().call_later(60, lambda: asyncio.create_task(self.keepalive()))
-        cur_storages = stats.get_offset_storages().copy()
+        cur_storages = stats.get_offset_storages()
         self.keepalive_timeout_timer = scheduler.delay(_failed, delay=10)
         await _start()
 
@@ -1458,6 +1460,13 @@ async def init():
                 ).io.getbuffer()
             )
         dashboard.websockets.remove(ws)
+
+    @app.get("/config/dashboard.js")
+    async def _():
+        config = {
+            "websocket": DASHBOARD_WEBSOCKET
+        }
+        return f'const __CONFIG__={json.dumps(config)}'
 
     @app.get("/auth")
     async def _(request: web.Request):

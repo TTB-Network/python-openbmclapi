@@ -36,6 +36,7 @@ defaults = {
     "advanced.debug": False,
     "advanced.language": "zh_cn",
     "dashboard.username": "admin",
+    "dashboard.type": "websocket",
     "dashboard.password": ''.join(random.choices(string.ascii_letters + string.digits, k=6)),
     "storages": {"bmclapi": {"type": "file", "path": "./bmclapi", "width": 0}},
 }
