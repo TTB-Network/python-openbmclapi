@@ -171,8 +171,6 @@ class FileDownloader:
                 )
                 modified = utils.parse_time_to_gmt(self.last_modified / 1000)
                 logger.tinfo("cluster.info.get_files.info", time=modified, count=unit.format_number(len(files)))
-                if DEBUG:
-                    self.files = files
                 return files
 
     async def _download_temporarily_file(self, hash: str):
