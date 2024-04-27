@@ -1263,6 +1263,11 @@ class Compressor:
     data: io.BytesIO
 
 
+def get_xff(x_forwarded_for: str, index: int = 1):   
+    index -= 1
+    ip_addresses = x_forwarded_for.split(',')  
+    return ip_addresses[max(len(ip_addresses) - 1, index)].strip()  
+
 def compressor(header: str, data: io.BytesIO | bytes | memoryview) -> Compressor:
     if isinstance(data, io.BytesIO):
         data = data.getbuffer()

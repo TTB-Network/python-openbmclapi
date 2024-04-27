@@ -42,6 +42,7 @@ SIGN_SKIP: bool = Config.get("advanced.skip_sign")
 DASHBOARD_USERNAME: str = Config.get("dashboard.username")
 DASHBOARD_PASSWORD: str = Config.get("dashboard.password")
 DASHBOARD_WEBSOCKET: bool = Config.get("dashboard.websocket")
+print(Config.get("dashboard.websocket"))
 TIMEOUT: int = Config.get("advanced.timeout")
 REQUEST_BUFFER: int = Config.get("advanced.request_buffer")
 FILE_REDIRECTS = ["index.html", "index.htm", "default.html", "default.htm"]
@@ -115,6 +116,7 @@ COMPRESSOR: dict[str, Any] = {
 LANG: str = Config.get("advanced.language")
 FORCE_SSL: bool = Config.get("web.force_ssl")
 MAX_INSTANCES: int = 9999
+AUTO_DOWNLOAD_RELEASE: bool = Config.get("update.auto_download")
 
 @dataclass
 class StorageParse:

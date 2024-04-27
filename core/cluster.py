@@ -230,14 +230,15 @@ class FileDownloader:
                         hash.update(data)
                 if file.hash != hash.hexdigest():
                     raise EOFError
-                r = await self._mount_file(file, content)
+                r = 0#await self._mount_file(file, content)
                 if r[0] == -1:
                     raise EOFError
             except asyncio.CancelledError:
                 break
             except:
-                pbar.update(-size)
-                await self.queues.put(file)
+                ...
+            pbar.update(-size)
+            await self.queues.put(file)
         await session.close()
 
     async def _mount_file(
@@ -774,6 +775,8 @@ class WebDav(Storage):
                         del pbar
                         raise asyncio.CancelledError
                     for file in r[1:]:
+                        if file['isdir']:
+                            continue
                         files[file["name"]] = File(
                             file["path"].removeprefix(f"/dav/{self.endpoint}/"),
                             file["name"],
@@ -1289,36 +1292,7 @@ token = TokenManager()
 cluster: Optional[Cluster] = None
 last_status: str = "-"
 storages = StorageManager()
-github_api = "https://api.github.com"
-download_url = ""
 
-
-async def check_update():
-    global fetched_version
-    fetched_version = "Unknown"
-    async with aiohttp.ClientSession(base_url=github_api) as session:
-        logger.tinfo("cluster.info.check_update.checking")
-        try:
-            async with session.get(
-                "/repos/TTB-Network/python-openbmclapi/releases/latest",
-                timeout=5
-            ) as req:
-                req.raise_for_status()
-                data = await req.json()
-                fetched_version = data["tag_name"]
-            if fetched_version != VERSION:
-                logger.tsuccess(
-                    "cluster.success.check_update.new_version",
-                    latest=fetched_version,
-                )
-                await dashboard.trigger("version")
-            else:
-                logger.tinfo("cluster.info.check_update.already_up_to_date")
-        except aiohttp.ClientError as e:
-            logger.terror("cluster.error.check_update.failed", e=e)
-        except asyncio.CancelledError:
-            await session.close()
-            return
 
 async def init():
     if CLUSTER_ID == "":
@@ -1507,8 +1481,10 @@ async def init():
 
     app.redirect("/", "/pages/")
 
-    scheduler.repeat(check_update, interval=3600)
 
+    @app.get("/files")
+    async def _():
+        return web.Response('<br/>'.join((f'<a href="{file.path}" target="_blank">{file.path}</a>'for file in cluster.downloader.files)), content_type="text/html")
 
 async def exit():
     global cluster
