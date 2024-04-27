@@ -10,14 +10,12 @@ import json
 from mimetypes import guess_type
 import os
 from pathlib import Path
-from core.i18n import locale
 import re
 import stat
 import struct
 import tempfile
 import time
 import traceback
-from core import cluster
 import zlib
 from core.exceptions import (
     WebSocketError,
@@ -49,12 +47,12 @@ from core.utils import (
 )
 import filetype
 import urllib.parse as urlparse
-from core import timer as Timer
+#from core import timer as Timer
 from core.logger import logger
 from core.config import Config
 from core.utils import Client
-from core import cluster
 from core.const import *
+from . import scheduler
 
 
 @dataclass
@@ -68,11 +66,11 @@ class Cookie:
     size: Optional[int] = None
     http_only: Optional[bool] = None
     secure: Optional[bool] = None
-    same_site: Optional[str] = None  # 根据RFC6265，应为"Strict", "Lax", "None"
-    priority: Optional[str] = None  # 根据某些浏览器实现，可能为"Low", "Medium", "High"
+    same_site: Optional[str] = None
+    priority: Optional[str] = None
 
     def __str__(self) -> str:
-        # 格式化Cookie为字符串
+
         cookie_str = f"{self.name}={self.value}"
         for attr, value in asdict(self).items():
             if attr in ["name", "value"] or value is None:
@@ -380,7 +378,7 @@ class WebSocket:
                 0,
             ).getbuffer()
         )
-        await self.conn.writer.drain()
+        await self.conn.drain()
 
     async def close(self, data: WEBSOCKETCONTENT = b"", status: int = 1000):
         if self.is_closed():
@@ -392,7 +390,7 @@ class WebSocket:
                 status,
             ).getbuffer()
         )
-        await self.conn.writer.drain()
+        await self.conn.drain()
         self.keepalive_thread.cancel()
         self.closed = True
         await self.conn.writer.wait_closed()
@@ -747,7 +745,7 @@ class Response:
 
     def _get_content_type(self, content):
         if isinstance(content, (AsyncGenerator, Iterator, AsyncIterator, Generator)):
-            return "bytes"
+            return "application/octet-stream"
         if isinstance(content, str):
             return "text/plain; charset=utf-8"
         content = (
@@ -817,7 +815,11 @@ class Response:
         else:
             content = self.content
         if isinstance(content, Path):
+            self.content_type = self.content_type or self._get_content_type(content)
             length = content.stat().st_size
+            if length <= RESPONSE_COMPRESSION_IGNORE_SIZE_THRESHOLD:
+                async with aiofiles.open(content, "rb") as r:
+                    content = io.BytesIO(await r.read())
         elif isinstance(content, io.BytesIO):
             length = len(content.getbuffer())
         start_bytes, end_bytes = 0, 0
@@ -870,7 +872,6 @@ class Response:
             }
         )
         if isinstance(content, Compressor):
-            print()
             self.set_headers(
                 {
                     "Content-Encoding": compression.type,
@@ -895,10 +896,10 @@ class Response:
         if length != 0:
             if isinstance(content, Compressor):
                 client.write(content.data)
-                await client.writer.drain()
+                await client.drain()
             elif isinstance(content, io.BytesIO):
                 client.write(content.getbuffer()[start_bytes : end_bytes + 1])
-                await client.writer.drain()
+                await client.drain()
             elif isinstance(content, Path):
                 async with aiofiles.open(content, "rb") as r:
                     cur_length: int = 0
@@ -906,7 +907,7 @@ class Response:
                     while data := await r.read(min(IO_BUFFER, length - cur_length)):
                         cur_length += len(data)
                         client.write(data)
-                        await client.writer.drain()
+                        await client.drain()
             else:
                 cur_length: int = 0
                 bound: bool = False
@@ -916,10 +917,10 @@ class Response:
                         data = data[: cur_length - length]
                         bound = True
                     client.write(data)
-                    await client.writer.drain()
+                    await client.drain()
                     if bound:
                         break
-        if (self._headers.get("Connection") or "Closed").lower() == "closed":
+        if (self._headers.get("Connection") or "keep-alive").lower() == "closed":
             client.close()
 
 
@@ -958,6 +959,7 @@ class Request:
         self._check_websocket = False
         self._json = None
         self._form = None
+        self._xff = False
 
     def is_ssl(self):
         return self.client.is_ssl
@@ -992,6 +994,9 @@ class Request:
             data, self._body = self._body.split(b"\r\n\r\n", 1)
             self._headers = Header(data)
             self._user_agent = self._headers.get("user-agent")
+            if not self._xff and X_FORWARDED_FOR != 0:
+                self._xff = True
+                self._ip = get_xff(await self.get_headers("X-Forwarded-For", ""), X_FORWARDED_FOR) or self._ip
         return self._headers.get(key.lower(), def_)
 
     async def get_cookies(self):
@@ -1021,6 +1026,12 @@ class Request:
         ) and self._read_length < self._length:
             self._read_length += len(data)
             yield data
+
+    async def read_all(self) -> bytes:
+        buf = io.BytesIO()
+        async for data in self.content_iter():
+            buf.write(data)
+        return buf.getvalue()
 
     async def skip(self):
         if self._read_length and self._length == self._read_length:
@@ -1219,7 +1230,7 @@ class FormParse:
 class Statistics:
     def __init__(self) -> None:
         self.qps = {}
-        Timer.repeat(self._clear, delay=1, interval=1)
+        scheduler.repeat(self._clear, delay=1, interval=1)
 
     def _clear(self):
         t = self.get_time()
@@ -1256,6 +1267,13 @@ class Compressor:
     data: io.BytesIO
 
 
+def get_xff(x_forwarded_for: str, index: int = 1):   
+    index -= 1
+    ip_addresses = x_forwarded_for.split(',')  
+    if not ip_addresses:
+        return None
+    return ip_addresses[min(len(ip_addresses) - 1, index)].strip()  
+
 def compressor(header: str, data: io.BytesIO | bytes | memoryview) -> Compressor:
     if isinstance(data, io.BytesIO):
         data = data.getbuffer()
@@ -1273,6 +1291,11 @@ async def handle(data, client: Client):
     try:
         request: Request = Request(data, client)
         statistics.add_qps()
+        if FORCE_SSL and not client.is_ssl:
+            await RedirectResponse("https://" + await request.get_headers("Host") + request.url)(request, client)
+            await request.skip()
+            request.client.set_log_network(None)
+            return
         log = False
         async for resp in app.handle(request):
             await resp(request, client)
@@ -1303,13 +1326,3 @@ async def _():
     return zlib.decompress(
         b'x\x9cc``d`b\x10\x10`\x00\xd2\n\x0c\x19,\x0c\x0cj\x0c\x0c\x0c\n\n\x10\xbe\x86 \x03C\x1fPL\x03(&\x00\x12g\x80\x88\x83\x01\x0b\x03\x06\x90\xe1\xfd\xfd\x7f\x14\x0f\x1e\x0c\x8c\x12\xac\x98^\xfaG:F\x0f/r\xc3\x9f\\\xfd\x03\xe0_\x8a\x80\x06\xb4\x8cq@.g\x04F\xcb\x99Q<\x8aG\xf1(\x1e*X\x9a\xe7\x0bI\x98\xdav32\xf2\x01\xeb"v\xa20H-5\xdd\x002\x0bb6\xf6\xb6\x13&f\x1fv\xf6\x0fd\xf8\x0ft\xfa\x1b\xc5\xa3x\xa4cB\xf9\x8b\x9e\xe5?z\xf9BH\x9e\x1a\xf6\xa3\x96\xbf\xec\x18\xf6\xe3\x93\x1f\x0e\xf6\x0fd\xf8\x0ft\xfa\x1b\xc5\xb4\xc7\x94\x8e3\x0cu\x00\x00-\xd7@W'
     )
-
-
-async def init():
-    logger.tinfo("web.info.loading")
-    cluster.stats.init()
-    await cluster.init()
-
-
-async def close():
-    await cluster.close()

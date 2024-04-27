@@ -5,7 +5,6 @@ import time
 import traceback
 
 from core.logger import logger
-import core
 
 ssl_dir = Path(".ssl")
 ssl_dir.mkdir(exist_ok=True, parents=True)
@@ -44,10 +43,7 @@ def load_text(cert: str, key: str):
         k.write(key)
     if load_cert(cert_file, key_file):
         logger.tsuccess("cert.success.loaded_cert")
-        core.restart = True
-        if core.server:
-            core.server.close()
-        if core.ssl_server:
-            core.ssl_server.close()
+        from core.network import restart
+        restart()
     cert_file.unlink()
     key_file.unlink()

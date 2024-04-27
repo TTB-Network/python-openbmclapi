@@ -1,4 +1,6 @@
 from pathlib import Path
+import random
+import string
 from typing import Any
 import yaml
 import os
@@ -17,8 +19,10 @@ defaults = {
     "cache.buffer": 536870912,
     "cache.time": 1800,
     "cache.check": 360,
+    "cache.enable": True,
     "download.threads": 64,
     "web.server_name": "TTB-Network",
+    "web.x_forwarded_for": 0,
     "file.check": "size",
     "web.port": 8080,
     "web.ssl_port": 8800,
@@ -33,8 +37,10 @@ defaults = {
     "advanced.skip_sign": False,
     "advanced.debug": False,
     "advanced.language": "zh_cn",
+    "update.auto_download": False,
     "dashboard.username": "admin",
-    "dashboard.password": "123456",
+    "dashboard.websocket": True,
+    "dashboard.password": ''.join(random.choices(string.ascii_letters + string.digits, k=6)),
     "storages": {"bmclapi": {"type": "file", "path": "./bmclapi", "width": 0}},
 }
 
@@ -48,6 +54,7 @@ class CFG:
         else:
             for key, value in defaults.items():
                 self.set(key, value)
+            print(f"[Condig] dashboard password: {self.get('dashboard.password')}")
 
     def load(self):
         with open(self.file, "r", encoding="utf-8") as f:
@@ -55,13 +62,13 @@ class CFG:
 
     def get(self, key: str, def_: Any = None) -> Any:
         value = os.environ.get(key, None) or self._get_value(self.cfg, key.split("."))
-        if (value is None or value == "") and def_ is None:
+        if value is None and def_ is None:
             print(f"[Config] {key} is not set, does it exist?")
             if key in defaults:
                 value = defaults.get(key, None)
                 if value is not None:
                     self.set(key, value)
-        return value if value else defaults.get(key, def_)
+        return value
 
     def set(self, key: str, value: Any):
         self._set_value(self.cfg, key.split("."), value)
@@ -86,5 +93,7 @@ class CFG:
             dict_obj = dict_obj[key]
         dict_obj[keys[-1]] = value
 
-
+if not os.path.exists("./config"):
+    print("The config dir is not exists.")
+    os.mkdir("./config")
 Config: CFG = CFG("./config/config.yml")

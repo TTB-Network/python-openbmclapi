@@ -1,7 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
+import datetime
 from enum import Enum
-import os
 from pathlib import Path
 import sqlite3
 import time
@@ -10,33 +10,29 @@ from typing import Any, Optional
 import pyzstd as zstd
 from tqdm import tqdm
 
+from core.timings import timing
 from core.utils import (
     DataInputStream,
     DataOutputStream,
     FileDataInputStream,
     format_date,
+    format_datetime,
     get_timestamp_from_day_today,
     get_timestamp_from_day_tohour,
     get_timestamp_from_hour_tohour,
 )
 from core.api import File
-from core import logger, timer as Timer
+from core.logger import logger
+from core import scheduler
 import core.location as location
 
 
 class UserAgent(Enum):
     OPENBMCLAPI_CLUSTER = "openbmclapi-cluster"
     PYTHON = "python-openbmclapi"
-    TECHNIC = "TechnicLauncher"
+    PHP = "PHP-OpenBmclApi"
     WARDEN = "bmclapi-warden"
-    BADLION = "Badlion Client"
     POJAV = "PojavLauncher"
-    LUNAR = "Lunar Client"
-    ATLAUNCHER = "ATLauncher"
-    CURSEFORGE = "CurseForge"
-    TLAUNCHER = "TLauncher"
-    MULTIMC = "MultiMC"
-    MAGNET = "Magnet"
     DALVIK = "Dalvik"
     BAKAXL = "BakaXL"
     OTHER = "Other"
@@ -120,8 +116,11 @@ class GlobalStats:
         self.useragent.clear()
         self.ip.clear()
 
+    def reset_ua(self):
+        self.useragent.clear()
 
-globalStats = GlobalStats()
+    def reset_ip(self):
+        self.ip.clear()
 
 
 class StorageStats:
@@ -140,7 +139,7 @@ class StorageStats:
             self._bytes += byte
         globalStats.add_ip(ip)
         globalStats.add_ua(ua)
-        write_storage()
+        write_cache()
 
     def failed(self):
         self._failed += 1
@@ -206,65 +205,56 @@ class GEOInfo:
     province: str = ""
     value: int = 0
 
-
+globalStats = GlobalStats()
 storages: dict[str, StorageStats] = {}
-cache: Path = Path("./cache")
-cache.mkdir(exist_ok=True, parents=True)
-last_storages: dict[str, int] = {}
-last_ip: dict[str, int] = {}
-last_ua: int = 0
+data: Path = Path("./data")
+data.mkdir(exist_ok=True, parents=True)
+cache: Path = Path("./data/stats.bin")
+db: sqlite3.Connection = sqlite3.Connection("./data/stats.db", check_same_thread=False)
 last_hour: Optional[int] = None
-last_day: Optional[int] = None
-db: sqlite3.Connection = sqlite3.Connection("./cache/stats.db", check_same_thread=False)
+last_ip: int = 0
+last_ua: int = 0
+last_storages: dict[str, int] = {}
 
-
-def read_storage():
-    global storages, last_hour, globalStats, last_day
-    if (
-        not Path("./cache/storage.bin").exists()
-        or Path("./cache/storage.bin").stat().st_size == 0
-    ):
+def read_cache():
+    global last_hour, globalStats
+    if not cache.exists():
         return
-    with open("./cache/storage.bin", "rb") as r:
-        f = FileDataInputStream(r)
-        last_hour = f.readVarInt()
-        last_day = (last_hour - last_hour % 24) // 24 - 1
-        for _ in range(f.readVarInt()):
-            storage = StorageStats(f.readString())
-            (
-                storage._hits,
-                storage._bytes,
-                storage._cache_hits,
-                storage._cache_bytes,
-                storage._failed,
-                storage._last_hits,
-                storage._last_bytes,
-            ) = (
-                f.readVarInt(),
-                f.readVarInt(),
-                f.readVarInt(),
-                f.readVarInt(),
-                f.readVarInt(),
-                f.readVarInt(),
-                f.readVarInt(),
-            )
-
-            storages[storage.get_name()] = storage
+    with open(cache, "rb") as r:
         try:
-            blength = f.readVarInt()
-            bdata = f.read(blength)
+            input = FileDataInputStream(r)
+            last_hour = input.readVarInt()
+            for _ in range(input.readVarInt()):
+                storage_data = DataInputStream(zstd.decompress(input.readBytes(input.readVarInt())))
+                storage = StorageStats(storage_data.readString())
+                (
+                    storage._hits,
+                    storage._bytes,
+                    storage._cache_hits,
+                    storage._cache_bytes,
+                    storage._failed,
+                    storage._last_hits,
+                    storage._last_bytes,
+                ) = (
+                    storage_data.readVarInt(),
+                    storage_data.readVarInt(),
+                    storage_data.readVarInt(),
+                    storage_data.readVarInt(),
+                    storage_data.readVarInt(),
+                    storage_data.readVarInt(),
+                    storage_data.readVarInt(),
+                )
+                storages[storage.get_name()] = storage
+            globalStats = GlobalStats.from_binary(input.readBytes(input.readVarInt()))
         except:
-            logger.error(traceback.format_exc())
-            return
-        globalStats = GlobalStats.from_binary(bdata)
+            logger.terror("stats.error.bad")
 
-
-def write_storage():
-    global storages, globalStats, last_hour
-    f = DataOutputStream()
-    f.writeVarInt(last_hour)
-    f.writeVarInt(len(storages))
+def write_cache():
+    data = DataOutputStream()
+    data.writeVarInt(last_hour)
+    data.writeVarInt(len(storages))
     for storage in storages.values():
+        f = DataOutputStream()
         f.writeString(storage.get_name())
         for field in (
             storage._hits,
@@ -276,11 +266,112 @@ def write_storage():
             storage._last_bytes,
         ):
             f.writeVarInt(field)
-    data = globalStats.get_binary()
-    f.writeVarInt(len(data))
-    f.write(data)
-    with open("./cache/storage.bin", "wb") as w:
-        w.write(f.io.getbuffer())
+        compress = zstd.compress(f.io.getbuffer())
+        data.writeVarInt(len(compress))
+        data.write(compress)
+    binary = globalStats.get_binary()
+    data.writeVarInt(len(binary))
+    data.write(binary)
+    with open(cache, "wb") as w:
+        w.write(data.io.getvalue())
+
+def init():
+    read_cache()
+    execute("create table if not exists access_storage(hour unsigned bigint NOT NULL, storage TEXT NOT NULL, hit unsigned bigint NOT NULL DEFAULT 0, bytes unsigned bigint NOT NULL DEFAULT 0, cache_hit unsigned bigint NOT NULL DEFAULT 0, cache_bytes unsigned bigint NOT NULL DEFAULT 0, last_hit unsigned bigint NOT NULL DEFAULT 0, last_bytes unsigned bigint NOT NULL DEFAULT 0, failed unsigned bigint NOT NULL DEFAULT 0)")
+    execute("create table if not exists access_ua(hour unsigned bigint NOT NULL)")
+    execute("create table if not exists access_ip(hour unsigned bigint NOT NULL, data blob not null)")
+    for ua in UserAgent:
+        addColumns(
+            "access_ua", f"`{ua.value}`", " unsigned bigint NOT NULL DEFAULT 0"
+        )
+    scheduler.repeat(write_database, interval=1)
+
+def write_database():
+    global last_hour, last_ip, last_ua
+    hour = last_hour or get_hour(0)
+    cmds: list[tuple[str, tuple[Any, ...]]] = []
+    # storages
+    for storage in storages.values():
+        if (storage.get_name() not in last_storages or last_storages[storage.get_name()] != hour) and not exists("select storage from access_storage where hour = ? and storage = ?", hour, storage.get_name()):
+            cmds.append(
+                (
+                    "insert into access_storage(storage, hour) values (?,?)",
+                    (
+                        storage.get_name(),
+                        hour
+                    )
+                )
+            )
+            last_storages[storage.get_name()] = hour
+        cmds.append(
+            (
+                "update access_storage set hit = ?, bytes = ?, cache_hit = ?, cache_bytes = ?, last_hit = ?, last_bytes = ?, failed = ? where storage = ? and hour = ?",
+                (
+                    storage._hits,
+                    storage._bytes,
+                    storage._cache_hits,
+                    storage._cache_bytes,
+                    storage._last_hits,
+                    storage._last_bytes,
+                    storage._failed,
+                    storage.get_name(),
+                    hour,
+                ),
+            )
+        )
+
+    # ua
+    if last_ua != hour and not exists("select hour from access_ua where hour = ?", hour):
+        cmds.append(
+            (
+                "insert into access_ua(hour) values (?)",
+                (
+                    hour,
+                )
+            )
+        )
+    last_ua = hour
+    g_ua = ",".join((f"`{ua.value}` = ?" for ua in UserAgent))
+    cmds.append(
+        (
+            f"update access_ua set {g_ua} where hour = ?",
+            (*(globalStats.useragent.get(ua, 0) for ua in UserAgent), hour),
+        )
+    )
+    # ip
+    if last_ip != hour and not exists("select hour from access_ip where hour = ?", hour):
+        cmds.append(
+            (
+                "insert into access_ip(hour, data) values (?, ?)",
+                (
+                    hour,
+                    zstd.compress(b'')
+                )
+            )
+        )
+    last_ip = hour
+    binary = DataOutputStream()
+    binary.writeVarInt(len(globalStats.ip))
+    for ip, c in globalStats.ip.items():
+        binary.writeString(ip)
+        binary.writeVarInt(c)
+    cmds.append(
+        (
+            "update access_ip set data = ? where hour = ?",
+            (
+                zstd.compress(binary.io.getbuffer()),
+                hour
+            )
+        )
+    )
+    cur_hour = get_hour(0)
+    if last_hour != cur_hour:
+        for storage in storages.values():
+            storage.reset()
+        globalStats.reset()
+    last_hour = cur_hour
+    executemany(*cmds)
+
 
 
 def get_offset_storages() -> list[SyncStorage]:
@@ -304,90 +395,6 @@ def get_storage(name):
     return storages[name]
 
 
-def _write_database(first: bool = False):
-    global last_storages, last_hour, globalStats, last_ip, last_ua, last_day
-    cmds: list[tuple[str, tuple[Any, ...]]] = []
-    hour = last_hour or get_hour(0)
-    day = last_day or get_day(0)
-    for storage in storages.values():
-        if (
-            hour not in last_storages or hour != last_storages[storage.get_name()]
-        ) and not exists(
-            "select storage from access where storage = ? and hour = ?",
-            storage.get_name(),
-            hour,
-        ):
-            cmds.append(
-                (
-                    "insert into access(storage, hour) values (?, ?)",
-                    (storage.get_name(), hour),
-                )
-            )
-            last_storages[storage.get_name()] = hour
-        cmds.append(
-            (
-                "update access set hit = ?, bytes = ?, cache_hit = ?, cache_bytes = ?, last_hit = ?, last_bytes = ?, failed = ? where storage = ? and hour = ?",
-                (
-                    storage._hits,
-                    storage._bytes,
-                    storage._cache_hits,
-                    storage._cache_bytes,
-                    storage._last_hits,
-                    storage._last_bytes,
-                    storage._failed,
-                    storage.get_name(),
-                    hour,
-                ),
-            )
-        )
-    ips = globalStats.ip.copy()
-    cache_sql_ip = {}
-    for cip in queryAllData("select ip, hit from g_access_ip where day = ?", day):
-        cache_sql_ip[cip[0]] = cip[1]
-    for ip, c in ips.items():
-        if (ip not in last_ip or day != last_ip[ip]) and ip not in cache_sql_ip:
-            cmds.append(
-                (
-                    "insert into g_access_ip(ip, day) values (?, ?)",
-                    (ip, day),
-                )
-            )
-            last_ip[ip] = day
-        if ip in cache_sql_ip and cache_sql_ip[ip] == c:
-            continue
-        cmds.append(
-            ("update g_access_ip set hit = ? where ip = ? and day = ?", (c, ip, day))
-        )
-    if last_ua != day and not exists(
-        "select day from g_access_ua where day = ?",
-        day,
-    ):
-        cmds.append(
-            (
-                "insert into g_access_ua(day) values (?)",
-                (day,),
-            )
-        )
-        last_ua = day
-    g_ua = ",".join((f"`{ua.value}` = ?" for ua in UserAgent))
-    cmds.append(
-        (
-            f"update g_access_ua set {g_ua} where day = ?",
-            (*(globalStats.useragent.get(ua, 0) for ua in UserAgent), day),
-        )
-    )
-    executemany(*cmds)
-    cur_day = get_day(0)
-    cur_hour = get_hour(0)
-    if cur_hour != hour:
-        for storage in storages.values():
-            storage.reset()
-    if cur_day != day:
-        globalStats.reset()
-    last_day = cur_day
-    last_hour = cur_hour
-
-
 def get_hour(hour: int) -> int:
     return int(get_timestamp_from_hour_tohour(hour))
 
@@ -406,7 +413,7 @@ def executemany(*cmds: tuple[str, tuple[Any, ...]]) -> None:
     global db
     pbar = None
     if len(cmds) >= 512:
-        pbar = tqdm(total=pbar, unit_scale=True)
+        pbar = tqdm(desc="SQL", total=len(cmds), unit_scale=True)
     for cmd in cmds:
         db.execute(*cmd)
         if pbar is not None:
@@ -443,40 +450,23 @@ def addColumns(table, params, data, default=None):
     except:
         ...
 
+def get_utc_offset():
+    return -(time.timezone / 3600)
 
-def get_storage_stats():
-    storage: dict[str, dict[str, int]] = {}
-    t = get_timestamp_from_day_tohour(30)
-    for r in queryAllData(
-        "select storage, hour, hit, bytes, cache_hit, cache_bytes, last_hit, last_bytes, failed from access where hour >= ?",
-        t,
-    ):
-        if r[0] not in storage:
-            storage[r[0]] = {
-                "cache_hits": 0,
-                "cache_bytes": 0,
-                "hits": 0,
-                "bytes": 0,
-                "last_hits": 0,
-                "last_bytes": 0,
-                "failed": 0,
-            }
-        storage[r[0]]["cache_hits"] = r[4]
-        storage[r[0]]["cache_bytes"] = r[5]
-        storage[r[0]]["hits"] = r[2]
-        storage[r[0]]["bytes"] = r[3]
-        storage[r[0]]["last_hits"] = r[6]
-        storage[r[0]]["last_bytes"] = r[7]
-        storage[r[0]]["failed"] = r[8]
-    return storage
+def get_query_day_tohour(day):
+    t = int(time.time())
+    return (t - ((t + get_utc_offset() * 3600) % 86400) - 86400 * day) / 3600
 
+def get_query_hour_tohour(hour):
+    t = int(time.time())
+    return int((t - ((t + get_utc_offset() * 3600) % 3600) - 3600 * hour) / 3600)
 
 def hourly():
     data = []
     hours: dict[int, StorageStats] = {}
-    t = get_timestamp_from_day_tohour(0)
+    t = get_query_day_tohour(0)
     for r in queryAllData(
-        "select storage, hour, hit, bytes, cache_hit, cache_bytes, last_hit, last_bytes, failed from access where hour >= ?",
+        "select storage, hour, hit, bytes, cache_hit, cache_bytes, last_hit, last_bytes, failed from access_storage where hour >= ?",
         t,
     ):
         hour = int(r[1] - t)
@@ -507,13 +497,15 @@ def hourly():
 
 def daily():
     data = []
-    t = get_timestamp_from_day_tohour(30)
+    t = get_query_day_tohour(30)
+    to_t = get_query_day_tohour(-1)
     days: dict[int, StorageStats] = {}
     for r in queryAllData(
-        "select storage, hour, hit, bytes, cache_hit, cache_bytes, last_hit, last_bytes, failed from access where hour >= ?",
+        "select storage, hour, hit, bytes, cache_hit, cache_bytes, last_hit, last_bytes, failed from access_storage where hour >= ? and hour <= ?",
         t,
+        to_t
     ):
-        hour = r[1] // 24
+        hour = (r[1] + get_utc_offset()) // 24
         if hour not in days:
             days[hour] = StorageStats("Total")
         days[hour]._hits += r[2]
@@ -538,70 +530,48 @@ def daily():
         )
     return data
 
-
-def daily_global():
-    t = get_timestamp_from_day_today(30)
+def stats_pro(day):
+    format_day = (day == 30)
+    t = get_query_hour_tohour(0) - (day * 24)
     g_ua = ",".join((f"`{ua.value}`" for ua in UserAgent))
-    s_ua: dict[str, defaultdict[UserAgent, int]] = {}
-    ip: dict[int, defaultdict[str, int]] = {}
+    s_ua: defaultdict[str, int] = defaultdict(int)
+    s_ip: dict[int, defaultdict[str, int]] = {}
+    file_bytes, file_download = 0, 0
     for q in queryAllData(
-        f"select day, {g_ua} from g_access_ua where day >= ?",
+        "select sum(bytes + cache_bytes), sum(hit + cache_hit) from access_storage where hour >= ?", 
+        t
+    ):
+        file_bytes += q[0]
+        file_download += q[1]
+    for q in queryAllData(
+        f"select hour, {g_ua} from access_ua where hour >= ?",
         t,
     ):
-        day = format_date((q[0] + 1) * 86400)
-        if day not in s_ua:
-            s_ua[day] = defaultdict(int)
         for i, ua in enumerate(UserAgent):
             if q[i + 1] == 0:
                 continue
-            s_ua[day][ua.value] = q[i + 1]
+            s_ua[ua.value] += q[i + 1]
     for q in queryAllData(
-        f"select day, ip, hit from g_access_ip where day >= ?",
+        f"select hour, data from access_ip where hour >= ?",
         t,
     ):
-        day = format_date((q[0] + 1) * 86400)
-        if day not in ip:
-            ip[day] = defaultdict(int)
-        ip[day][q[1]] += q[2]
+        hour = (q[0] + get_utc_offset()) if not format_day else (q[0] + get_utc_offset()) // 24
+        data = DataInputStream(zstd.decompress(q[1]))
+        for ip, c in {data.readString(): data.readVarInt() for _ in range(data.readVarInt())}.items():
+            if hour not in s_ip:
+                s_ip[hour] = defaultdict(int)
+            s_ip[hour][ip] += c
     addresses: defaultdict[location.IPInfo, int] = defaultdict(int)
-    for ips in ip.values():
+    for ips in s_ip.values():
         for address, count in ips.items():
             addresses[location.query(address)] += count
     return {
-        "useragents": s_ua,
+        "useragents": {key: value for key, value in s_ua.items() if value},
         "addresses": [
             GEOInfo(info.country, info.province, count)
             for info, count in sorted(addresses.items(), key=lambda x: x[0].country)
         ],
-        "distinct_ip": {day: len(ip) for day, ip in ip.items()},
+        "distinct_ip": {(format_datetime(hour * 3600) if not format_day else format_date(hour * 86400)): len(ip) for hour, ip in sorted(s_ip.items())},
+        "bytes": file_bytes,
+        "downloads": file_download
     }
-
-
-def init():
-    start = time.monotonic()
-    logger.tinfo("stats.info.initializing")
-    db.execute(
-        "CREATE TABLE IF NOT EXISTS access (hour unsigned bigint NOT NULL, storage TEXT NOT NULL, hit unsigned bigint NOT NULL DEFAULT 0, bytes unsigned bigint NOT NULL DEFAULT 0, cache_hit unsigned bigint NOT NULL DEFAULT 0, cache_bytes unsigned bigint NOT NULL DEFAULT 0, last_hit unsigned bigint NOT NULL DEFAULT 0, last_bytes unsigned bigint NOT NULL DEFAULT 0, failed unsigned bigint NOT NULL DEFAULT 0);"
-    )
-    db.execute(
-        "CREATE TABLE IF NOT EXISTS g_access_ip (day unsigned bigint NOT NULL, ip TEXT NOT NULL, hit unsigned bigint not null default 0);"
-    )
-    db.execute("CREATE TABLE IF NOT EXISTS g_access_ua (day unsigned bigint NOT NULL);")
-
-    db.commit()
-    for ua in UserAgent:
-        addColumns(
-            "g_access_ua", f"`{ua.value}`", " unsigned bigint NOT NULL DEFAULT 0"
-        )
-    read_storage()
-    _write_database(True)
-    logger.tsuccess(
-        "stats.info.initialization", time=f"{(time.monotonic() - start):.2f}"
-    )
-    Timer.delay(write_database, delay=time.time() % 1)
-
-
-def write_database():
-    while int(os.environ["ASYNCIO_STARTUP"]):
-        _write_database()
-        time.sleep(1)

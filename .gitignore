@@ -5,7 +5,9 @@ config/config.properties
 logs
 config/config.yml
 bmclapi
-cache
+data
 public
 .ssl
 .lh
+cache
+releases

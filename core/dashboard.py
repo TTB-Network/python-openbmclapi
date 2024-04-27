@@ -1,6 +1,9 @@
+from collections import defaultdict
 from dataclasses import asdict, dataclass, is_dataclass
 import hashlib
 import os
+import platform
+import sys
 import time
 from typing import Any, Optional
 import zlib
@@ -8,13 +11,13 @@ import zlib
 import aiohttp
 from tqdm import tqdm
 
-from core import stats, system, unit, utils, web
+from core import stats, system, update, utils, web
 from core import cluster
 from core.api import StatsCache
-from core import timer as Timer
-from core.timer import Task
+from core import scheduler
 
 from core.const import *
+from core.env import env
 
 
 @dataclass
@@ -38,15 +41,19 @@ class ProgressBar:
     desc: str = ""
     last_value: float = 0
     speed: float = 0
-    show: Optional[Task] = None
+    show: Optional[int] = None
 
 
 websockets: list["web.WebSocket"] = []
 last_status = ""
 last_text = ""
 cur_tqdm: ProgressBar = ProgressBar()
-task_tqdm: Optional[Task] = None
+task_tqdm: Optional[int] = None
 tokens: list[Token] = []
+authentication_module: list[str] = [
+    'storages',
+    'version',
+]
 
 
 def deserialize(data: utils.DataInputStream):
@@ -107,7 +114,7 @@ def serialize(data: Any):
 
 async def process(type: str, data: Any):
     if type == "uptime":
-        return float(os.getenv("STARTUP") or 0)
+        return float(env['STARTUP'] or 0)
     if type == "dashboard":
         return {"hourly": stats.hourly(), "days": stats.daily()}
     if type == "qps":
@@ -116,28 +123,34 @@ async def process(type: str, data: Any):
         raw_data = {
             k: v for k, v in web.statistics.get_all_qps().items() if k > c - 300
         }
-        resp_data: dict = {}
-        for _ in range(c - 300, c, 5):
-            resp_data[_] = 0
-            for __ in range(5):
-                resp_data[_] += raw_data.get(__ + _, 0)
-        return {utils.format_time(k): v for k, v in resp_data.items()}
+        return {
+            utils.format_time(i): (
+                sum((
+                    raw_data.get(i + j, 0) for j in range(5)
+                ))
+            ) for i in range(c - 300, c, 5)
+        }
     if type == "status":
         resp: dict = {
             "key": last_status,
         }
         if cur_tqdm is not None and cur_tqdm.object is not None:
-            resp.update(
-                {
-                    "progress": {
-                        "value": cur_tqdm.object.n,
-                        "total": cur_tqdm.object.total,
-                        "speed": cur_tqdm.speed,
-                        "unit": cur_tqdm.object.unit,
-                        "desc": cur_tqdm.desc,
+            if cur_tqdm.object is None or cur_tqdm.object.disable:
+                scheduler.cancel(task_tqdm)
+                scheduler.cancel(cur_tqdm.show)
+                cur_tqdm.object = None
+            if cur_tqdm.object is not None:
+                resp.update(
+                    {
+                        "progress": {
+                            "value": cur_tqdm.object.n,
+                            "total": cur_tqdm.object.total,
+                            "speed": cur_tqdm.speed,
+                            "unit": cur_tqdm.object.unit,
+                            "desc": cur_tqdm.desc,
+                        }
                     }
-                }
-            )
+                )
         return resp
     if type == "master":
         async with aiohttp.ClientSession(BASE_URL) as session:
@@ -153,27 +166,18 @@ async def process(type: str, data: Any):
             ),
         }
     if type == "version":
-        return {"cur": cluster.VERSION, "latest": cluster.fetched_version}
-    if type == "storage":
-        data: list = []
-        for storage in cluster.storages.get_storages():
-            if isinstance(storage, cluster.FileStorage):
-                data.append(
-                    StorageInfo(storage.get_name(), "file", str(storage.dir), -1, -1)
-                )
-            elif isinstance(storage, cluster.WebDav):
-                data.append(
-                    StorageInfo(
-                        storage.get_name(),
-                        "webdav",
-                        storage.hostname + storage.endpoint,
-                        -1,
-                        -1,
-                    )
-                )
-        return data
-    if type == "global_stats":
-        return stats.daily_global()
+        return {"cur": update.VERSION, "latest": update.fetched_version, "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}", "os": platform.platform()}
+    if type == "pro_stats":
+        day = 1
+        if isinstance(data, dict):
+            t = data.get("type", 0)
+            if t == 1:
+                day = 7
+            elif t == 2:
+                day = 30
+            elif t >= 3:
+                day = -1
+        return stats.stats_pro(day)
     if type == "system_details":
         return system.get_loads_detail()
 
@@ -191,27 +195,25 @@ async def set_status_by_tqdm(text: str, pbar: tqdm):
     global cur_tqdm, task_tqdm
     cur_tqdm.object = pbar
     cur_tqdm.desc = text
-    if task_tqdm:
-        task_tqdm.block()
-        cur_tqdm.show.block()
+    scheduler.cancel(task_tqdm)
+    scheduler.cancel(cur_tqdm.show)
     cur_tqdm.speed = 0
     cur_tqdm.last_value = 0
-    task_tqdm = Timer.repeat(_calc_tqdm_speed, delay=0, interval=0.5)
-    cur_tqdm.show = Timer.repeat(
-        _set_status, kwargs={"blocked": True}, delay=0, interval=1
-    )
+    task_tqdm = scheduler.repeat(_calc_tqdm_speed, delay=0, interval=1)
+    cur_tqdm.show = scheduler.repeat(_set_status, kwargs={
+        "blocked": True
+    }, delay=0, interval=1)
 
 
 async def _calc_tqdm_speed():
     global cur_tqdm
     if cur_tqdm.object is None or cur_tqdm.object.disable:
-        if task_tqdm is not None:
-            task_tqdm.block()
-        cur_tqdm.show.block()
+        scheduler.cancel(task_tqdm)
+        scheduler.cancel(cur_tqdm.show)
         cur_tqdm.object = None
         await _set_status(blocked=True)
         return
-    cur_tqdm.speed = (cur_tqdm.object.n - cur_tqdm.last_value) / 0.5
+    cur_tqdm.speed = cur_tqdm.object.n - cur_tqdm.last_value
     cur_tqdm.last_value = cur_tqdm.object.n
 
 
@@ -246,14 +248,14 @@ def to_bytes(key: int, type: str, data: Any):
     return output
 
 
-def generate_token(request: "web.Request") -> Token:
+async def generate_token(request: "web.Request") -> Token:
     global tokens
     token = Token(
         hashlib.sha256(
             zlib.compress(
                 hashlib.sha512(
                     (
-                        request.get_ip()
+                        await request.get_ip()
                         + request.get_user_agent()
                         + request.get_url()
                         + CLUSTER_ID

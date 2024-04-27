@@ -1,9 +1,8 @@
 import os
-import time
 
 import psutil
 
-from core import timer as Timer
+from core import logger, scheduler
 from core.utils import get_uptime
 
 process: psutil.Process = psutil.Process(os.getpid())
@@ -16,19 +15,18 @@ last_curs: list[float] = []
 
 def _run():
     global cpus, memories, connections, length, last_curs
-    while int(os.environ["ASYNCIO_STARTUP"]):
-        for _ in range(max(length - 5, 0)):
-            cur = last_curs.pop(0)
-            cpus.pop(cur)
-            memories.pop(cur)
-            connections.pop(cur)
-            length -= 1
-        cur = get_uptime()
-        cpus[cur] = process.cpu_percent(1)
-        memories[cur] = process.memory_full_info().uss
-        connections[cur] = process.connections()
-        length += 1
-        last_curs.append(cur)
+    for _ in range(max(length - 5, 0)):
+        cur = last_curs.pop(0)
+        cpus.pop(cur)
+        memories.pop(cur)
+        connections.pop(cur)
+        length -= 1
+    cur = get_uptime()
+    cpus[cur] = process.cpu_percent(1)
+    memories[cur] = process.memory_full_info().uss
+    connections[cur] = process.connections()
+    length += 1
+    last_curs.append(cur)
 
 
 def get_cpus():
@@ -59,4 +57,5 @@ def get_connections() -> int:
 
 
 def init():
-    Timer.delay(_run)
+    logger.tinfo("system.info.loading")
+    scheduler.repeat(_run)

@@ -19,9 +19,9 @@ else:
 CACHE_BUFFER_COMPRESSION_MIN_LENGTH: int = 64
 DEBUG: bool = Config.get("advanced.debug")
 ROOT = os.getcwd()
-API_VERSION = "1.10.3"
+API_VERSION = "1.10.4"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
-BASE_URL = Config.get("advanced.url")
+BASE_URL = Config.get("advanced.url", "https://openbmclapi.bangbang93.com/")
 CLUSTER_ID: str = Config.get("cluster.id")
 CLUSTER_SECERT: str = Config.get("cluster.secret")
 IO_BUFFER: int = Config.get("advanced.io_buffer")
@@ -38,9 +38,12 @@ KEEPALIVE_TIMEOUT: bool = Config.get("cluster.timeout.keepalive")
 CACHE_BUFFER: int = Config.get("cache.buffer")  # bytes
 CACHE_TIME: int = Config.get("cache.time")
 CHECK_CACHE: int = Config.get("cache.check")
+CACHE_ENABLE: int = Config.get("cache.enable")
 SIGN_SKIP: bool = Config.get("advanced.skip_sign")
 DASHBOARD_USERNAME: str = Config.get("dashboard.username")
 DASHBOARD_PASSWORD: str = Config.get("dashboard.password")
+DASHBOARD_WEBSOCKET: bool = Config.get("dashboard.websocket")
+
 TIMEOUT: int = Config.get("advanced.timeout")
 REQUEST_BUFFER: int = Config.get("advanced.request_buffer")
 FILE_REDIRECTS = ["index.html", "index.htm", "default.html", "default.htm"]
@@ -48,6 +51,7 @@ RESPONSE_HEADERS = {
     "Server": Config.get("web.server_name"),
 }
 RESPONSE_DATE = "%a, %d %b %Y %H:%M:%S GMT"
+RESPONSE_COMPRESSION_IGNORE_SIZE_THRESHOLD: int = 16777216
 STATUS_CODES: dict[int, str] = {
     100: "Continue",
     101: "Switching Protocols",
@@ -104,6 +108,7 @@ STATUS_CODES: dict[int, str] = {
 }
 REQUEST_TIME_UNITS = ["ns", "ms", "s", "m", "h"]
 FILECHECK = Config.get("file.check")
+X_FORWARDED_FOR: int = Config.get("web.x_forwarded_for")
 STORAGES: list["StorageParse"] = []
 COMPRESSOR: dict[str, Any] = {
     "zstd": pyzstd.compress,
@@ -111,7 +116,9 @@ COMPRESSOR: dict[str, Any] = {
     "deflate": zlib.compress,
 }
 LANG: str = Config.get("advanced.language")
-
+FORCE_SSL: bool = Config.get("web.force_ssl")
+MAX_INSTANCES: int = 9999
+AUTO_DOWNLOAD_RELEASE: bool = Config.get("update.auto_download")
 
 @dataclass
 class StorageParse:
