@@ -564,7 +564,7 @@ def stats_pro(day):
                 s_ip[hour][ip] += c
         except:
             new_data = DataOutputStream()
-            data_ip = {data.readString(): old_data_read_varint(data) for _ in range(old_data_read_varint(data))}
+            data_ip = {data.readString(old_data_read_varint(data)): old_data_read_varint(data) for _ in range(old_data_read_varint(data))}
             new_data.writeVarInt(len(data_ip))
             for ip, c in data_ip.items():
                 new_data.writeString(ip)
