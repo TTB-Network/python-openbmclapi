@@ -33,7 +33,7 @@ async def check_update():
                 )
                 await dashboard.trigger("version")
                 if AUTO_DOWNLOAD_RELEASE:
-                    scheduler.delay(download)
+                    ... # todo scheduler.delay(download)
             else:
                 logger.tinfo("cluster.info.check_update.already_up_to_date")
         except aiohttp.ClientError as e:
@@ -43,6 +43,7 @@ async def check_update():
             return
 
 
+"""
 async def download():
     global download_url
     if not download_url:
@@ -60,5 +61,6 @@ async def download():
                 while (data := await resp.content.read(IO_BUFFER)):
                     pbar.update(len(data))
                     w.write(data)
+"""
 def init():
     scheduler.repeat(check_update, interval=3600)
