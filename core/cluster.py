@@ -250,7 +250,7 @@ class FileDownloader:
             if r != file.size:
                 hash = file.hash
                 file_size = unit.format_bytes(file.size)
-                target_size = unit.format_bytes(result)
+                target_size = unit.format_bytes(r)
                 logger.terror(
                     "cluster.error.mount_files.failed_to_copy",
                     hash=hash,
