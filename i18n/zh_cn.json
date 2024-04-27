@@ -17,7 +17,7 @@
   "cluster.debug.get_files.created_session": "成功创建客户端会话。",
   "cluster.debug.get_files.response_status": "文件列表请求状态：$status。",
   "cluster.success.get_files.requested_filelist": "成功获取文件列表！",
-  "cluster.info.get_files.info": "获取文件数：$count 文件最后修改时间：$time。",
+  "cluster.info.get_files.info": "文件数量：$count，文件最后修改时间：$time。",
   "cluster.error.mount_files.failed_to_copy": "在尝试下载文件时出错：无法复制文件：$hash ($file) => $hash ($target)。",
   "cluster.tqdm.desc.download": "下载文件中",
   "cluster.debug.download_temp.downloading": "正在下载文件：$hash。",
