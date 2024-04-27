@@ -8,23 +8,26 @@ from .scheduler import init as scheduler_init
 from .scheduler import exit as scheduler_exit
 from .utils import WaitLock
 
-env['MONOTONIC'] = time.monotonic()
-env['STARTUP'] = time.time()
+env["MONOTONIC"] = time.monotonic()
+env["STARTUP"] = time.time()
 
 wait_exit: WaitLock = WaitLock()
+
 
 def init():
     wait_exit.acquire()
     logger.tinfo("core.info.loading")
     version = sys.version_info
-    logger.tinfo("core.info.python_version", 
-                 v=f"{version.major}.{version.minor}.{version.micro}")
+    logger.tinfo(
+        "core.info.python_version", v=f"{version.major}.{version.minor}.{version.micro}"
+    )
     atexit.register(exit)
     try:
         asyncio.run(async_init())
     except KeyboardInterrupt:
         if wait_exit.locked:
             wait_exit.release()
+
 
 async def async_init():
     # first init
@@ -36,13 +39,14 @@ async def async_init():
     from .cluster import exit as cluster_exit
     from .stats import init as stats_init
     from .update import init as update_init
+
     update_init()
     scheduler.delay(network_init)
     stats_init()
     await cluster_init()
 
     await wait_exit.wait()
-    env['EXIT'] = True
+    env["EXIT"] = True
     network_exit()
     await cluster_exit()
     scheduler_exit()

@@ -25,7 +25,7 @@ BASE_URL = Config.get("advanced.url", "https://openbmclapi.bangbang93.com/")
 CLUSTER_ID: str = Config.get("cluster.id")
 CLUSTER_SECERT: str = Config.get("cluster.secret")
 IO_BUFFER: int = Config.get("advanced.io_buffer")
-MAX_DOWNLOAD: int = max(1, Config.get("download.threads"))
+MAX_DOWNLOAD: int = max(1, Config.get("advanced.download_threads"))
 BYOC: bool = Config.get("cluster.byoc")
 PUBLIC_HOST: str = Config.get("cluster.public_host")
 PUBLIC_PORT: int = Config.get("cluster.public_port")
@@ -107,7 +107,7 @@ STATUS_CODES: dict[int, str] = {
     505: "HTTP Version not supported",
 }
 REQUEST_TIME_UNITS = ["ns", "ms", "s", "m", "h"]
-FILECHECK = Config.get("file.check")
+FILECHECK = Config.get("advanced.file_check_mode")
 X_FORWARDED_FOR: int = Config.get("web.x_forwarded_for")
 STORAGES: list["StorageParse"] = []
 COMPRESSOR: dict[str, Any] = {
@@ -119,6 +119,7 @@ LANG: str = Config.get("advanced.language")
 FORCE_SSL: bool = Config.get("web.force_ssl")
 MAX_INSTANCES: int = 9999
 AUTO_DOWNLOAD_RELEASE: bool = Config.get("update.auto_download")
+
 
 @dataclass
 class StorageParse:
