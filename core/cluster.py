@@ -533,13 +533,14 @@ class FileStorage(Storage):
             file.cache = True
             return file
         path = Path(str(self.dir) + f"/{hash[:2]}/{hash}")
-        buf = io.BytesIO()
-        async with aiofiles.open(path, "rb") as r:
-            while data := await r.read(IO_BUFFER):
-                buf.write(data)
-        file = File(path, hash, buf.tell(), time.time(), time.time())
-        file.set_data(buf.getbuffer())
+        file = File(path, hash, 0)
         if CACHE_ENABLE:
+            buf = io.BytesIO()
+            async with aiofiles.open(path, "rb") as r:
+                while data := await r.read(IO_BUFFER):
+                    buf.write(data)
+            file = File(path, hash, buf.tell(), time.time(), time.time())
+            file.set_data(buf.getbuffer())
             self.cache[hash] = file
             file.cache = False
         return file
@@ -1443,7 +1444,7 @@ async def init():
         if data.is_url() and isinstance(data.get_path(), str):
             return web.RedirectResponse(str(data.get_path())).set_headers(name)
         return web.Response(
-            data.get_data().getbuffer(), headers=data.headers or {}
+            data.get_data().getbuffer() if not data.is_path() else data.get_path(), headers=data.headers or {}
         ).set_headers(name)
 
     dir = Path("./bmclapi_dashboard/")
