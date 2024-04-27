@@ -10,6 +10,7 @@ import random
 import re
 import sys
 import time
+import avro
 from typing import (
     Any,
     Coroutine,
@@ -528,12 +529,11 @@ class MinecraftUtils:
     @staticmethod
     def getVarInt(data: int):
         r: bytes = b""
-        while 1:
-            if data & 0xFFFFFF80 == 0:
-                r += data.to_bytes(1, "big")
-                break
-            r += (data & 0x7F | 0x80).to_bytes(1, "big")
+        data = (data << 1) ^ (data >> 63)
+        while (data & ~0x7F) != 0:
+            r += ((data & 0x7f) | 0x80).to_bytes(1, "big")
             data >>= 7
+        r += data.to_bytes(1, "big")
         return r
 
     @staticmethod
@@ -626,16 +626,14 @@ class DataInputStream:
         return value - 2**64 if value > 2**63 - 1 else value
 
     def readVarInt(self) -> int:
-        i: int = 0
-        j: int = 0
-        k: int
-        while 1:
-            k = int.from_bytes(self.read(1), byteorder="big")
-            i |= (k & 0x7F) << j * 7
-            j += 1
-            if (k & 0x80) != 128:
-                break
-        return i
+        b = ord(self.read(1))
+        n = b & 0x7F
+        shift = 7
+        while (b & 0x80) != 0:
+            b = ord(self.read(1))
+            n |= (b & 0x7F) << shift
+            shift += 7
+        return (n >> 1) ^ -(n & 1)
 
     def readString(
         self, maximun: Optional[int] = None, encoding: Optional[str] = None

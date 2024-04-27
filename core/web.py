@@ -905,7 +905,7 @@ class Response:
                 async with aiofiles.open(content, "rb") as r:
                     cur_length: int = 0
                     await r.seek(start_bytes, os.SEEK_SET)
-                    while data := await r.read(min(IO_BUFFER, length - cur_length)):
+                    while data := await r.read(max(0, min(IO_BUFFER, length - cur_length))):
                         cur_length += len(data)
                         client.write(data)
                         await client.drain()
