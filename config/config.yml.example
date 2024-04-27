@@ -1,5 +1,8 @@
 advanced:
+  auto_update: false
   debug: false
+  download_threads: 64
+  file_check_mode: size
   header_bytes: 4096
   io_buffer: 16777216
   language: zh_cn
@@ -12,6 +15,7 @@ advanced:
 cache:
   buffer: 536870912
   check: 360
+  enable: true
   time: 1800
 cluster:
   byoc: false
@@ -28,12 +32,8 @@ cluster:
     keepalive: 300
 dashboard:
   password: ''
-  type: websocket
   username: admin
-download:
-  threads: 64
-file:
-  check: size
+  websocket: true
 storages:
   bmclapi:
     path: ./bmclapi
@@ -44,3 +44,4 @@ web:
   port: 8080
   server_name: TTB-Network
   ssl_port: 8800
+  x_forwarded_for: 0
