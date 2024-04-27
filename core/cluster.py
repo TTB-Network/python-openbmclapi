@@ -273,31 +273,24 @@ class FileDownloader:
             for file in miss:
                 await self.queues.put(file)
             timers = []
-            sessions: list[aiohttp.ClientSession] = []
-            for _ in range(0, MAX_DOWNLOAD, min(MAX_DOWNLOAD, 32)):
-                session = session = aiohttp.ClientSession(
-                    BASE_URL,
-                    headers={
-                        "User-Agent": USER_AGENT,
-                        "Authorization": f"Bearer {await token.getToken()}",
-                    },
-                )
-                for __ in range(min(32, MAX_DOWNLOAD)):
+            for _ in range(0, MAX_DOWNLOAD, max(MAX_DOWNLOAD, 32)):
+                for __ in range(max(32, MAX_DOWNLOAD)):
                     timers.append(
                         self._download(
                             pbar,
-                            session,
+                            aiohttp.ClientSession(
+                                BASE_URL,
+                                headers={
+                                    "User-Agent": USER_AGENT,
+                                    "Authorization": f"Bearer {await token.getToken()}",
+                                },
+                            ),
                         ),
                     )
-                sessions.append(sessions)
             try:
                 await asyncio.gather(*timers)
             except asyncio.CancelledError:
                 raise asyncio.CancelledError
-            finally:
-                for session in sessions:
-                    if not session.closed:
-                        await session.close()
         logger.tsuccess("cluster.info.download.finished")
 
 

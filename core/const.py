@@ -21,7 +21,7 @@ DEBUG: bool = Config.get("advanced.debug")
 ROOT = os.getcwd()
 API_VERSION = "1.10.4"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
-BASE_URL = Config.get("advanced.url")
+BASE_URL = Config.get("advanced.url", "https://openbmclapi.bangbang93.com/")
 CLUSTER_ID: str = Config.get("cluster.id")
 CLUSTER_SECERT: str = Config.get("cluster.secret")
 IO_BUFFER: int = Config.get("advanced.io_buffer")
@@ -42,7 +42,7 @@ SIGN_SKIP: bool = Config.get("advanced.skip_sign")
 DASHBOARD_USERNAME: str = Config.get("dashboard.username")
 DASHBOARD_PASSWORD: str = Config.get("dashboard.password")
 DASHBOARD_WEBSOCKET: bool = Config.get("dashboard.websocket")
-print(Config.get("dashboard.websocket"))
+
 TIMEOUT: int = Config.get("advanced.timeout")
 REQUEST_BUFFER: int = Config.get("advanced.request_buffer")
 FILE_REDIRECTS = ["index.html", "index.htm", "default.html", "default.htm"]
