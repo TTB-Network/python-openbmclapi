@@ -106,7 +106,14 @@ class TokenManager:
 class ParseFileList:
     async def __call__(self, data) -> list[BMCLAPIFile]:
         self.data = io.BytesIO(data)
-        self.files = []
+        self.files = [
+            BMCLAPIFile(
+                self.read_string(),
+                self.read_string(),
+                self.read_long(),
+                self.read_long()
+            ) for _ in range(self.read_long())
+        ]
         return self.files
 
     def read_long(self):
@@ -160,10 +167,10 @@ class FileDownloader:
                 logger.tinfo("cluster.success.get_files.requested_filelist")
                 files = await ParseFileList()(zstd.decompress(await req.read()))
                 self.last_modified = max(
-                    self.last_modified, *(file.mtime for file in files)
+                    (self.last_modified, *(file.mtime for file in files))
                 )
                 modified = utils.parse_time_to_gmt(self.last_modified / 1000)
-                logger.tinfo("cluster.info.get_files.modified_time", time=modified)
+                logger.tinfo("cluster.info.get_files.info", time=modified, count=unit.format_number(len(files)))
                 if DEBUG:
                     self.files = files
                 return files
@@ -183,12 +190,19 @@ class FileDownloader:
                     if not data:
                         break
                     content.write(data)
+            length = len(content.getbuffer())
+            h = get_hash(hash)
+            h.update(content.getbuffer())
+            if hash != h.hexdigest():
+                logger.tdebug("cluster.debug.download_temp.failed_download", hash=hash)
+                logger.error(content.getvalue().decode("utf-8"))
+                return
             logger.tdebug("cluster.debug.download_temp.downloaded", hash=hash)
             await self._mount_file(
                 BMCLAPIFile(
                     path=f"/download/{hash}",
                     hash=hash,
-                    size=len(content.getbuffer()),
+                    size=length,
                     mtime=int(time.time() * 1000),
                 ),
                 content,
@@ -989,7 +1003,6 @@ class StorageManager:
             await cluster.downloader._download_temporarily_file(hash)
             exists = True
         while not (exists := await storage.exists(hash)):
-            await cluster.downloader._download_temporarily_file(hash)
             storage = self.get_storage_width()
             if storage == first_storage:
                 break
