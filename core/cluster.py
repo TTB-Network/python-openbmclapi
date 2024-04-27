@@ -456,6 +456,8 @@ class FileCheck:
                                 if file[0] in miss_all_files:
                                     miss_all_files.remove(file[0])
                                 missing_files_by_storage[storage].remove(file)
+            else:
+                miss_all_files = set(*(file[0] for file in list(missing_files_by_storage.values())[0]))
         miss = miss_all_files
         if not miss:
             file_count = len(files) * len(storages.get_storages())
