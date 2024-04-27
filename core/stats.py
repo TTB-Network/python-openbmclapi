@@ -556,11 +556,24 @@ def stats_pro(day):
         t,
     ):
         hour = (q[0] + get_utc_offset()) if not format_day else (q[0] + get_utc_offset()) // 24
-        data = DataInputStream(zstd.decompress(q[1]))
-        for ip, c in {data.readString(): data.readVarInt() for _ in range(data.readVarInt())}.items():
-            if hour not in s_ip:
-                s_ip[hour] = defaultdict(int)
-            s_ip[hour][ip] += c
+        try:
+            data = DataInputStream(zstd.decompress(q[1]))
+            for ip, c in {data.readString(): data.readVarInt() for _ in range(data.readVarInt())}.items():
+                if hour not in s_ip:
+                    s_ip[hour] = defaultdict(int)
+                s_ip[hour][ip] += c
+        except:
+            new_data = DataOutputStream()
+            data_ip = {data.readString(): old_data_read_varint(data) for _ in range(old_data_read_varint(data))}
+            new_data.writeVarInt(len(data_ip))
+            for ip, c in data_ip.items():
+                new_data.writeString(ip)
+                new_data.writeVarInt(c)
+                if hour not in s_ip:
+                    s_ip[hour] = defaultdict(int)
+                s_ip[hour][ip] += c
+            execute("update access_ip set data = ? where hour = ?", zstd.compress(new_data.io.getbuffer()), hour)
+            
     addresses: defaultdict[location.IPInfo, int] = defaultdict(int)
     for ips in s_ip.values():
         for address, count in ips.items():
@@ -575,3 +588,16 @@ def stats_pro(day):
         "bytes": file_bytes,
         "downloads": file_download
     }
+
+
+def old_data_read_varint(input: DataInputStream):
+    i: int = 0
+    j: int = 0
+    k: int
+    while 1:
+        k = int.from_bytes(input.read(1), byteorder="big")
+        i |= (k & 0x7F) << j * 7
+        j += 1
+        if (k & 0x80) != 128:
+            break
+    return i
