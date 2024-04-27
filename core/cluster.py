@@ -107,22 +107,6 @@ class ParseFileList:
     async def __call__(self, data) -> list[BMCLAPIFile]:
         self.data = io.BytesIO(data)
         self.files = []
-        with tqdm(
-            total=self.read_long(),
-            desc=locale.t("cluster.tqdm.desc.parsing_file_list"),
-            unit_scale=True,
-            unit=locale.t("cluster.tqdm.unit.file"),
-        ) as pbar, logTqdm(pbar):
-            for _ in range(pbar.total):
-                self.files.append(
-                    BMCLAPIFile(
-                        self.read_string(),
-                        self.read_string(),
-                        self.read_long(),
-                        self.read_long(),
-                    )
-                )
-                pbar.update(1)
         return self.files
 
     def read_long(self):
@@ -225,7 +209,6 @@ class FileDownloader:
                         byte = len(data)
                         size += byte
                         pbar.update(byte)
-                        # pbar.set_postfix_str(file.hash.ljust(40))
                         content.write(data)
                         hash.update(data)
                 if file.hash != hash.hexdigest():
@@ -276,25 +259,31 @@ class FileDownloader:
             for file in miss:
                 await self.queues.put(file)
             timers = []
+            sessions: list[aiohttp.ClientSession] = []
             for _ in range(0, MAX_DOWNLOAD, min(MAX_DOWNLOAD, 32)):
+                session = session = aiohttp.ClientSession(
+                    BASE_URL,
+                    headers={
+                        "User-Agent": USER_AGENT,
+                        "Authorization": f"Bearer {await token.getToken()}",
+                    },
+                )
                 for __ in range(min(32, MAX_DOWNLOAD)):
                     timers.append(
                         self._download(
                             pbar,
-                            aiohttp.ClientSession(
-                                BASE_URL,
-                                headers={
-                                    "User-Agent": USER_AGENT,
-                                    "Authorization": f"Bearer {await token.getToken()}",
-                                },
-                            ),
+                            session,
                         ),
                     )
+                sessions.append(sessions)
             try:
                 await asyncio.gather(*timers)
             except asyncio.CancelledError:
                 raise asyncio.CancelledError
-            # pbar.set_postfix_str(" " * 40)
+            finally:
+                for session in sessions:
+                    if not session.closed:
+                        await session.close()
         logger.tsuccess("cluster.info.download.finished")
 
 
@@ -411,7 +400,7 @@ class FileCheck:
                     unit="B",
                     unit_divisor=1024,
                     unit_scale=True,
-                ) as pbar, logTqdm(pbar):
+                ) as pbar, logTqdm(pbar, logTqdmType.BYTES):
                     await dashboard.set_status_by_tqdm("files.copying", pbar)
                     removes: defaultdict[Storage, set[BMCLAPIFile]] = defaultdict(set)
                     for storage, files in missing_files_by_storage.items():
