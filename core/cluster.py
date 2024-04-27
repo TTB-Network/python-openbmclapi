@@ -111,8 +111,9 @@ class ParseFileList:
                 self.read_string(),
                 self.read_string(),
                 self.read_long(),
-                self.read_long()
-            ) for _ in range(self.read_long())
+                self.read_long(),
+            )
+            for _ in range(self.read_long())
         ]
         return self.files
 
@@ -170,7 +171,11 @@ class FileDownloader:
                     (self.last_modified, *(file.mtime for file in files))
                 )
                 modified = utils.parse_time_to_gmt(self.last_modified / 1000)
-                logger.tinfo("cluster.info.get_files.info", time=modified, count=unit.format_number(len(files)))
+                logger.tinfo(
+                    "cluster.info.get_files.info",
+                    time=modified,
+                    count=unit.format_number(len(files)),
+                )
                 return files
 
     async def _download_temporarily_file(self, hash: str):
@@ -183,11 +188,10 @@ class FileDownloader:
         ) as session:
             logger.tdebug("cluster.debug.download_temp.downloading", hash=hash)
             content: io.BytesIO = io.BytesIO()
-            async with session.get(f"/openbmclapi/download/{hash}",
-                data={
-                    "responseType": "buffer",
-                    "searchParams": {"noopen": 1}
-                }) as resp:
+            async with session.get(
+                f"/openbmclapi/download/{hash}",
+                data={"responseType": "buffer", "searchParams": {"noopen": 1}},
+            ) as resp:
                 while data := await resp.content.read(IO_BUFFER):
                     if not data:
                         break
@@ -396,7 +400,9 @@ class FileCheck:
                                 total=total,
                             )
                         pbar.update(total)
-            missing_files_by_storage: defaultdict[Storage, set[tuple[BMCLAPIFile, int]]] = defaultdict(set)
+            missing_files_by_storage: defaultdict[
+                Storage, set[tuple[BMCLAPIFile, int]]
+            ] = defaultdict(set)
             miss_all_files: set[BMCLAPIFile] = set()
             g_storage = storages.get_storages()
             total_missing_bytes = 0
@@ -408,8 +414,7 @@ class FileCheck:
                             continue
                         if (
                             await other_storage.exists(file.hash)
-                            and await other_storage.get_size(file.hash)
-                            == file.size
+                            and await other_storage.get_size(file.hash) == file.size
                         ):
                             missing_files_by_storage[storage].add((file, index_storage))
                             total_missing_bytes += file.size
@@ -424,7 +429,9 @@ class FileCheck:
                     unit_scale=True,
                 ) as pbar, logTqdm(pbar, logTqdmType.BYTES):
                     await dashboard.set_status_by_tqdm("files.copying", pbar)
-                    removes: defaultdict[Storage, set[tuple[BMCLAPIFile, int]]] = defaultdict(set)
+                    removes: defaultdict[Storage, set[tuple[BMCLAPIFile, int]]] = (
+                        defaultdict(set)
+                    )
                     for storage, filelist in missing_files_by_storage.items():
                         for raw_file in filelist:
                             other_storage = g_storage[raw_file[1]]
@@ -516,9 +523,7 @@ class FileStorage(Storage):
         self.dir.mkdir(exist_ok=True, parents=True)
         self.cache: dict[str, File] = {}
         self.timer = scheduler.repeat(
-            self.clear_cache,
-            delay=CHECK_CACHE,
-            interval=CHECK_CACHE
+            self.clear_cache, delay=CHECK_CACHE, interval=CHECK_CACHE
         )
 
     async def get(self, hash: str, offset: int = 0) -> File:
@@ -638,7 +643,9 @@ class WebDav(Storage):
         self.dirs: list[str] = []
         self.fetch: bool = False
         self.cache: dict[str, File] = {}
-        self.timer = scheduler.repeat(self.clear_cache, delay=CHECK_CACHE, interval=CHECK_CACHE)
+        self.timer = scheduler.repeat(
+            self.clear_cache, delay=CHECK_CACHE, interval=CHECK_CACHE
+        )
         self.empty = File("", "", 0)
         self.lock = utils.WaitLock()
         self.session = webdav3_client.Client(
@@ -652,7 +659,7 @@ class WebDav(Storage):
         self.session_lock = asyncio.Lock()
         scheduler.delay(self._list_all)
         scheduler.repeat(self._keepalive, interval=60)
-        
+
     async def clear_cache(self):
         size: int = 0
         old_keys: list[str] = []
@@ -675,6 +682,7 @@ class WebDav(Storage):
             count=unit.format_number(len(old_keys)),
             size=unit.format_bytes(old_size),
         )
+
     async def _keepalive(self):
         try:
             hostname = self.hostname
@@ -719,17 +727,23 @@ class WebDav(Storage):
             storages.disable(self)
             self.fetch = False
             raise e
-        except (asyncio.CancelledError, asyncio.TimeoutError, TimeoutError, exceptions.TimeoutError):
+        except (
+            asyncio.CancelledError,
+            asyncio.TimeoutError,
+            TimeoutError,
+            exceptions.TimeoutError,
+        ):
             return asyncio.CancelledError
         except Exception as e:
             raise e
 
     def _file_endpoint(self, file: str):
-        return f"{self._download_endpoint()}/{file.removeprefix('/')}".replace("//", "/")
+        return f"{self._download_endpoint()}/{file.removeprefix('/')}".replace(
+            "//", "/"
+        )
 
     def _download_endpoint(self):
         return f"{self.endpoint}/download"
-
 
     async def _mkdir(self, dirs: str):
         r = await self._execute(self.session.check(dirs))
@@ -782,7 +796,7 @@ class WebDav(Storage):
                         del pbar
                         raise asyncio.CancelledError
                     for file in r[1:]:
-                        if file['isdir']:
+                        if file["isdir"]:
                             continue
                         files[file["name"]] = File(
                             file["path"].removeprefix(f"/dav/{self.endpoint}/"),
@@ -853,12 +867,18 @@ class WebDav(Storage):
                             return f
                     elif resp.status // 100 == 3:
                         f.path = resp.headers.get("Location")
-                        expiry = min((0, *(
-                                    float(n) for n in utils.parse_cache_control(
+                        expiry = min(
+                            (
+                                0,
+                                *(
+                                    float(n)
+                                    for n in utils.parse_cache_control(
                                         resp.headers.get("Cache-Control", "")
-                                        ).values() if str(n).isnumeric()
-                                    )
-                                ))
+                                    ).values()
+                                    if str(n).isnumeric()
+                                ),
+                            )
+                        )
                         if expiry == 0:
                             return f
                         f.expiry = time.time() + expiry
@@ -1109,7 +1129,8 @@ class Cluster:
             self.enabled = False
         self._retry += 1
         logger.tinfo("cluster.info.cluster.retry", t=RECONNECT_DELAY)
-        scheduler.delay(self.enable, delay = RECONNECT_DELAY)
+        scheduler.delay(self.enable, delay=RECONNECT_DELAY)
+
     async def start(self):
         if not storages.available:
             await self.disable()
@@ -1134,7 +1155,10 @@ class Cluster:
                 logger.terror("cluster.error.cert.failed", ack=ack)
                 return
             self.cert_valid = utils.parse_iso_time(ack["expires"])
-            logger.tsuccess("cluster.success.cert.requested", time=utils.parse_datetime_to_gmt(self.cert_valid.timetuple()))
+            logger.tsuccess(
+                "cluster.success.cert.requested",
+                time=utils.parse_datetime_to_gmt(self.cert_valid.timetuple()),
+            )
             certificate.load_text(ack["cert"], ack["key"])
             await dashboard.set_status("cluster.got.cert")
             self.channel_lock.release()
@@ -1143,7 +1167,11 @@ class Cluster:
         await dashboard.set_status("cluster.get.cert")
 
     async def enable(self):
-        if not ENABLE or (RECONNECT_RETRY != -1 and self._retry >= RECONNECT_RETRY) or not storages.available_width:
+        if (
+            not ENABLE
+            or (RECONNECT_RETRY != -1 and self._retry >= RECONNECT_RETRY)
+            or not storages.available_width
+        ):
             logger.twarn("cluster.warn.cluster.disabled")
             return
         if self.want_enable or self.enabled:
@@ -1213,18 +1241,23 @@ class Cluster:
             callback=_,
         )
         timeoutTimer = scheduler.delay(_timeout, delay=ENABLE_TIMEOUT)
+
     async def keepalive(self):
         def _clear():
-            if self.keepalive_timer is not None and not self.keepalive_timer.cancelled():
+            if (
+                self.keepalive_timer is not None
+                and not self.keepalive_timer.cancelled()
+            ):
                 self.keepalive_timer.cancel()
             if self.keepalive_timeout_timer is not None:
                 scheduler.cancel(self.keepalive_timeout_timer)
+
         async def _failed():
             if self.keepalive_failed >= 3:
                 await self.retry()
                 return
             else:
-                scheduler.delay(_start, delay = 10)
+                scheduler.delay(_start, delay=10)
             self.keepalive_failed += 1
 
         async def _(err, ack):
@@ -1232,7 +1265,10 @@ class Cluster:
                 await self.retry()
                 return
             if not ack:
-                logger.terror("cluster.error.cluster.keepalive_failed", count=self.keepalive_failed)
+                logger.terror(
+                    "cluster.error.cluster.keepalive_failed",
+                    count=self.keepalive_failed,
+                )
                 await _failed()
                 return
             self.keepalive_failed = 0
@@ -1266,7 +1302,9 @@ class Cluster:
             )
 
         _clear()
-        self.keepalive_timer = asyncio.get_running_loop().call_later(60, lambda: asyncio.create_task(self.keepalive()))
+        self.keepalive_timer = asyncio.get_running_loop().call_later(
+            60, lambda: asyncio.create_task(self.keepalive())
+        )
         cur_storages = stats.get_offset_storages()
         self.keepalive_timeout_timer = scheduler.delay(_failed, delay=10)
         await _start()
@@ -1279,12 +1317,18 @@ class Cluster:
     def _exception(self, message):
         logger.terror("cluster.error.cluster.remote_message", message=message)
         scheduler.delay(self.retry)
-    async def emit(self, channel, data=None, callback = None):
-        logger.tdebug("cluster.debug.cluster.emit.send", channel=channel, data=data,)
-        await self.sio.emit(
-            channel, data, callback=lambda x: scheduler.delay(self.message, (channel, x, callback))
-        )
 
+    async def emit(self, channel, data=None, callback=None):
+        logger.tdebug(
+            "cluster.debug.cluster.emit.send",
+            channel=channel,
+            data=data,
+        )
+        await self.sio.emit(
+            channel,
+            data,
+            callback=lambda x: scheduler.delay(self.message, (channel, x, callback)),
+        )
 
     async def message(self, channel, data: list[Any], callback=None):
         if len(data) == 1:
@@ -1363,7 +1407,7 @@ async def init():
         for _ in range(size):
             yield b"\x00" * 1024 * 1024
         return
-    
+
     @app.get("/download/{hash}", access_logs=False)
     async def _(request: web.Request, hash: str):
         if (
@@ -1414,23 +1458,16 @@ async def init():
     @app.post("/pages/{name}/{sub}")
     @app.post("/pages/{name}")
     async def _(request: web.Request, namespace: str, key: int = 0):
-        data = await dashboard.process(namespace, base64.b64decode(await request.read_all()))
+        data = await dashboard.process(
+            namespace, base64.b64decode(await request.read_all())
+        )
         if "binary" in await request.get_headers("X-Accept-Encoding", ""):
             return web.Response(
                 dashboard.to_bytes(key, namespace, data).io,
-                headers={
-                    "X-Encoding": "binary"
-                }
+                headers={"X-Encoding": "binary"},
             )
         else:
-            return web.Response(
-                {
-                    "data": data
-                },
-                headers={
-                    "X-Encoding": "json"
-                }
-            )
+            return web.Response({"data": data}, headers={"X-Encoding": "json"})
 
     @app.websocket("/pages/{name}/{sub}")
     @app.websocket("/pages/{name}")
@@ -1462,10 +1499,8 @@ async def init():
 
     @app.get("/config/dashboard.js")
     async def _():
-        config = {
-            "websocket": DASHBOARD_WEBSOCKET
-        }
-        return f'const __CONFIG__={json.dumps(config)}'
+        config = {"websocket": DASHBOARD_WEBSOCKET}
+        return f"const __CONFIG__={json.dumps(config)}"
 
     @app.get("/auth")
     async def _(request: web.Request):
@@ -1505,10 +1540,18 @@ async def init():
 
     app.redirect("/", "/pages/")
 
-
     @app.get("/files")
     async def _():
-        return web.Response('<br/>'.join((f'<a href="{file.path}" target="_blank">{file.path}</a>'for file in cluster.downloader.files)), content_type="text/html")
+        return web.Response(
+            "<br/>".join(
+                (
+                    f'<a href="{file.path}" target="_blank">{file.path}</a>'
+                    for file in cluster.downloader.files
+                )
+            ),
+            content_type="text/html",
+        )
+
 
 async def exit():
     global cluster

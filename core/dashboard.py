@@ -1,7 +1,5 @@
-from collections import defaultdict
 from dataclasses import asdict, dataclass, is_dataclass
 import hashlib
-import os
 import platform
 import sys
 import time
@@ -51,8 +49,8 @@ cur_tqdm: ProgressBar = ProgressBar()
 task_tqdm: Optional[int] = None
 tokens: list[Token] = []
 authentication_module: list[str] = [
-    'storages',
-    'version',
+    "storages",
+    "version",
 ]
 
 
@@ -114,7 +112,7 @@ def serialize(data: Any):
 
 async def process(type: str, data: Any):
     if type == "uptime":
-        return float(env['STARTUP'] or 0)
+        return float(env["STARTUP"] or 0)
     if type == "dashboard":
         return {"hourly": stats.hourly(), "days": stats.daily()}
     if type == "qps":
@@ -124,11 +122,8 @@ async def process(type: str, data: Any):
             k: v for k, v in web.statistics.get_all_qps().items() if k > c - 300
         }
         return {
-            utils.format_time(i): (
-                sum((
-                    raw_data.get(i + j, 0) for j in range(5)
-                ))
-            ) for i in range(c - 300, c, 5)
+            utils.format_time(i): (sum((raw_data.get(i + j, 0) for j in range(5))))
+            for i in range(c - 300, c, 5)
         }
     if type == "status":
         resp: dict = {
@@ -166,7 +161,12 @@ async def process(type: str, data: Any):
             ),
         }
     if type == "version":
-        return {"cur": update.VERSION, "latest": update.fetched_version, "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}", "os": platform.platform()}
+        return {
+            "cur": update.VERSION,
+            "latest": update.fetched_version,
+            "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+            "os": platform.platform(),
+        }
     if type == "pro_stats":
         day = 1
         if isinstance(data, dict):
@@ -200,9 +200,9 @@ async def set_status_by_tqdm(text: str, pbar: tqdm):
     cur_tqdm.speed = 0
     cur_tqdm.last_value = 0
     task_tqdm = scheduler.repeat(_calc_tqdm_speed, delay=0, interval=1)
-    cur_tqdm.show = scheduler.repeat(_set_status, kwargs={
-        "blocked": True
-    }, delay=0, interval=1)
+    cur_tqdm.show = scheduler.repeat(
+        _set_status, kwargs={"blocked": True}, delay=0, interval=1
+    )
 
 
 async def _calc_tqdm_speed():

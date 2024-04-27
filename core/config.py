@@ -40,7 +40,9 @@ defaults = {
     "advanced.auto_update": False,
     "dashboard.username": "admin",
     "dashboard.websocket": True,
-    "dashboard.password": ''.join(random.choices(string.ascii_letters + string.digits, k=6)),
+    "dashboard.password": "".join(
+        random.choices(string.ascii_letters + string.digits, k=6)
+    ),
     "storages": {"bmclapi": {"type": "file", "path": "./bmclapi", "width": 0}},
 }
 
@@ -92,6 +94,7 @@ class CFG:
                 dict_obj[key] = {}
             dict_obj = dict_obj[key]
         dict_obj[keys[-1]] = value
+
 
 if not os.path.exists("./config"):
     print("The config dir is not exists.")

@@ -120,6 +120,7 @@ FORCE_SSL: bool = Config.get("web.force_ssl")
 MAX_INSTANCES: int = 9999
 AUTO_DOWNLOAD_RELEASE: bool = Config.get("update.auto_download")
 
+
 @dataclass
 class StorageParse:
     name: str
