@@ -6,27 +6,29 @@ advanced:
   min_rate: 500
   min_rate_timestamp: 1000
   request_buffer: 8192
+  skip_sign: false
   timeout: 30
+  url: https://openbmclapi.bangbang93.com/
 cache:
   buffer: 536870912
   check: 360
   time: 1800
 cluster:
   byoc: false
+  enable: true
   id: ''
   public_host: ''
   public_port: 8800
   reconnect:
-    delay: 5
+    delay: 60
     retry: -1
   secret: ''
-  skip_sign: false
   timeout:
-    enable: 60
+    enable: 120
     keepalive: 300
-  url: https://openbmclapi.bangbang93.com/
 dashboard:
-  password: '123456'
+  password: ''
+  type: websocket
   username: admin
 download:
   threads: 64
