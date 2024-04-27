@@ -11,7 +11,7 @@ import zlib
 import aiohttp
 from tqdm import tqdm
 
-from core import stats, system, utils, web
+from core import stats, system, update, utils, web
 from core import cluster
 from core.api import StatsCache
 from core import scheduler
@@ -166,7 +166,7 @@ async def process(type: str, data: Any):
             ),
         }
     if type == "version":
-        return {"cur": cluster.VERSION, "latest": cluster.fetched_version, "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}", "os": platform.platform()}
+        return {"cur": update.VERSION, "latest": update.fetched_version, "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}", "os": platform.platform()}
     if type == "pro_stats":
         day = 1
         if isinstance(data, dict):

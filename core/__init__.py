@@ -35,6 +35,8 @@ async def async_init():
     from .cluster import init as cluster_init
     from .cluster import exit as cluster_exit
     from .stats import init as stats_init
+    from .update import init as update_init
+    update_init()
     scheduler.delay(network_init)
     stats_init()
     await cluster_init()

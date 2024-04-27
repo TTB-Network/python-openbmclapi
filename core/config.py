@@ -35,8 +35,9 @@ defaults = {
     "advanced.skip_sign": False,
     "advanced.debug": False,
     "advanced.language": "zh_cn",
+    "update.auto_download": False,
     "dashboard.username": "admin",
-    "dashboard.type": "websocket",
+    "dashboard.websocket": True,
     "dashboard.password": ''.join(random.choices(string.ascii_letters + string.digits, k=6)),
     "storages": {"bmclapi": {"type": "file", "path": "./bmclapi", "width": 0}},
 }
@@ -58,14 +59,14 @@ class CFG:
             self.cfg = yaml.load(f.read(), Loader=yaml.FullLoader) or {}
 
     def get(self, key: str, def_: Any = None) -> Any:
-        value = os.environ.get(key, None) or self._get_value(self.cfg, key.split("."))
-        if (value is None or value == "") and def_ is None:
+        value = self._get_value(self.cfg, key.split("."))
+        if value is None and def_ is None:
             print(f"[Config] {key} is not set, does it exist?")
             if key in defaults:
                 value = defaults.get(key, None)
                 if value is not None:
                     self.set(key, value)
-        return value if value else defaults.get(key, def_)
+        return value
 
     def set(self, key: str, value: Any):
         self._set_value(self.cfg, key.split("."), value)

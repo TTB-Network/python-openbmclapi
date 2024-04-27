@@ -538,7 +538,7 @@ def stats_pro(day):
     s_ip: dict[int, defaultdict[str, int]] = {}
     file_bytes, file_download = 0, 0
     for q in queryAllData(
-        "select bytes, hit from access_storage where hour >= ?", 
+        "select sum(bytes + cache_bytes), sum(hit + cache_hit) from access_storage where hour >= ?", 
         t
     ):
         file_bytes += q[0]

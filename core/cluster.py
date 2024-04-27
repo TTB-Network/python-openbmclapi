@@ -774,6 +774,8 @@ class WebDav(Storage):
                         del pbar
                         raise asyncio.CancelledError
                     for file in r[1:]:
+                        if file['isdir']:
+                            continue
                         files[file["name"]] = File(
                             file["path"].removeprefix(f"/dav/{self.endpoint}/"),
                             file["name"],
@@ -837,21 +839,19 @@ class WebDav(Storage):
                             f.headers[field] = resp.headers.get(field)
                         f.set_data(await resp.read())
                         f.expiry = time.time() + CACHE_TIME
+                        self.cache[file] = f
                     elif resp.status // 100 == 3:
                         f.path = resp.headers.get("Location")
-                        expiry = float(
-                            min((0, *(
-                                    n for n in utils.parse_cache_control(
+                        expiry = min((0, *(
+                                    float(n) for n in utils.parse_cache_control(
                                         resp.headers.get("Cache-Control", "")
-                                    ).values() if str(n).isnumeric()
+                                        ).values() if str(n).isnumeric()
+                                    )
                                 ))
-                            )
-                        )
-                        if expiry != 0:
-                            f.expiry = time.time() + expiry
-                            self.cache[file] = f
-                        else:
+                        if expiry == 0:
                             return f
+                        f.expiry = time.time() + expiry
+                    self.cache[file] = f
             return self.cache[file]
         except Exception:
             storages.disable(self)
@@ -1169,16 +1169,16 @@ class Cluster:
         self.keepalive_failed = 0
         await self.channel_lock.wait()
         await dashboard.set_status("cluster.want_enable")
-        storage_str = {"file": 0, "webdav": 0}
         self.trusted = True
-        for storage in storages.get_storages():
+        storage_str = {"file": 0, "webdav": 0}
+        for storage in storages.get_available_storages():
             if isinstance(storage, FileStorage):
                 storage_str["file"] += 1
             elif isinstance(storage, WebDav):
                 storage_str["webdav"] += 1
         logger.tinfo(
-            "cluster.info.cluster.storage_count",
-            total=len(storages.get_storages()),
+            "cluster.info.cluster.storage_available_count",
+            total=len(storages.get_available_storages()),
             local=storage_str["file"],
             webdav=storage_str["webdav"],
         )
@@ -1291,36 +1291,7 @@ token = TokenManager()
 cluster: Optional[Cluster] = None
 last_status: str = "-"
 storages = StorageManager()
-github_api = "https://api.github.com"
-download_url = ""
 
-
-async def check_update():
-    global fetched_version
-    fetched_version = "Unknown"
-    async with aiohttp.ClientSession(base_url=github_api) as session:
-        logger.tinfo("cluster.info.check_update.checking")
-        try:
-            async with session.get(
-                "/repos/TTB-Network/python-openbmclapi/releases/latest",
-                timeout=5
-            ) as req:
-                req.raise_for_status()
-                data = await req.json()
-                fetched_version = data["tag_name"]
-            if fetched_version != VERSION:
-                logger.tsuccess(
-                    "cluster.success.check_update.new_version",
-                    latest=fetched_version,
-                )
-                await dashboard.trigger("version")
-            else:
-                logger.tinfo("cluster.info.check_update.already_up_to_date")
-        except aiohttp.ClientError as e:
-            logger.terror("cluster.error.check_update.failed", e=e)
-        except asyncio.CancelledError:
-            await session.close()
-            return
 
 async def init():
     if CLUSTER_ID == "":
@@ -1350,6 +1321,18 @@ async def init():
                     storage.path,
                 )
             )
+    storage_str = {"file": 0, "webdav": 0}
+    for storage in storages.get_storages():
+        if isinstance(storage, FileStorage):
+            storage_str["file"] += 1
+        elif isinstance(storage, WebDav):
+            storage_str["webdav"] += 1
+    logger.tinfo(
+        "cluster.info.cluster.storage_count",
+        total=len(storages.get_storages()),
+        local=storage_str["file"],
+        webdav=storage_str["webdav"],
+    )
     scheduler.delay(cluster.init)
     app = web.app
 
@@ -1509,8 +1492,10 @@ async def init():
 
     app.redirect("/", "/pages/")
 
-    scheduler.repeat(check_update, interval=3600)
 
+    @app.get("/files")
+    async def _():
+        return web.Response('<br/>'.join((f'<a href="{file.path}" target="_blank">{file.path}</a>'for file in cluster.downloader.files)), content_type="text/html")
 
 async def exit():
     global cluster
