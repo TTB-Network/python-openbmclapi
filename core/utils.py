@@ -10,7 +10,6 @@ import random
 import re
 import sys
 import time
-import avro
 from typing import (
     Any,
     Coroutine,
