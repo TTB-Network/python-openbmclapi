@@ -175,15 +175,19 @@ class FileDownloader:
 
     async def _download_temporarily_file(self, hash: str):
         async with aiohttp.ClientSession(
-            BASE_URL,
+            base_url=BASE_URL,
             headers={
-                "Authorization": f"Bearar {await token.getToken()}",
                 "User-Agent": USER_AGENT,
+                "Authorization": f"Bearer {await token.getToken()}",
             },
         ) as session:
             logger.tdebug("cluster.debug.download_temp.downloading", hash=hash)
             content: io.BytesIO = io.BytesIO()
-            async with session.get(f"/openbmclapi/download/{hash}") as resp:
+            async with session.get(f"/openbmclapi/download/{hash}",
+                data={
+                    "responseType": "buffer",
+                    "searchParams": {"noopen": 1}
+                }) as resp:
                 while data := await resp.content.read(IO_BUFFER):
                     if not data:
                         break
