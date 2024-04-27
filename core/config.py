@@ -52,14 +52,14 @@ class CFG:
         else:
             for key, value in defaults.items():
                 self.set(key, value)
-            print(f"[Condig] 仪表盘密码为：{self.get("dashboard.password")}")
+            print(f"[Condig] 仪表盘密码为：{self.get('dashboard.password')}")
 
     def load(self):
         with open(self.file, "r", encoding="utf-8") as f:
             self.cfg = yaml.load(f.read(), Loader=yaml.FullLoader) or {}
 
     def get(self, key: str, def_: Any = None) -> Any:
-        value = self._get_value(self.cfg, key.split("."))
+        value = os.environ.get(key, None) or self._get_value(self.cfg, key.split("."))
         if value is None and def_ is None:
             print(f"[Config] {key} is not set, does it exist?")
             if key in defaults:

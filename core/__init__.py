@@ -18,7 +18,7 @@ def init():
     logger.tinfo("core.info.loading")
     version = sys.version_info
     logger.tinfo("core.info.python_version", 
-                 v=f"{str(version.major)}.{str(version.minor)}.{str(version.micro)}")
+                 v=f"{version.major}.{version.minor}.{version.micro}")
     atexit.register(exit)
     try:
         asyncio.run(async_init())
