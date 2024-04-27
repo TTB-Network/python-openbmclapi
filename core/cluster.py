@@ -242,11 +242,12 @@ class FileDownloader:
     ) -> tuple[int, io.BytesIO]:
         result = None
         for storage in storages.get_storages():
+            r = -1
             try:
-                result = result or await storage.write(file.hash, buf)
+                r = await storage.write(file.hash, buf)
             except:
                 logger.error(traceback.format_exc())
-            if result != file.size:
+            if r != file.size:
                 hash = file.hash
                 file_size = unit.format_bytes(file.size)
                 target_size = unit.format_bytes(result)
@@ -256,6 +257,8 @@ class FileDownloader:
                     file=file_size,
                     target=target_size,
                 )
+                result = -1
+            result = result or r
         return buf, result or -1
 
     async def download(self, miss: list[BMCLAPIFile]):
@@ -398,6 +401,7 @@ class FileCheck:
                 for storage, missing_files in zip(g_storage, miss_storage):
                     for file in missing_files:
                         for index_storage, other_storage in enumerate(g_storage):
+                            miss_all_files.add(file)
                             if other_storage == storage:
                                 continue
                             if (
@@ -419,7 +423,7 @@ class FileCheck:
                         unit_scale=True,
                     ) as pbar, logTqdm(pbar, logTqdmType.BYTES):
                         await dashboard.set_status_by_tqdm("files.copying", pbar)
-                        removes: defaultdict[Storage, set[BMCLAPIFile]] = defaultdict(set)
+                        removes: defaultdict[Storage, set[tuple[BMCLAPIFile, int]]] = defaultdict(set)
                         for storage, filelist in missing_files_by_storage.items():
                             for raw_file in filelist:
                                 other_storage = g_storage[raw_file[1]]
@@ -446,8 +450,10 @@ class FileCheck:
                                     pbar.update(size)
                         for storage, filelist in removes.items():
                             for file in filelist:
+                                if file[0] in miss_all_files:
+                                    miss_all_files.remove(file[0])
                                 missing_files_by_storage[storage].remove(file)
-        miss = set().union(*((val[0] for val in value) for value in missing_files_by_storage.values()))
+        miss = miss_all_files
         if not miss:
             file_count = len(files) * len(storages.get_storages())
             file_size = unit.format_bytes(
