@@ -487,7 +487,7 @@ def base36_encode(number):
 
     base36 = []
     while number != 0:
-        number, i = divmod(number, 36)  # 返回 number// 36 , number%36
+        number, i = divmod(number, 36)
         base36.append(num_str[i])
 
     return "".join(reversed(base36))
@@ -495,10 +495,9 @@ def base36_encode(number):
 
 def parse_cache_control(cache_control_header: str):
     directives = {}
-    # 使用正则表达式匹配指令和值
     matches = re.findall(r'(\w+)\s*=\s*(".*?"|[^,;]+)?', cache_control_header)
     for directive, value in matches:
-        # 去除引号（如果有的话）
+
         if value and value.startswith('"') and value.endswith('"'):
             value = value[1:-1]
         directives[directive.lower()] = value

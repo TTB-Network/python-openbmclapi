@@ -247,7 +247,7 @@ def read_cache():
                 storages[storage.get_name()] = storage
             globalStats = GlobalStats.from_binary(input.readBytes(input.readVarInt()))
         except:
-            logger.error("统计文件已损坏")
+            logger.terror("stats.error.bad")
 
 def write_cache():
     data = DataOutputStream()

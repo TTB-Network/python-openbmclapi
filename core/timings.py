@@ -30,7 +30,7 @@ class logTqdm:
         self.start = time.time()
 
     def __exit__(self, exc_type, exc_value, traceback):
-        logger.info(f"{self.tqdm.desc} 已完成，耗时 [{utils.format_stime(time.time() - self.start)}]，数量 [{get_formatter(self.type)(self.tqdm.n)}] 总数 [{get_formatter(self.type)(self.tqdm.total)}]")
+        logger.info(f"tqdm.info.finished", desc=self.tqdm.desc, time=utils.format_stime(time.time() - self.start), count=self.tqdm.n, total=self.tqdm.total)
 
 def get_formatter(type: logTqdmType):
     if type == logTqdmType.BYTES:

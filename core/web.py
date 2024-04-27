@@ -66,11 +66,11 @@ class Cookie:
     size: Optional[int] = None
     http_only: Optional[bool] = None
     secure: Optional[bool] = None
-    same_site: Optional[str] = None  # 根据RFC6265，应为"Strict", "Lax", "None"
-    priority: Optional[str] = None  # 根据某些浏览器实现，可能为"Low", "Medium", "High"
+    same_site: Optional[str] = None
+    priority: Optional[str] = None
 
     def __str__(self) -> str:
-        # 格式化Cookie为字符串
+
         cookie_str = f"{self.name}={self.value}"
         for attr, value in asdict(self).items():
             if attr in ["name", "value"] or value is None:

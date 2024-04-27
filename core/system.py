@@ -57,5 +57,5 @@ def get_connections() -> int:
 
 
 def init():
-    logger.info("加载 [系统信息] 模块")
+    logger.tinfo("system.info.loading")
     scheduler.repeat(_run)

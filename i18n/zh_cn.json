@@ -75,5 +75,8 @@
   "core.warn.port_closed": "端口 $port 已被关闭，正在重新开启……",
   "core.info.listening": "正在端口 $port 上监听服务器。",
   "core.info.listening_ssl": "正在端口 $port 上监听 SSL 服务器。",
-  "core.info.shutting_down_web_service": "正在关闭 Web 服务……"
+  "core.info.shutting_down_web_service": "正在关闭 Web 服务……",
+  "stats.error.bad": "统计信息已损坏……",
+  "system.info.loading": "加载 [系统信息] 模块",
+  "tqdm.info.finished": "$desc 已完成，耗时 [$time] 数量 [$count] 总数 [$total]"
 }
