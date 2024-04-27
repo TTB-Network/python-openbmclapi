@@ -19,6 +19,7 @@ defaults = {
     "cache.buffer": 536870912,
     "cache.time": 1800,
     "cache.check": 360,
+    "cache.enable": True,
     "download.threads": 64,
     "web.server_name": "TTB-Network",
     "web.x_forwarded_for": 0,

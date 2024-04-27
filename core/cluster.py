@@ -235,6 +235,7 @@ class FileDownloader:
             except:
                 pbar.update(-size)
                 await self.queues.put(file)
+            del content
         await session.close()
 
     async def _mount_file(
@@ -533,8 +534,9 @@ class FileStorage(Storage):
                 buf.write(data)
         file = File(path, hash, buf.tell(), time.time(), time.time())
         file.set_data(buf.getbuffer())
-        self.cache[hash] = file
-        file.cache = False
+        if CACHE_ENABLE:
+            self.cache[hash] = file
+            file.cache = False
         return file
 
     async def exists(self, hash: str) -> bool:
@@ -844,8 +846,11 @@ class WebDav(Storage):
                                 continue
                             f.headers[field] = resp.headers.get(field)
                         f.set_data(await resp.read())
-                        f.expiry = time.time() + CACHE_TIME
-                        self.cache[file] = f
+                        if CACHE_ENABLE:
+                            f.expiry = time.time() + CACHE_TIME
+                            self.cache[file] = f
+                        else:
+                            return f
                     elif resp.status // 100 == 3:
                         f.path = resp.headers.get("Location")
                         expiry = min((0, *(
@@ -857,7 +862,10 @@ class WebDav(Storage):
                         if expiry == 0:
                             return f
                         f.expiry = time.time() + expiry
-                    self.cache[file] = f
+                    if CACHE_ENABLE:
+                        self.cache[file] = f
+                    else:
+                        return f
             return self.cache[file]
         except Exception:
             storages.disable(self)

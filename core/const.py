@@ -38,6 +38,7 @@ KEEPALIVE_TIMEOUT: bool = Config.get("cluster.timeout.keepalive")
 CACHE_BUFFER: int = Config.get("cache.buffer")  # bytes
 CACHE_TIME: int = Config.get("cache.time")
 CHECK_CACHE: int = Config.get("cache.check")
+CACHE_ENABLE: int = Config.get("cache.enable")
 SIGN_SKIP: bool = Config.get("advanced.skip_sign")
 DASHBOARD_USERNAME: str = Config.get("dashboard.username")
 DASHBOARD_PASSWORD: str = Config.get("dashboard.password")
