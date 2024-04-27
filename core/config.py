@@ -52,6 +52,7 @@ class CFG:
         else:
             for key, value in defaults.items():
                 self.set(key, value)
+            print(f"[Condig] 仪表盘密码为：{self.get("dashboard.password")}")
 
     def load(self):
         with open(self.file, "r", encoding="utf-8") as f:
@@ -61,8 +62,6 @@ class CFG:
         value = self._get_value(self.cfg, key.split("."))
         if value is None and def_ is None:
             print(f"[Config] {key} is not set, does it exist?")
-            if key == "dashboard.password":
-                print(f"面板密码为 {defaults[key]}")
             if key in defaults:
                 value = defaults.get(key, None)
                 if value is not None:

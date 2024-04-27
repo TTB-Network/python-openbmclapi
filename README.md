@@ -129,6 +129,8 @@ advanced:
   min_rate_timestamp: 1000
   # 请求缓存大小
   request_buffer: 8192
+  # OpenBMCLAPI 的 BaseURL
+  url: https://openbmclapi.bangbang93.com/
   # 超时时间
   timeout: 30
   # 是否跳过签名检测
@@ -147,6 +149,8 @@ cache:
 cluster:
   # 是否不使用 BMCLAPI 分发的证书, 同 CLUSTER_BYOC
   byoc: false
+  # 是否启用节点
+  enable: true
   # OpenBMCLAPI 的 CLUSTER_ID
   id: ''
   # 实际开放的公网主机名, 同 CLUSTER_IP
@@ -156,7 +160,7 @@ cluster:
   # 重连
   reconnect:
     # 重试间隔
-    delay: 5
+    delay: 60
     # 重试次数，-1 为无限次数
     retry: -1
   # OpenBMCLAPI 的 CLUSTER_SECRET
@@ -167,7 +171,8 @@ cluster:
     enable: 120
 dashboard:
   # 仪表盘密码
-  password: '123456'
+  password: ''
+  type: websocket
   # 仪表盘用户名
   username: admin
 download:
