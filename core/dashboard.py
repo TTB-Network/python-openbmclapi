@@ -248,14 +248,14 @@ def to_bytes(key: int, type: str, data: Any):
     return output
 
 
-def generate_token(request: "web.Request") -> Token:
+async def generate_token(request: "web.Request") -> Token:
     global tokens
     token = Token(
         hashlib.sha256(
             zlib.compress(
                 hashlib.sha512(
                     (
-                        request.get_ip()
+                        await request.get_ip()
                         + request.get_user_agent()
                         + request.get_url()
                         + CLUSTER_ID

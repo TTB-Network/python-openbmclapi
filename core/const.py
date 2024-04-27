@@ -107,6 +107,7 @@ STATUS_CODES: dict[int, str] = {
 }
 REQUEST_TIME_UNITS = ["ns", "ms", "s", "m", "h"]
 FILECHECK = Config.get("file.check")
+X_FORWARDED_FOR: int = Config.get("web.x_forwarded_for")
 STORAGES: list["StorageParse"] = []
 COMPRESSOR: dict[str, Any] = {
     "zstd": pyzstd.compress,

@@ -21,6 +21,7 @@ defaults = {
     "cache.check": 360,
     "download.threads": 64,
     "web.server_name": "TTB-Network",
+    "web.x_forwarded_for": 0,
     "file.check": "size",
     "web.port": 8080,
     "web.ssl_port": 8800,
