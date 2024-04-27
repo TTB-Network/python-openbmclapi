@@ -840,14 +840,12 @@ class WebDav(Storage):
                         self.cache[file] = f
                     elif resp.status // 100 == 3:
                         f.path = resp.headers.get("Location")
-                        expiry = float(
-                            min((0, *(
-                                    n for n in utils.parse_cache_control(
+                        expiry = min((0, *(
+                                    float(n) for n in utils.parse_cache_control(
                                         resp.headers.get("Cache-Control", "")
-                                    ).values() if str(n).isnumeric()
+                                        ).values() if str(n).isnumeric()
+                                    )
                                 ))
-                            )
-                        )
                         if expiry == 0:
                             return f
                         f.expiry = time.time() + expiry
