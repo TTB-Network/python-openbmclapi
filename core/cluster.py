@@ -347,14 +347,6 @@ class FileCheck:
             except asyncio.CancelledError:
                 del pbar
                 raise asyncio.CancelledError
-            missing_files_by_storage: dict[Storage, set[BMCLAPIFile]] = {}
-            total_missing_bytes = 0
-
-            for storage, missing_files in zip(storages.get_storages(), miss_storage):
-                missing_files_by_storage[storage] = set(missing_files)
-                total_missing_bytes += sum(
-                    (file.size for file in missing_files_by_storage[storage])
-                )
 
             self.pbar = None
         if not self.checked:
@@ -398,52 +390,64 @@ class FileCheck:
                                 total=total,
                             )
                         pbar.update(total)
-            if total_missing_bytes != 0 and len(miss_storage) >= 2:
-                with tqdm(
-                    total=total_missing_bytes,
-                    desc=locale.t(
-                        "cluster.tqdm.desc.copying_files_from_other_storages"
-                    ),
-                    unit="B",
-                    unit_divisor=1024,
-                    unit_scale=True,
-                ) as pbar, logTqdm(pbar, logTqdmType.BYTES):
-                    await dashboard.set_status_by_tqdm("files.copying", pbar)
-                    removes: defaultdict[Storage, set[BMCLAPIFile]] = defaultdict(set)
-                    for storage, files in missing_files_by_storage.items():
-                        for file in files:
-                            for other_storage in storages.get_storages():
-                                if other_storage == storage:
+            missing_files_by_storage: defaultdict[Storage, set[tuple[BMCLAPIFile, int]]] = defaultdict(set)
+            miss_all_files: set[BMCLAPIFile] = set()
+            g_storage = storages.get_storages()
+            if len(g_storage) >= 2:
+                total_missing_bytes = 0
+                for storage, missing_files in zip(g_storage, miss_storage):
+                    for file in missing_files:
+                        for index_storage, other_storage in enumerate(g_storage):
+                            if other_storage == storage:
+                                continue
+                            if (
+                                await other_storage.exists(file.hash)
+                                and await other_storage.get_size(file.hash)
+                                == file.size
+                            ):
+                                missing_files_by_storage[storage].add((file, index_storage))
+                                total_missing_bytes += file.size
+
+                if total_missing_bytes != 0:
+                    with tqdm(
+                        total=total_missing_bytes,
+                        desc=locale.t(
+                            "cluster.tqdm.desc.copying_files_from_other_storages"
+                        ),
+                        unit="B",
+                        unit_divisor=1024,
+                        unit_scale=True,
+                    ) as pbar, logTqdm(pbar, logTqdmType.BYTES):
+                        await dashboard.set_status_by_tqdm("files.copying", pbar)
+                        removes: defaultdict[Storage, set[BMCLAPIFile]] = defaultdict(set)
+                        for storage, filelist in missing_files_by_storage.items():
+                            for raw_file in filelist:
+                                other_storage = g_storage[raw_file[1]]
+                                file = raw_file[0]
+                                data = await other_storage.get(file.hash)
+                                if data is None:
                                     continue
-                                if (
-                                    await other_storage.exists(file.hash)
-                                    and await other_storage.get_size(file.hash)
-                                    == file.size
-                                ):
-                                    data = await other_storage.get(file.hash)
-                                    if data is None:
-                                        continue
-                                    size = await storage.write(
-                                        file.hash,
-                                        data.get_data(),
+                                size = await storage.write(
+                                    file.hash,
+                                    data.get_data(),
+                                )
+                                if size == -1:
+                                    hash = file.hash
+                                    file_size = unit.format_bytes(file.size)
+                                    target_size = unit.format_bytes(size)
+                                    logger.twarn(
+                                        "cluster.error.check_files.failed_to_copy",
+                                        hash=hash,
+                                        file=file_size,
+                                        target=target_size,
                                     )
-                                    if size == -1:
-                                        hash = file.hash
-                                        file_size = unit.format_bytes(file.size)
-                                        target_size = unit.format_bytes(size)
-                                        logger.twarn(
-                                            "cluster.error.check_files.failed_to_copy",
-                                            hash=hash,
-                                            file=file_size,
-                                            target=target_size,
-                                        )
-                                    else:
-                                        removes[storage].add(file)
-                                        pbar.update(size)
-                    for storage, files in removes.items():
-                        for file in files:
-                            missing_files_by_storage[storage].remove(file)
-        miss = set().union(*missing_files_by_storage.values())
+                                else:
+                                    removes[storage].add(raw_file)
+                                    pbar.update(size)
+                        for storage, filelist in removes.items():
+                            for file in filelist:
+                                missing_files_by_storage[storage].remove(file)
+        miss = set().union(*((val[0] for val in value) for value in missing_files_by_storage.values()))
         if not miss:
             file_count = len(files) * len(storages.get_storages())
             file_size = unit.format_bytes(
