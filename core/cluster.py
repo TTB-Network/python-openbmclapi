@@ -230,15 +230,14 @@ class FileDownloader:
                         hash.update(data)
                 if file.hash != hash.hexdigest():
                     raise EOFError
-                r = 0#await self._mount_file(file, content)
+                r = await self._mount_file(file, content)
                 if r[0] == -1:
                     raise EOFError
             except asyncio.CancelledError:
                 break
             except:
-                ...
-            pbar.update(-size)
-            await self.queues.put(file)
+                pbar.update(-size)
+                await self.queues.put(file)
         await session.close()
 
     async def _mount_file(
@@ -1170,16 +1169,16 @@ class Cluster:
         self.keepalive_failed = 0
         await self.channel_lock.wait()
         await dashboard.set_status("cluster.want_enable")
-        storage_str = {"file": 0, "webdav": 0}
         self.trusted = True
-        for storage in storages.get_storages():
+        storage_str = {"file": 0, "webdav": 0}
+        for storage in storages.get_available_storages():
             if isinstance(storage, FileStorage):
                 storage_str["file"] += 1
             elif isinstance(storage, WebDav):
                 storage_str["webdav"] += 1
         logger.tinfo(
-            "cluster.info.cluster.storage_count",
-            total=len(storages.get_storages()),
+            "cluster.info.cluster.storage_available_count",
+            total=len(storages.get_available_storages()),
             local=storage_str["file"],
             webdav=storage_str["webdav"],
         )
@@ -1322,6 +1321,18 @@ async def init():
                     storage.path,
                 )
             )
+    storage_str = {"file": 0, "webdav": 0}
+    for storage in storages.get_storages():
+        if isinstance(storage, FileStorage):
+            storage_str["file"] += 1
+        elif isinstance(storage, WebDav):
+            storage_str["webdav"] += 1
+    logger.tinfo(
+        "cluster.info.cluster.storage_count",
+        total=len(storages.get_storages()),
+        local=storage_str["file"],
+        webdav=storage_str["webdav"],
+    )
     scheduler.delay(cluster.init)
     app = web.app
 
