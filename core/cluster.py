@@ -533,7 +533,7 @@ class FileStorage(Storage):
             file.cache = True
             return file
         path = Path(str(self.dir) + f"/{hash[:2]}/{hash}")
-        file = File(path, hash, 0)
+        file = File(path, hash, path.stat().st_size)
         if CACHE_ENABLE:
             buf = io.BytesIO()
             async with aiofiles.open(path, "rb") as r:
@@ -830,64 +830,49 @@ class WebDav(Storage):
             return
         await self.lock.wait()
 
-    async def get(self, file: str, offset: int = 0) -> File:
-        if file in self.cache and self.cache[file].expiry - 10 > time.time():
-            self.cache[file].cache = True
-            self.cache[file].last_hit = time.time()
-            return self.cache[file]
+    async def get(self, hash: str, offset: int = 0) -> File:
+        if hash in self.cache and self.cache[hash].expiry - 10 > time.time():
+            self.cache[hash].cache = True
+            self.cache[hash].last_hit = time.time()
+            return self.cache[hash]
         try:
+            f = File(
+                hash,
+                hash,
+                size=0,
+            )
             async with aiohttp.ClientSession(
                 auth=aiohttp.BasicAuth(self.username, self.password)
             ) as session:
                 async with session.get(
-                    self.hostname + self._file_endpoint(file[:2] + "/" + file),
+                    self.hostname + self._file_endpoint(hash[:2] + "/" + hash),
                     allow_redirects=False,
                 ) as resp:
-                    f = File(
-                        file,
-                        file,
-                        size=int(resp.headers.get("Content-Length", 0)),
-                    )
                     if resp.status == 200:
                         f.headers = {}
                         for field in (
                             "ETag",
                             "Last-Modified",
                             "Content-Length",
-                            "Content-Range",
-                            "Accept-Ranges",
                         ):
                             if field not in resp.headers:
                                 continue
                             f.headers[field] = resp.headers.get(field)
+                        f.size = int(resp.headers.get("Content-Length", 0))
                         f.set_data(await resp.read())
                         if CACHE_ENABLE:
                             f.expiry = time.time() + CACHE_TIME
-                            self.cache[file] = f
-                        else:
-                            return f
+                            self.cache[hash] = f
                     elif resp.status // 100 == 3:
+                        f.size = self.get_size(hash)
                         f.path = resp.headers.get("Location")
-                        expiry = min(
-                            (
-                                0,
-                                *(
-                                    float(n)
-                                    for n in utils.parse_cache_control(
-                                        resp.headers.get("Cache-Control", "")
-                                    ).values()
-                                    if str(n).isnumeric()
-                                ),
-                            )
-                        )
+                        expiry = re.search(r"max-age=(\d+)", resp.headers.get("Cache-Control", "")) or 0
                         if expiry == 0:
                             return f
                         f.expiry = time.time() + expiry
                     if CACHE_ENABLE:
-                        self.cache[file] = f
-                    else:
-                        return f
-            return self.cache[file]
+                        self.cache[hash] = f
+            return f
         except Exception:
             storages.disable(self)
             logger.error(traceback.format_exc())
