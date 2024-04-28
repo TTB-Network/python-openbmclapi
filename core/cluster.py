@@ -764,11 +764,18 @@ class WebDav(Storage):
         if not self.fetch:
             self.lock.acquire()
         self.fetch = True
+        def stop(tqdm: Optional[tqdm] = None):
+            if tqdm is not None:
+                del tqdm
+            self.lock.acquire()
+            self.fetch = False
+            raise asyncio.CancelledError
         try:
             await self._mkdir(self._download_endpoint())
             r = await self._execute(self.session.list(self._download_endpoint()))
             if r is asyncio.CancelledError:
                 self.lock.acquire()
+                self.fetch = False
                 raise asyncio.CancelledError
             dirs = r[1:]
             with tqdm(
@@ -778,9 +785,7 @@ class WebDav(Storage):
                 await dashboard.set_status_by_tqdm("storage.webdav", pbar)
                 r = await self._execute(self.session.list(self._download_endpoint()))
                 if r is asyncio.CancelledError:
-                    self.lock.acquire()
-                    del pbar
-                    raise asyncio.CancelledError
+                    return stop(pbar)
                 for dir in r[1:]:
                     pbar.update(1)
                     files: dict[str, File] = {}
@@ -793,9 +798,7 @@ class WebDav(Storage):
                         )
                     )
                     if r is asyncio.CancelledError:
-                        self.lock.acquire()
-                        del pbar
-                        raise asyncio.CancelledError
+                        return stop(pbar)
                     for file in r[1:]:
                         if file["isdir"]:
                             continue
@@ -807,9 +810,7 @@ class WebDav(Storage):
                         try:
                             await asyncio.sleep(0)
                         except asyncio.CancelledError:
-                            self.lock.acquire()
-                            del pbar
-                            raise asyncio.CancelledError
+                            return stop(pbar)
                         except Exception as e:
                             raise e
                     for remove in set(
@@ -864,7 +865,7 @@ class WebDav(Storage):
                             f.expiry = time.time() + CACHE_TIME
                             self.cache[hash] = f
                     elif resp.status // 100 == 3:
-                        f.size = self.get_size(hash)
+                        f.size = await self.get_size(hash)
                         f.path = resp.headers.get("Location")
                         expiry = re.search(r"max-age=(\d+)", resp.headers.get("Cache-Control", "")) or 0
                         if expiry == 0:
