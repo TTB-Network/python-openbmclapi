@@ -98,7 +98,7 @@ class TokenManager:
                     return None
 
     async def getToken(self) -> str:
-        if not self.token:
+        if not self.token or self.token_expires <= time.time():
             await self.fetchToken()
         return self.token or ""
 
@@ -359,6 +359,67 @@ class FileCheck:
                 raise asyncio.CancelledError
 
             self.pbar = None
+        missing_files_by_storage: defaultdict[
+                Storage, set[tuple[BMCLAPIFile, int]]
+            ] = defaultdict(set)
+        miss_all_files: set[BMCLAPIFile] = set()
+        g_storage = storages.get_storages()
+        total_missing_bytes = 0
+        for storage, missing_files in zip(g_storage, miss_storage):
+            for file in missing_files:
+                for index_storage, other_storage in enumerate(g_storage):
+                    miss_all_files.add(file)
+                    if other_storage == storage:
+                        continue
+                    if (
+                        await other_storage.exists(file.hash)
+                        and await other_storage.get_size(file.hash) == file.size
+                    ):
+                        missing_files_by_storage[storage].add((file, index_storage))
+                        total_missing_bytes += file.size
+        if total_missing_bytes != 0 and len(g_storage) >= 2:
+            with tqdm(
+                total=total_missing_bytes,
+                desc=locale.t(
+                    "cluster.tqdm.desc.copying_files_from_other_storages"
+                ),
+                unit="B",
+                unit_divisor=1024,
+                unit_scale=True,
+            ) as pbar, logTqdm(pbar, logTqdmType.BYTES):
+                await dashboard.set_status_by_tqdm("files.copying", pbar)
+                removes: defaultdict[Storage, set[tuple[BMCLAPIFile, int]]] = (
+                    defaultdict(set)
+                )
+                for storage, filelist in missing_files_by_storage.items():
+                    for raw_file in filelist:
+                        other_storage = g_storage[raw_file[1]]
+                        file = raw_file[0]
+                        data = await other_storage.get(file.hash)
+                        if data is None:
+                            continue
+                        size = await storage.write(
+                            file.hash,
+                            data.get_data(),
+                        )
+                        if size == -1:
+                            hash = file.hash
+                            file_size = unit.format_bytes(file.size)
+                            target_size = unit.format_bytes(size)
+                            logger.twarn(
+                                "cluster.error.check_files.failed_to_copy",
+                                hash=hash,
+                                file=file_size,
+                                target=target_size,
+                            )
+                        else:
+                            removes[storage].add(raw_file)
+                            pbar.update(size)
+                for storage, filelist in removes.items():
+                    for file in filelist:
+                        if file[0] in miss_all_files:
+                            miss_all_files.remove(file[0])
+                        missing_files_by_storage[storage].remove(file)
         if not self.checked:
             self.checked = True
             more_files = {storage: [] for storage in storages.get_storages()}
@@ -400,69 +461,7 @@ class FileCheck:
                                 total=total,
                             )
                         pbar.update(total)
-            missing_files_by_storage: defaultdict[
-                Storage, set[tuple[BMCLAPIFile, int]]
-            ] = defaultdict(set)
-            miss_all_files: set[BMCLAPIFile] = set()
-            g_storage = storages.get_storages()
-            total_missing_bytes = 0
-            for storage, missing_files in zip(g_storage, miss_storage):
-                for file in missing_files:
-                    for index_storage, other_storage in enumerate(g_storage):
-                        miss_all_files.add(file)
-                        if other_storage == storage:
-                            continue
-                        if (
-                            await other_storage.exists(file.hash)
-                            and await other_storage.get_size(file.hash) == file.size
-                        ):
-                            missing_files_by_storage[storage].add((file, index_storage))
-                            total_missing_bytes += file.size
-            if total_missing_bytes != 0 and len(g_storage) >= 2:
-                with tqdm(
-                    total=total_missing_bytes,
-                    desc=locale.t(
-                        "cluster.tqdm.desc.copying_files_from_other_storages"
-                    ),
-                    unit="B",
-                    unit_divisor=1024,
-                    unit_scale=True,
-                ) as pbar, logTqdm(pbar, logTqdmType.BYTES):
-                    await dashboard.set_status_by_tqdm("files.copying", pbar)
-                    removes: defaultdict[Storage, set[tuple[BMCLAPIFile, int]]] = (
-                        defaultdict(set)
-                    )
-                    for storage, filelist in missing_files_by_storage.items():
-                        for raw_file in filelist:
-                            other_storage = g_storage[raw_file[1]]
-                            file = raw_file[0]
-                            data = await other_storage.get(file.hash)
-                            if data is None:
-                                continue
-                            size = await storage.write(
-                                file.hash,
-                                data.get_data(),
-                            )
-                            if size == -1:
-                                hash = file.hash
-                                file_size = unit.format_bytes(file.size)
-                                target_size = unit.format_bytes(size)
-                                logger.twarn(
-                                    "cluster.error.check_files.failed_to_copy",
-                                    hash=hash,
-                                    file=file_size,
-                                    target=target_size,
-                                )
-                            else:
-                                removes[storage].add(raw_file)
-                                pbar.update(size)
-                    for storage, filelist in removes.items():
-                        for file in filelist:
-                            if file[0] in miss_all_files:
-                                miss_all_files.remove(file[0])
-                            missing_files_by_storage[storage].remove(file)
-        miss = miss_all_files
-        if not miss:
+        if not miss_all_files:
             file_count = len(files) * len(storages.get_storages())
             file_size = unit.format_bytes(
                 sum(file.size for file in files) * len(storages.get_storages())
@@ -473,9 +472,9 @@ class FileCheck:
         else:
             logger.tinfo(
                 "cluster.info.check_files.missing",
-                count=unit.format_number(len(miss)),
+                count=unit.format_number(len(miss_all_files)),
             )
-            await self.downloader.download(list(miss))
+            await self.downloader.download(list(miss_all_files))
         self.start_task()
 
     async def _exists(self, file: BMCLAPIFile, storage: Storage):
