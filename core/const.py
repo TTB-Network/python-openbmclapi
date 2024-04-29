@@ -43,7 +43,7 @@ SIGN_SKIP: bool = Config.get("advanced.skip_sign")
 DASHBOARD_USERNAME: str = Config.get("dashboard.username")
 DASHBOARD_PASSWORD: str = Config.get("dashboard.password")
 DASHBOARD_WEBSOCKET: bool = Config.get("dashboard.websocket")
-
+LIMIT_SESSION_WEBDAV: int = 512
 TIMEOUT: int = Config.get("advanced.timeout")
 REQUEST_BUFFER: int = Config.get("advanced.request_buffer")
 FILE_REDIRECTS = ["index.html", "index.htm", "default.html", "default.htm"]
