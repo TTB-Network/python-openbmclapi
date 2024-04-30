@@ -19,7 +19,9 @@ if ! PY_VERSION=$(python -V 2>&1|awk '{print $2}') ; then
     exit 1
 fi
 
-if ! $PY_VERSION >= $PY_MIRCO ; then
+different=$(echo 2>&1 | awk "{print $PY_VERSION-$PY_MIRCO}")
+compare=$(expr $different \> 0)
+if  [[ $compare -eq 1 ]] ; then
     echo -e "\e[31mERROR: Python version not supported;need >=3.10\e[0m"
     exit 1
 fi
