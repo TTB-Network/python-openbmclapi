@@ -703,7 +703,6 @@ class WebDav(Storage):
         if session in self.get_sessions:
             self.get_sessions[session] = False
 
-
     async def _keepalive(self):
         try:
             hostname = self.hostname
@@ -736,7 +735,7 @@ class WebDav(Storage):
 
     async def _execute(self, target):
         try:
-            return await asyncio.wait_for(target, timeout=5)
+            return await asyncio.wait_for(target, timeout=WEBDAV_TIMEOUT)
         except webdav3_exceptions.NoConnection as e:
             hostname = self.hostname
             endpoint = self.endpoint
@@ -749,7 +748,6 @@ class WebDav(Storage):
             self.fetch = False
             raise e
         except (
-            asyncio.CancelledError,
             asyncio.TimeoutError,
             TimeoutError,
             exceptions.TimeoutError,
@@ -1143,10 +1141,11 @@ class Cluster:
             logger.twarn("cluster.warn.cluster.no_storage")
             return
         start = time.time()
-        try:
-            await self.file_check()
-        except asyncio.CancelledError:
-            return
+        if ENABLE and not SKIP_FILE_CHECK:
+            try:
+                await self.file_check()
+            except asyncio.CancelledError:
+                return
         t = "%.2f" % (time.time() - start)
         logger.tsuccess("cluster.success.cluster.finished_file_check", time=t)
         await self.enable()
@@ -1546,17 +1545,9 @@ async def init():
 
     app.redirect("/", "/pages/")
 
-    @app.get("/files")
-    async def _():
-        return web.Response(
-            "<br/>".join(
-                (
-                    f'<a href="{file.path}" target="_blank">{file.path}</a>'
-                    for file in cluster.downloader.files
-                )
-            ),
-            content_type="text/html",
-        )
+    @app.get("/robot.txt")
+    def _():
+        return "User-agent: * Disallow: /"
 
 
 async def exit():
