@@ -21,7 +21,7 @@ fi
 PY_VERSION=$(python -V 2>&1|awk '{print $2}'|awk -F '.' '{print $1}').$(python -V 2>&1|awk '{print $2}'|awk -F '.' '{print $2}')
 different=$(echo 2>&1 | awk "{print $PY_VERSION - $PY_MIRCO}")
 compare=$(expr "$different" \> 0)
-printf $compare
+#printf $compare
 if  [[ $compare -eq 0 ]] ; then
     echo -e "\e[31mERROR: Python version not supported;need >=3.10\e[0m"
     exit 1
@@ -58,7 +58,7 @@ function fetchBlob(){
 	target=$2
 	filemod=$3
 
-	source="$RAW_REPO/$TARGET_TAG/$file"
+	source="$RAW_REPO/$file"
 	echo -e "\e[34m==> Downloading $source\e[0m"
 	tmpf=$(mktemp -t py-openbmclapi.XXXXXXXXXXXX.downloading)
 	curl -fsSL -o "$tmpf" "$source" || { rm "$tmpf"; return 1; }
