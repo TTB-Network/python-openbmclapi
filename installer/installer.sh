@@ -1,5 +1,5 @@
 #!/bin/bash
-#!/bin/bash
+
 
 if [ $(id -u) -ne 0 ]; then
 	echo -e "\e[31mERROR: Not root user\e[0m"
@@ -14,19 +14,20 @@ RAW_REPO="$RAW_PREFIX/$REPO"
 BASE_PATH=/opt/py-openbmclapi
 USERNAME=openbmclapi
 PY_MIRCO=3.10
-if ! PY_VERSION=$(python -V 2>&1|awk '{print $2}') ; then
+if ! PY_VERSION=$(python -V 2>&1|awk '{print $2}') && $(python -V 2>&1|awk '{print $2}'|awk -F '.' '{print $1}') -lt 3 ; then
     echo -e "\e[31mERROR: Failed to detect python version\e[0m"
     exit 1
 fi
-
-different=$(echo 2>&1 | awk "{print $PY_VERSION-$PY_MIRCO}")
-compare=$(expr $different \> 0)
-if  [[ $compare -eq 1 ]] ; then
+PY_VERSION=$(python -V 2>&1|awk '{print $2}'|awk -F '.' '{print $1}').$(python -V 2>&1|awk '{print $2}'|awk -F '.' '{print $2}')
+different=$(echo 2>&1 | awk "{print $PY_VERSION - $PY_MIRCO}")
+compare=$(expr "$different" \> 0)
+printf $compare
+if  [[ $compare -eq 0 ]] ; then
     echo -e "\e[31mERROR: Python version not supported;need >=3.10\e[0m"
     exit 1
 fi
 
-if ! systemd --version >/dev/null 2>&1 ; then
+if ! systemctl --version >/dev/null 2>&1 ; then
 	echo -e "\e[31mERROR: Failed to test systemd\e[0m"
 	exit 1
 fi
@@ -72,7 +73,7 @@ function fetchBlob(){
 
 echo
 
-if [ -f /usr/lib/systemd/system/go-openbmclapi.service ]; then
+if [ -f /usr/lib/systemd/system/py-openbmclapi.service ]; then
 	echo -e "\e[33m==> WARN: py-openbmclapi.service is already installed, stopping\e[0m"
 	systemctl disable --now py-openbmclapi.service
 fi
@@ -86,11 +87,11 @@ if [ ! -n "$TARGET_TAG" ]; then
 	echo
 fi
 
-fetchBlob service/py-openbmclapi.service /usr/lib/systemd/system/py-openbmclapi.service 0644 || exit $?
+fetchBlob installer/py-openbmclapi.service /usr/lib/systemd/system/py-openbmclapi.service 0644 || exit $?
 
 [ -d "$BASE_PATH" ] || { mkdir -p "$BASE_PATH" && chmod 0755 "$BASE_PATH" && chown $USERNAME "$BASE_PATH"; } || exit $?
 
-# fetchBlob service/start-server.sh "$BASE_PATH/start-server.sh" 0755 || exit $?
+fetchBlob installer/start.sh "$BASE_PATH/start.sh" 0755 || exit $?
 # fetchBlob service/stop-server.sh "$BASE_PATH/stop-server.sh" 0755 || exit $?
 # fetchBlob service/reload-server.sh "$BASE_PATH/reload-server.sh" 0755 || exit $?
 
@@ -106,8 +107,8 @@ systemctl enable py-openbmclapi.service || exit $?
 echo -e "
 ================================ Install successed ================================
 
-  Use 'systemctl start go-openbmclapi.service' to start openbmclapi server
-  Use 'systemctl stop go-openbmclapi.service' to stop openbmclapi server
-  Use 'systemctl reload go-openbmclapi.service' to reload openbmclapi server configs
-  Use 'journalctl -f --output cat -u go-openbmclapi.service' to watch the openbmclapi logs
+  Use 'systemctl start py-openbmclapi.service' to start openbmclapi server
+  Use 'systemctl stop py-openbmclapi.service' to stop openbmclapi server
+  Use 'systemctl reload py-openbmclapi.service' to reload openbmclapi server configs
+  Use 'journalctl -f --output cat -u py-openbmclapi.service' to watch the openbmclapi logs
 "
