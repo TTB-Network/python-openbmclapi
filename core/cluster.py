@@ -1151,7 +1151,7 @@ class Cluster:
         await self.enable()
 
     async def cert(self):
-        if self.cert_valid - 600 > time.time():
+        if not BYOC or self.cert_valid - 600 > time.time():
             return
         self.channel_lock.acquire()
 
