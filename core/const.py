@@ -34,6 +34,7 @@ RECONNECT_DELAY: bool = max(60, Config.get("cluster.reconnect.delay"))
 RECONNECT_RETRY: bool = Config.get("cluster.reconnect.retry")
 ENABLE: bool = Config.get("cluster.enable")
 ENABLE_TIMEOUT: bool = Config.get("cluster.timeout.enable")
+WEBDAV_TIMEOUT: int = 10
 KEEPALIVE_TIMEOUT: bool = Config.get("cluster.timeout.keepalive")
 CACHE_BUFFER: int = Config.get("cache.buffer")  # bytes
 CACHE_TIME: int = Config.get("cache.time")
@@ -52,6 +53,7 @@ RESPONSE_HEADERS = {
 }
 RESPONSE_DATE = "%a, %d %b %Y %H:%M:%S GMT"
 RESPONSE_COMPRESSION_IGNORE_SIZE_THRESHOLD: int = 16777216
+SKIP_FILE_CHECK: bool = False
 STATUS_CODES: dict[int, str] = {
     100: "Continue",
     101: "Switching Protocols",
