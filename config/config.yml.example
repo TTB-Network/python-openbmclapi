@@ -31,7 +31,7 @@ cluster:
     enable: 120
     keepalive: 300
 dashboard:
-  password: wT0qYa
+  password: ''
   username: admin
   websocket: true
 storages:
