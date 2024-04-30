@@ -47,7 +47,8 @@ from core.utils import (
 )
 import filetype
 import urllib.parse as urlparse
-#from core import timer as Timer
+
+# from core import timer as Timer
 from core.logger import logger
 from core.config import Config
 from core.utils import Client
@@ -904,7 +905,7 @@ class Response:
                 async with aiofiles.open(content, "rb") as r:
                     cur_length: int = 0
                     await r.seek(start_bytes, os.SEEK_SET)
-                    while data := await r.read(min(IO_BUFFER, length - cur_length)):
+                    while data := await r.read(max(0, min(IO_BUFFER, length - cur_length))):
                         cur_length += len(data)
                         client.write(data)
                         await client.drain()
@@ -996,7 +997,12 @@ class Request:
             self._user_agent = self._headers.get("user-agent")
             if not self._xff and X_FORWARDED_FOR != 0:
                 self._xff = True
-                self._ip = get_xff(await self.get_headers("X-Forwarded-For", ""), X_FORWARDED_FOR) or self._ip
+                self._ip = (
+                    get_xff(
+                        await self.get_headers("X-Forwarded-For", ""), X_FORWARDED_FOR
+                    )
+                    or self._ip
+                )
         return self._headers.get(key.lower(), def_)
 
     async def get_cookies(self):
@@ -1267,12 +1273,13 @@ class Compressor:
     data: io.BytesIO
 
 
-def get_xff(x_forwarded_for: str, index: int = 1):   
+def get_xff(x_forwarded_for: str, index: int = 1):
     index -= 1
-    ip_addresses = x_forwarded_for.split(',')  
+    ip_addresses = x_forwarded_for.split(",")
     if not ip_addresses:
         return None
-    return ip_addresses[min(len(ip_addresses) - 1, index)].strip()  
+    return ip_addresses[min(len(ip_addresses) - 1, index)].strip()
+
 
 def compressor(header: str, data: io.BytesIO | bytes | memoryview) -> Compressor:
     if isinstance(data, io.BytesIO):
@@ -1292,7 +1299,9 @@ async def handle(data, client: Client):
         request: Request = Request(data, client)
         statistics.add_qps()
         if FORCE_SSL and not client.is_ssl:
-            await RedirectResponse("https://" + await request.get_headers("Host") + request.url)(request, client)
+            await RedirectResponse(
+                "https://" + await request.get_headers("Host") + request.url
+            )(request, client)
             await request.skip()
             request.client.set_log_network(None)
             return

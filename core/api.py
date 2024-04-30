@@ -57,6 +57,9 @@ class File:
         if not isinstance(self.path, str):
             return False
         return self.path.startswith("http://") or self.path.startswith("https://")
+    
+    def is_path(self):
+        return isinstance(self.path, Path)
 
     def get_path(self) -> str | Path:
         return self.path

@@ -20,27 +20,29 @@ defaults = {
     "cache.time": 1800,
     "cache.check": 360,
     "cache.enable": True,
-    "download.threads": 64,
     "web.server_name": "TTB-Network",
     "web.x_forwarded_for": 0,
-    "file.check": "size",
     "web.port": 8080,
     "web.ssl_port": 8800,
     "web.force_ssl": False,
     "advanced.timeout": 30,
     "advanced.min_rate_timestamp": 1000,
     "advanced.min_rate": 500,
+    "advanced.file_check_mode": "size",
     "advanced.request_buffer": 8192,
+    "advanced.download_threads": 64,
     "advanced.io_buffer": 16777216,
     "advanced.header_bytes": 4096,
     "advanced.url": "https://openbmclapi.bangbang93.com/",
     "advanced.skip_sign": False,
     "advanced.debug": False,
     "advanced.language": "zh_cn",
-    "update.auto_download": False,
+    "advanced.auto_update": False,
     "dashboard.username": "admin",
     "dashboard.websocket": True,
-    "dashboard.password": ''.join(random.choices(string.ascii_letters + string.digits, k=6)),
+    "dashboard.password": "".join(
+        random.choices(string.ascii_letters + string.digits, k=6)
+    ),
     "storages": {"bmclapi": {"type": "file", "path": "./bmclapi", "width": 0}},
 }
 
@@ -54,7 +56,7 @@ class CFG:
         else:
             for key, value in defaults.items():
                 self.set(key, value)
-            print(f"[Condig] dashboard password: {self.get('dashboard.password')}")
+            print(f"[Config] Dashboard password: {self.get('dashboard.password')}.")
 
     def load(self):
         with open(self.file, "r", encoding="utf-8") as f:
@@ -92,6 +94,7 @@ class CFG:
                 dict_obj[key] = {}
             dict_obj = dict_obj[key]
         dict_obj[keys[-1]] = value
+
 
 if not os.path.exists("./config"):
     print("The config dir is not exists.")

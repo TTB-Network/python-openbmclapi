@@ -17,7 +17,7 @@
   "cluster.debug.get_files.created_session": "成功创建客户端会话。",
   "cluster.debug.get_files.response_status": "文件列表请求状态：$status。",
   "cluster.success.get_files.requested_filelist": "成功获取文件列表！",
-  "cluster.info.get_files.info": "获取文件数：$count 文件最后修改时间：$time。",
+  "cluster.info.get_files.info": "文件数量：$count，文件最后修改时间：$time。",
   "cluster.error.mount_files.failed_to_copy": "在尝试下载文件时出错：无法复制文件：$hash ($file) => $hash ($target)。",
   "cluster.tqdm.desc.download": "下载文件中",
   "cluster.debug.download_temp.downloading": "正在下载文件：$hash。",
@@ -76,7 +76,7 @@
   "core.info.listening": "正在端口 $port 上监听服务器。",
   "core.info.listening_ssl": "正在端口 $port 上监听 SSL 服务器。",
   "core.info.shutting_down_web_service": "正在关闭 Web 服务……",
-  "stats.error.bad": "统计信息已损坏……",
-  "system.info.loading": "加载 [系统信息] 模块",
-  "tqdm.info.finished": "$desc 已完成，耗时 [$time] 数量 [$count] 总数 [$total]"
+  "stats.error.broken_stats": "统计信息已损坏……",
+  "system.info.loading": "正在初始化系统信息统计……",
+  "timings.info.finished": "任务 $desc 已完成，耗时 $time（$count / $total）。"
 }

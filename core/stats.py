@@ -205,6 +205,7 @@ class GEOInfo:
     province: str = ""
     value: int = 0
 
+
 globalStats = GlobalStats()
 storages: dict[str, StorageStats] = {}
 data: Path = Path("./data")
@@ -216,6 +217,7 @@ last_ip: int = 0
 last_ua: int = 0
 last_storages: dict[str, int] = {}
 
+
 def read_cache():
     global last_hour, globalStats
     if not cache.exists():
@@ -225,7 +227,9 @@ def read_cache():
             input = FileDataInputStream(r)
             last_hour = input.readVarInt()
             for _ in range(input.readVarInt()):
-                storage_data = DataInputStream(zstd.decompress(input.readBytes(input.readVarInt())))
+                storage_data = DataInputStream(
+                    zstd.decompress(input.readBytes(input.readVarInt()))
+                )
                 storage = StorageStats(storage_data.readString())
                 (
                     storage._hits,
@@ -247,7 +251,8 @@ def read_cache():
                 storages[storage.get_name()] = storage
             globalStats = GlobalStats.from_binary(input.readBytes(input.readVarInt()))
         except:
-            logger.terror("stats.error.bad")
+            logger.terror("stats.error.broken_stats")
+
 
 def write_cache():
     data = DataOutputStream()
@@ -275,16 +280,20 @@ def write_cache():
     with open(cache, "wb") as w:
         w.write(data.io.getvalue())
 
+
 def init():
     read_cache()
-    execute("create table if not exists access_storage(hour unsigned bigint NOT NULL, storage TEXT NOT NULL, hit unsigned bigint NOT NULL DEFAULT 0, bytes unsigned bigint NOT NULL DEFAULT 0, cache_hit unsigned bigint NOT NULL DEFAULT 0, cache_bytes unsigned bigint NOT NULL DEFAULT 0, last_hit unsigned bigint NOT NULL DEFAULT 0, last_bytes unsigned bigint NOT NULL DEFAULT 0, failed unsigned bigint NOT NULL DEFAULT 0)")
+    execute(
+        "create table if not exists access_storage(hour unsigned bigint NOT NULL, storage TEXT NOT NULL, hit unsigned bigint NOT NULL DEFAULT 0, bytes unsigned bigint NOT NULL DEFAULT 0, cache_hit unsigned bigint NOT NULL DEFAULT 0, cache_bytes unsigned bigint NOT NULL DEFAULT 0, last_hit unsigned bigint NOT NULL DEFAULT 0, last_bytes unsigned bigint NOT NULL DEFAULT 0, failed unsigned bigint NOT NULL DEFAULT 0)"
+    )
     execute("create table if not exists access_ua(hour unsigned bigint NOT NULL)")
-    execute("create table if not exists access_ip(hour unsigned bigint NOT NULL, data blob not null)")
+    execute(
+        "create table if not exists access_ip(hour unsigned bigint NOT NULL, data blob not null)"
+    )
     for ua in UserAgent:
-        addColumns(
-            "access_ua", f"`{ua.value}`", " unsigned bigint NOT NULL DEFAULT 0"
-        )
+        addColumns("access_ua", f"`{ua.value}`", " unsigned bigint NOT NULL DEFAULT 0")
     scheduler.repeat(write_database, interval=1)
+
 
 def write_database():
     global last_hour, last_ip, last_ua
@@ -292,14 +301,18 @@ def write_database():
     cmds: list[tuple[str, tuple[Any, ...]]] = []
     # storages
     for storage in storages.values():
-        if (storage.get_name() not in last_storages or last_storages[storage.get_name()] != hour) and not exists("select storage from access_storage where hour = ? and storage = ?", hour, storage.get_name()):
+        if (
+            storage.get_name() not in last_storages
+            or last_storages[storage.get_name()] != hour
+        ) and not exists(
+            "select storage from access_storage where hour = ? and storage = ?",
+            hour,
+            storage.get_name(),
+        ):
             cmds.append(
                 (
                     "insert into access_storage(storage, hour) values (?,?)",
-                    (
-                        storage.get_name(),
-                        hour
-                    )
+                    (storage.get_name(), hour),
                 )
             )
             last_storages[storage.get_name()] = hour
@@ -321,15 +334,10 @@ def write_database():
         )
 
     # ua
-    if last_ua != hour and not exists("select hour from access_ua where hour = ?", hour):
-        cmds.append(
-            (
-                "insert into access_ua(hour) values (?)",
-                (
-                    hour,
-                )
-            )
-        )
+    if last_ua != hour and not exists(
+        "select hour from access_ua where hour = ?", hour
+    ):
+        cmds.append(("insert into access_ua(hour) values (?)", (hour,)))
     last_ua = hour
     g_ua = ",".join((f"`{ua.value}` = ?" for ua in UserAgent))
     cmds.append(
@@ -339,14 +347,13 @@ def write_database():
         )
     )
     # ip
-    if last_ip != hour and not exists("select hour from access_ip where hour = ?", hour):
+    if last_ip != hour and not exists(
+        "select hour from access_ip where hour = ?", hour
+    ):
         cmds.append(
             (
                 "insert into access_ip(hour, data) values (?, ?)",
-                (
-                    hour,
-                    zstd.compress(b'')
-                )
+                (hour, zstd.compress(b"")),
             )
         )
     last_ip = hour
@@ -358,10 +365,7 @@ def write_database():
     cmds.append(
         (
             "update access_ip set data = ? where hour = ?",
-            (
-                zstd.compress(binary.io.getbuffer()),
-                hour
-            )
+            (zstd.compress(binary.io.getbuffer()), hour),
         )
     )
     cur_hour = get_hour(0)
@@ -371,7 +375,6 @@ def write_database():
         globalStats.reset()
     last_hour = cur_hour
     executemany(*cmds)
-
 
 
 def get_offset_storages() -> list[SyncStorage]:
@@ -450,16 +453,20 @@ def addColumns(table, params, data, default=None):
     except:
         ...
 
+
 def get_utc_offset():
     return -(time.timezone / 3600)
+
 
 def get_query_day_tohour(day):
     t = int(time.time())
     return (t - ((t + get_utc_offset() * 3600) % 86400) - 86400 * day) / 3600
 
+
 def get_query_hour_tohour(hour):
     t = int(time.time())
     return int((t - ((t + get_utc_offset() * 3600) % 3600) - 3600 * hour) / 3600)
+
 
 def hourly():
     data = []
@@ -503,7 +510,7 @@ def daily():
     for r in queryAllData(
         "select storage, hour, hit, bytes, cache_hit, cache_bytes, last_hit, last_bytes, failed from access_storage where hour >= ? and hour <= ?",
         t,
-        to_t
+        to_t,
     ):
         hour = (r[1] + get_utc_offset()) // 24
         if hour not in days:
@@ -530,16 +537,17 @@ def daily():
         )
     return data
 
+
 def stats_pro(day):
-    format_day = (day == 30)
+    format_day = day == 30
     t = get_query_hour_tohour(0) - (day * 24)
     g_ua = ",".join((f"`{ua.value}`" for ua in UserAgent))
     s_ua: defaultdict[str, int] = defaultdict(int)
     s_ip: dict[int, defaultdict[str, int]] = {}
     file_bytes, file_download = 0, 0
     for q in queryAllData(
-        "select sum(bytes + cache_bytes), sum(hit + cache_hit) from access_storage where hour >= ?", 
-        t
+        "select sum(bytes + cache_bytes), sum(hit + cache_hit) from access_storage where hour >= ?",
+        t,
     ):
         file_bytes += q[0]
         file_download += q[1]
@@ -556,11 +564,24 @@ def stats_pro(day):
         t,
     ):
         hour = (q[0] + get_utc_offset()) if not format_day else (q[0] + get_utc_offset()) // 24
-        data = DataInputStream(zstd.decompress(q[1]))
-        for ip, c in {data.readString(): data.readVarInt() for _ in range(data.readVarInt())}.items():
-            if hour not in s_ip:
-                s_ip[hour] = defaultdict(int)
-            s_ip[hour][ip] += c
+        try:
+            data = DataInputStream(zstd.decompress(q[1]))
+            for ip, c in {data.readString(): data.readVarInt() for _ in range(data.readVarInt())}.items():
+                if hour not in s_ip:
+                    s_ip[hour] = defaultdict(int)
+                s_ip[hour][ip] += c
+        except:
+            new_data = DataOutputStream()
+            data_ip = {data.readString(old_data_read_varint(data)): old_data_read_varint(data) for _ in range(old_data_read_varint(data))}
+            new_data.writeVarInt(len(data_ip))
+            for ip, c in data_ip.items():
+                new_data.writeString(ip)
+                new_data.writeVarInt(c)
+                if hour not in s_ip:
+                    s_ip[hour] = defaultdict(int)
+                s_ip[hour][ip] += c
+            execute("update access_ip set data = ? where hour = ?", zstd.compress(new_data.io.getbuffer()), hour)
+            
     addresses: defaultdict[location.IPInfo, int] = defaultdict(int)
     for ips in s_ip.values():
         for address, count in ips.items():
@@ -571,7 +592,27 @@ def stats_pro(day):
             GEOInfo(info.country, info.province, count)
             for info, count in sorted(addresses.items(), key=lambda x: x[0].country)
         ],
-        "distinct_ip": {(format_datetime(hour * 3600) if not format_day else format_date(hour * 86400)): len(ip) for hour, ip in sorted(s_ip.items())},
+        "distinct_ip": {
+            (
+                format_datetime(hour * 3600)
+                if not format_day
+                else format_date(hour * 86400)
+            ): len(ip)
+            for hour, ip in sorted(s_ip.items())
+        },
         "bytes": file_bytes,
-        "downloads": file_download
+        "downloads": file_download,
     }
+
+
+def old_data_read_varint(input: DataInputStream):
+    i: int = 0
+    j: int = 0
+    k: int
+    while 1:
+        k = int.from_bytes(input.read(1), byteorder="big")
+        i |= (k & 0x7F) << j * 7
+        j += 1
+        if (k & 0x80) != 128:
+            break
+    return i

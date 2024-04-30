@@ -457,6 +457,8 @@ def query(ip: str) -> IPInfo:
         ).split("|")
     ]
     country = country_iso.get(data[0], data[0])
-    info = IPInfo(country or "LOCAL", re.sub(cn_level, "", data[2]) if country == "CN" else "")
+    info = IPInfo(
+        country or "LOCAL", re.sub(cn_level, "", data[2]) if country == "CN" else ""
+    )
     cache[ip] = info
     return info

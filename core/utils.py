@@ -29,10 +29,13 @@ import typing
 from core.config import Config
 from core.env import env
 import string
+
 bytes_unit = ["K", "M", "G", "T", "E"]
 
+
 def random_string(length: int = 0):
-    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+    return "".join(random.choices(string.ascii_letters + string.digits, k=length))
+
 
 @dataclass
 class Client:
@@ -145,7 +148,7 @@ class Client:
         except:
             self.close()
         return -1
-    
+
     async def drain(self):
         if self.is_closed():
             return
@@ -308,19 +311,21 @@ def parseObject(data: Any):
 
 def parse_iso_time(text: str):
     if sys.version_info < (3, 11):
-        date_part, time_part = text.split('T')  
-        year, month, day = map(int, date_part.split('-'))  
-        hours, minutes, seconds = map(int, time_part.split('.')[0].split(':'))  
-        milliseconds = int(time_part.split('.')[1][:-1])  
+        date_part, time_part = text.split("T")
+        year, month, day = map(int, date_part.split("-"))
+        hours, minutes, seconds = map(int, time_part.split(".")[0].split(":"))
+        milliseconds = int(time_part.split(".")[1][:-1])
 
-        naive_dt = datetime.datetime(year, month, day, hours, minutes, seconds, milliseconds * 1000)  
+        naive_dt = datetime.datetime(
+            year, month, day, hours, minutes, seconds, milliseconds * 1000
+        )
 
-        if text.endswith('Z'):  
-            tz = datetime.timezone.utc  
-            aware_dt = naive_dt.replace(tzinfo=tz)  
-            return aware_dt  
-        else:  
-            return naive_dt  
+        if text.endswith("Z"):
+            tz = datetime.timezone.utc
+            aware_dt = naive_dt.replace(tzinfo=tz)
+            return aware_dt
+        else:
+            return naive_dt
     return datetime.datetime.fromisoformat(text)
 
 
@@ -473,7 +478,7 @@ def format_datetime(k: float):
 
 
 def get_env_monotonic():
-    return env['MONOTONIC']
+    return env["MONOTONIC"]
 
 
 def get_uptime():
@@ -523,12 +528,11 @@ class MinecraftUtils:
     @staticmethod
     def getVarInt(data: int):
         r: bytes = b""
-        while 1:
-            if data & 0xFFFFFF80 == 0:
-                r += data.to_bytes(1, "big")
-                break
-            r += (data & 0x7F | 0x80).to_bytes(1, "big")
+        data = (data << 1) ^ (data >> 63)
+        while (data & ~0x7F) != 0:
+            r += ((data & 0x7f) | 0x80).to_bytes(1, "big")
             data >>= 7
+        r += data.to_bytes(1, "big")
         return r
 
     @staticmethod
@@ -621,16 +625,14 @@ class DataInputStream:
         return value - 2**64 if value > 2**63 - 1 else value
 
     def readVarInt(self) -> int:
-        i: int = 0
-        j: int = 0
-        k: int
-        while 1:
-            k = int.from_bytes(self.read(1), byteorder="big")
-            i |= (k & 0x7F) << j * 7
-            j += 1
-            if (k & 0x80) != 128:
-                break
-        return i
+        b = ord(self.read(1))
+        n = b & 0x7F
+        shift = 7
+        while (b & 0x80) != 0:
+            b = ord(self.read(1))
+            n |= (b & 0x7F) << shift
+            shift += 7
+        return (n >> 1) ^ -(n & 1)
 
     def readString(
         self, maximun: Optional[int] = None, encoding: Optional[str] = None

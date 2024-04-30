@@ -44,6 +44,7 @@ def load_text(cert: str, key: str):
     if load_cert(cert_file, key_file):
         logger.tsuccess("cert.success.loaded_cert")
         from core.network import restart
+
         restart()
     cert_file.unlink()
     key_file.unlink()

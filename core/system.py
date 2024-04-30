@@ -15,7 +15,7 @@ last_curs: list[float] = []
 
 def _run():
     global cpus, memories, connections, length, last_curs
-    for _ in range(max(length - 5, 0)):
+    for _ in range(max(length - 60, 0)):
         cur = last_curs.pop(0)
         cpus.pop(cur)
         memories.pop(cur)

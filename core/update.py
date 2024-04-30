@@ -19,8 +19,7 @@ async def check_update():
         logger.tinfo("cluster.info.check_update.checking")
         try:
             async with session.get(
-                "/repos/TTB-Network/python-openbmclapi/releases/latest",
-                timeout=5
+                "/repos/TTB-Network/python-openbmclapi/releases/latest", timeout=5
             ) as req:
                 req.raise_for_status()
                 data = await req.json()
@@ -33,7 +32,7 @@ async def check_update():
                 )
                 await dashboard.trigger("version")
                 if AUTO_DOWNLOAD_RELEASE:
-                    ... # todo scheduler.delay(download)
+                    ...  # todo scheduler.delay(download)
             else:
                 logger.tinfo("cluster.info.check_update.already_up_to_date")
         except aiohttp.ClientError as e:
@@ -62,5 +61,7 @@ async def download():
                     pbar.update(len(data))
                     w.write(data)
 """
+
+
 def init():
     scheduler.repeat(check_update, interval=3600)

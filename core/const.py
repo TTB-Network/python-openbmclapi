@@ -25,7 +25,7 @@ BASE_URL = Config.get("advanced.url", "https://openbmclapi.bangbang93.com/")
 CLUSTER_ID: str = Config.get("cluster.id")
 CLUSTER_SECERT: str = Config.get("cluster.secret")
 IO_BUFFER: int = Config.get("advanced.io_buffer")
-MAX_DOWNLOAD: int = max(1, Config.get("download.threads"))
+MAX_DOWNLOAD: int = max(1, Config.get("advanced.download_threads"))
 BYOC: bool = Config.get("cluster.byoc")
 PUBLIC_HOST: str = Config.get("cluster.public_host")
 PUBLIC_PORT: int = Config.get("cluster.public_port")
@@ -34,6 +34,7 @@ RECONNECT_DELAY: bool = max(60, Config.get("cluster.reconnect.delay"))
 RECONNECT_RETRY: bool = Config.get("cluster.reconnect.retry")
 ENABLE: bool = Config.get("cluster.enable")
 ENABLE_TIMEOUT: bool = Config.get("cluster.timeout.enable")
+WEBDAV_TIMEOUT: int = 10
 KEEPALIVE_TIMEOUT: bool = Config.get("cluster.timeout.keepalive")
 CACHE_BUFFER: int = Config.get("cache.buffer")  # bytes
 CACHE_TIME: int = Config.get("cache.time")
@@ -43,7 +44,7 @@ SIGN_SKIP: bool = Config.get("advanced.skip_sign")
 DASHBOARD_USERNAME: str = Config.get("dashboard.username")
 DASHBOARD_PASSWORD: str = Config.get("dashboard.password")
 DASHBOARD_WEBSOCKET: bool = Config.get("dashboard.websocket")
-
+LIMIT_SESSION_WEBDAV: int = 512
 TIMEOUT: int = Config.get("advanced.timeout")
 REQUEST_BUFFER: int = Config.get("advanced.request_buffer")
 FILE_REDIRECTS = ["index.html", "index.htm", "default.html", "default.htm"]
@@ -52,6 +53,7 @@ RESPONSE_HEADERS = {
 }
 RESPONSE_DATE = "%a, %d %b %Y %H:%M:%S GMT"
 RESPONSE_COMPRESSION_IGNORE_SIZE_THRESHOLD: int = 16777216
+SKIP_FILE_CHECK: bool = False
 STATUS_CODES: dict[int, str] = {
     100: "Continue",
     101: "Switching Protocols",
@@ -107,7 +109,7 @@ STATUS_CODES: dict[int, str] = {
     505: "HTTP Version not supported",
 }
 REQUEST_TIME_UNITS = ["ns", "ms", "s", "m", "h"]
-FILECHECK = Config.get("file.check")
+FILECHECK = Config.get("advanced.file_check_mode")
 X_FORWARDED_FOR: int = Config.get("web.x_forwarded_for")
 STORAGES: list["StorageParse"] = []
 COMPRESSOR: dict[str, Any] = {
@@ -119,6 +121,7 @@ LANG: str = Config.get("advanced.language")
 FORCE_SSL: bool = Config.get("web.force_ssl")
 MAX_INSTANCES: int = 9999
 AUTO_DOWNLOAD_RELEASE: bool = Config.get("update.auto_download")
+
 
 @dataclass
 class StorageParse:
