@@ -124,7 +124,7 @@ async def _handle_ssl(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     )
 
 async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    return await _handle_process(Client(reader, writer))
+    return await _handle_process(Client(reader, writer), not server_side_ssl)
 
 async def _handle_process(client: Client, ssl: bool = False):
     global ssl_server

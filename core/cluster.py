@@ -657,8 +657,7 @@ class WebDav(Storage):
             }
         )
         self.session_lock = asyncio.Lock()
-        self.get_sessions: dict[aiohttp.ClientSession, bool] = {}
-        self.sessions_width = 0
+        self.session_tcp_connector = aiohttp.TCPConnector(limit = LIMIT_SESSION_WEBDAV)
         scheduler.delay(self._list_all)
         scheduler.repeat(self._keepalive, interval=60)
 
@@ -684,24 +683,6 @@ class WebDav(Storage):
             count=unit.format_number(len(old_keys)),
             size=unit.format_bytes(old_size),
         )
-
-    def get_free_session(self):
-        for session, used in self.get_sessions.items():
-            if used:
-                continue
-            self.get_sessions[session] = True
-            return session
-        session = aiohttp.ClientSession(
-            auth=aiohttp.BasicAuth(
-                self.username, self.password
-            )    
-        )
-        self.get_sessions[session] = True
-        return session
-    
-    def free_session(self, session):
-        if session in self.get_sessions:
-            self.get_sessions[session] = False
 
     async def _keepalive(self):
         try:
@@ -850,7 +831,7 @@ class WebDav(Storage):
         await self.lock.wait()
 
     async def get(self, hash: str, offset: int = 0) -> File:
-        if hash in self.cache and self.cache[hash].expiry - 10 > time.time():
+        if hash in self.cache and self.cache[hash].expiry is not None and self.cache[hash].expiry - 10 > time.time():
             self.cache[hash].cache = True
             self.cache[hash].last_hit = time.time()
             return self.cache[hash]
@@ -860,36 +841,41 @@ class WebDav(Storage):
                 hash,
                 size=0,
             )
-            session = self.get_free_session()
-            async with session.get(
-                self.hostname + self._file_endpoint(hash[:2] + "/" + hash),
-                allow_redirects=False,
-            ) as resp:
-                if resp.status == 200:
-                    f.headers = {}
-                    for field in (
-                        "ETag",
-                        "Last-Modified",
-                        "Content-Length",
-                    ):
-                        if field not in resp.headers:
-                            continue
-                        f.headers[field] = resp.headers.get(field)
-                    f.size = int(resp.headers.get("Content-Length", 0))
-                    f.set_data(await resp.read())
+            async with aiohttp.ClientSession(
+                connector=self.session_tcp_connector,
+                auth=aiohttp.BasicAuth(
+                    self.username,
+                    self.password
+                )
+            ) as session:
+                async with session.get(
+                    self.hostname + self._file_endpoint(hash[:2] + "/" + hash),
+                    allow_redirects=False,
+                ) as resp:
+                    if resp.status == 200:
+                        f.headers = {}
+                        for field in (
+                            "ETag",
+                            "Last-Modified",
+                            "Content-Length",
+                        ):
+                            if field not in resp.headers:
+                                continue
+                            f.headers[field] = resp.headers.get(field)
+                        f.size = int(resp.headers.get("Content-Length", 0))
+                        f.set_data(await resp.read())
+                        if CACHE_ENABLE:
+                            f.expiry = time.time() + CACHE_TIME
+                            self.cache[hash] = f
+                    elif resp.status // 100 == 3:
+                        f.size = await self.get_size(hash)
+                        f.path = resp.headers.get("Location")
+                        expiry = re.search(r"max-age=(\d+)", resp.headers.get("Cache-Control", "")) or 0
+                        if expiry == 0:
+                            return f
+                        f.expiry = time.time() + expiry
                     if CACHE_ENABLE:
-                        f.expiry = time.time() + CACHE_TIME
                         self.cache[hash] = f
-                elif resp.status // 100 == 3:
-                    f.size = await self.get_size(hash)
-                    f.path = resp.headers.get("Location")
-                    expiry = re.search(r"max-age=(\d+)", resp.headers.get("Cache-Control", "")) or 0
-                    if expiry == 0:
-                        return f
-                    f.expiry = time.time() + expiry
-                if CACHE_ENABLE:
-                    self.cache[hash] = f
-            self.free_session(session)
             return f
         except Exception:
             storages.disable(self)
