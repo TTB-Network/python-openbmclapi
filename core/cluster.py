@@ -658,6 +658,13 @@ class WebDav(Storage):
         )
         self.session_lock = asyncio.Lock()
         self.session_tcp_connector = aiohttp.TCPConnector(limit = LIMIT_SESSION_WEBDAV)
+        self.get_session = aiohttp.ClientSession(
+            connector=self.session_tcp_connector,
+            auth=aiohttp.BasicAuth(
+                self.username,
+                self.password
+            )
+        )
         scheduler.delay(self._list_all)
         scheduler.repeat(self._keepalive, interval=60)
 
@@ -841,41 +848,35 @@ class WebDav(Storage):
                 hash,
                 size=0,
             )
-            async with aiohttp.ClientSession(
-                connector=self.session_tcp_connector,
-                auth=aiohttp.BasicAuth(
-                    self.username,
-                    self.password
-                )
-            ) as session:
-                async with session.get(
-                    self.hostname + self._file_endpoint(hash[:2] + "/" + hash),
-                    allow_redirects=False,
-                ) as resp:
-                    if resp.status == 200:
-                        f.headers = {}
-                        for field in (
-                            "ETag",
-                            "Last-Modified",
-                            "Content-Length",
-                        ):
-                            if field not in resp.headers:
-                                continue
-                            f.headers[field] = resp.headers.get(field)
-                        f.size = int(resp.headers.get("Content-Length", 0))
-                        f.set_data(await resp.read())
-                        if CACHE_ENABLE:
-                            f.expiry = time.time() + CACHE_TIME
-                            self.cache[hash] = f
-                    elif resp.status // 100 == 3:
-                        f.size = await self.get_size(hash)
-                        f.path = resp.headers.get("Location")
-                        expiry = re.search(r"max-age=(\d+)", resp.headers.get("Cache-Control", "")) or 0
-                        if expiry == 0:
-                            return f
-                        f.expiry = time.time() + expiry
+            session = self.get_session
+            async with session.get(
+                self.hostname + self._file_endpoint(hash[:2] + "/" + hash),
+                allow_redirects=False,
+            ) as resp:
+                if resp.status == 200:
+                    f.headers = {}
+                    for field in (
+                        "ETag",
+                        "Last-Modified",
+                        "Content-Length",
+                    ):
+                        if field not in resp.headers:
+                            continue
+                        f.headers[field] = resp.headers.get(field)
+                    f.size = int(resp.headers.get("Content-Length", 0))
+                    f.set_data(await resp.read())
                     if CACHE_ENABLE:
+                        f.expiry = time.time() + CACHE_TIME
                         self.cache[hash] = f
+                elif resp.status // 100 == 3:
+                    f.size = await self.get_size(hash)
+                    f.path = resp.headers.get("Location")
+                    expiry = re.search(r"max-age=(\d+)", resp.headers.get("Cache-Control", "")) or 0
+                    if expiry == 0:
+                        return f
+                    f.expiry = time.time() + expiry
+                if CACHE_ENABLE:
+                    self.cache[hash] = f
             return f
         except Exception:
             storages.disable(self)
