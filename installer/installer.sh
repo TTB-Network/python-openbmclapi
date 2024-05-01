@@ -5,7 +5,7 @@ if [ "$(id -u)" -ne 0 ]; then
 	echo -e "\e[31mERROR: Not root user\e[0m"
 	exit 1
 fi
-MIRROR_PREFIX="https://mirror.ghproxy.com/"
+MIRROR_PREFIX="https://ghproxy.bugungu.top/"
 echo "MIRROR_PREFIX=${MIRROR_PREFIX}"
 
 REPO='TTB-Network/python-openbmclapi'
