@@ -42,7 +42,6 @@ async def check_update():
             return
 
 
-"""
 async def download():
     global download_url
     if not download_url:
@@ -60,8 +59,6 @@ async def download():
                 while (data := await resp.content.read(IO_BUFFER)):
                     pbar.update(len(data))
                     w.write(data)
-"""
-
 
 def init():
     scheduler.repeat(check_update, interval=3600)
