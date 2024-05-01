@@ -1,11 +1,11 @@
 #!/bin/bash
 
 
-if [ $(id -u) -ne 0 ]; then
+if [ "$(id -u)" -ne 0 ]; then
 	echo -e "\e[31mERROR: Not root user\e[0m"
 	exit 1
 fi
-
+MIRROR_PREFIX="https://mirror.ghproxy.com/"
 echo "MIRROR_PREFIX=${MIRROR_PREFIX}"
 
 REPO='TTB-Network/python-openbmclapi'
@@ -58,7 +58,7 @@ function fetchBlob(){
 	target=$2
 	filemod=$3
 
-	source="$RAW_REPO/$file"
+	source="$RAW_REPO/master/$file"
 	echo -e "\e[34m==> Downloading $source\e[0m"
 	tmpf=$(mktemp -t py-openbmclapi.XXXXXXXXXXXX.downloading)
 	curl -fsSL -o "$tmpf" "$source" || { rm "$tmpf"; return 1; }
@@ -78,7 +78,7 @@ if [ -f /usr/lib/systemd/system/py-openbmclapi.service ]; then
 	systemctl disable --now py-openbmclapi.service
 fi
 
-if [ ! -n "$TARGET_TAG" ]; then
+if [ -z "$TARGET_TAG" ]; then
 	echo -e "\e[34m==> Fetching latest tag for https://github.com/$REPO\e[0m"
 	fetchGithubLatestTag
 	TARGET_TAG=$LATEST_TAG
@@ -94,19 +94,23 @@ fetchBlob installer/py-openbmclapi.service /usr/lib/systemd/system/py-openbmclap
 fetchBlob installer/start.sh "$BASE_PATH/start.sh" 0755 || exit $?
 # fetchBlob service/stop-server.sh "$BASE_PATH/stop-server.sh" 0755 || exit $?
 # fetchBlob service/reload-server.sh "$BASE_PATH/reload-server.sh" 0755 || exit $?
-
-source="${MIRROR_PREFIX}https://github.com/$REPO/releases/download/$TARGET_TAG.tar.gz"
+#https://github.com/TTB-Network/python-openbmclapi/archive/refs/tags/v1.10.4-907d74f.tar.gz
+source="${MIRROR_PREFIX}https://github.com/$REPO/archive/refs/tags/$TARGET_TAG.tar.gz"
 echo -e "\e[34m==> Downloading $source\e[0m"
 
 curl -fsSL -o "/tmp/py-obai-latest.tar.gz" "$source"
 #curl "$source" /tmp/py-obai-latest.tar.gz 0755 || exit $?
-tar -zxvf /tmp/py-obai-latest.tar.gz -C $BASE_PATH
+tar -zxvf /tmp/py-obai-latest.tar.gz --strip-components 1 -C $BASE_PATH
+chown -R openbmclapi "$BASE_PATH"
+chmod -R 766 "$BASE_PATH"
+echo -e "\e[34m==> Installing Python modules\e[0m"
+pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r /opt/py-openbmclapi/requirements.txt --break-system-packages
 echo -e "\e[34m==> Enabling py-openbmclapi.service\e[0m"
 systemctl enable py-openbmclapi.service || exit $?
 
 echo -e "
 ================================ Install successed ================================
-
+	\e[37;41m Please check config in /opt/py-openbmclapi/config/config.yml \033[0m
   Use 'systemctl start py-openbmclapi.service' to start openbmclapi server
   Use 'systemctl stop py-openbmclapi.service' to stop openbmclapi server
   Use 'systemctl reload py-openbmclapi.service' to reload openbmclapi server configs
