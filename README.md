@@ -1,10 +1,6 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://d.kstore.space/download/7507/logo_dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://d.kstore.space/download/7507/logo_light.svg">
-  <img alt="logo" src="https://d.kstore.space/download/7507/logo_light.svg" height=400>
-</picture>
+![](https://7507.kstore.space/logo-full.svg?password=44d43eb4b2becd5f936b1c8a3c97df9d-1714584375234)
 
 # OpenBMCLAPI for Python
 
