@@ -8,7 +8,6 @@ from typing import Any, Optional
 import pyzstd as zstd
 from tqdm import tqdm
 
-from core.timings import timing
 from core.utils import (
     DataInputStream,
     DataOutputStream,

@@ -122,7 +122,7 @@ FORCE_SSL: bool = Config.get("web.force_ssl")
 MAX_INSTANCES: int = 9999
 AUTO_DOWNLOAD_RELEASE: bool = Config.get("update.auto_download")
 CERTIFICATE: 'Certificate' = None
-FROM_OTHER_STORAGE_COPY: bool = Config.get("advanced.from_other_storage_copy")
+COPY_FROM_OTHER_STORAGE: bool = Config.get("advanced.copy_from_another_storage")
 
 @dataclass
 class StorageParse:
