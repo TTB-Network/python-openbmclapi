@@ -112,7 +112,6 @@ SSL_PORT: int = Config.get("web.ssl_port")
 PROTOCOL_HEADER_BYTES = Config.get("advanced.header_bytes")
 IO_BUFFER: int = Config.get("advanced.io_buffer")
 
-
 async def _handle_ssl(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     return await _handle_process(
         Client(
@@ -124,10 +123,8 @@ async def _handle_ssl(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
         True,
     )
 
-
 async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    return await _handle_process(Client(reader, writer))
-
+    return await _handle_process(Client(reader, writer), not server_side_ssl)
 
 async def _handle_process(client: Client, ssl: bool = False):
     global ssl_server
@@ -167,7 +164,6 @@ async def _handle_process(client: Client, ssl: bool = False):
         logger.debug(traceback.format_exc())
     if not proxying and not client.is_closed():
         client.close()
-
 
 async def check_ports():
     global ssl_server, server, client_side_ssl, check_port_key
@@ -223,20 +219,23 @@ async def start():
         close()
         try:
             server = await asyncio.start_server(_handle, port=PORT)
-            ssl_server = await asyncio.start_server(
-                _handle_ssl,
-                port=0 if SSL_PORT == PORT else SSL_PORT,
-                ssl=server_side_ssl if get_loaded() else None,
-            )
-            logger.info(locale.t("core.info.listening", port=PORT))
-            logger.info(
-                locale.t(
+            if (cert := get_loaded()):
+                ssl_server = await asyncio.start_server(
+                    _handle_ssl,
+                    port=0 if SSL_PORT == PORT else SSL_PORT,
+                    ssl=server_side_ssl,
+                )
+                logger.tinfo(
                     "core.info.listening_ssl",
                     port=ssl_server.sockets[0].getsockname()[1],
                 )
-            )
-            async with server, ssl_server:
-                await asyncio.gather(server.serve_forever(), ssl_server.serve_forever())
+            logger.info(locale.t("core.info.listening", port=PORT))
+            if cert:
+                async with server, ssl_server:
+                    await asyncio.gather(server.serve_forever(), ssl_server.serve_forever())
+            else:
+                async with server:
+                    await asyncio.gather(server.serve_forever())
         except asyncio.CancelledError:
             close()
             if "EXIT" in env:
@@ -251,7 +250,6 @@ async def init():
 
 def restart():
     close()
-
 
 def close():
     global server, ssl_server

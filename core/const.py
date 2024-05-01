@@ -121,7 +121,8 @@ LANG: str = Config.get("advanced.language")
 FORCE_SSL: bool = Config.get("web.force_ssl")
 MAX_INSTANCES: int = 9999
 AUTO_DOWNLOAD_RELEASE: bool = Config.get("update.auto_download")
-
+CERTIFICATE: 'Certificate' = None
+FROM_OTHER_STORAGE_COPY: bool = Config.get("advanced.from_other_storage_copy")
 
 @dataclass
 class StorageParse:
@@ -131,6 +132,10 @@ class StorageParse:
     width: int
     kwargs: dict
 
+@dataclass
+class Certificate:
+    cert: str = ""
+    path: str = ""
 
 if Config.get("storages") is not None:
     for name in Config.get("storages"):
@@ -141,6 +146,7 @@ if Config.get("storages") is not None:
             )
         )
 
+CERTIFICATE = Certificate(Config.get("certificate.cert"), Config.get("certificate.key"))
 
 # xdb 默认参数
 XDB_HeaderInfoLength = 256

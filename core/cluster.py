@@ -377,7 +377,7 @@ class FileCheck:
                     ):
                         missing_files_by_storage[storage].add((file, index_storage))
                         total_missing_bytes += file.size
-        if total_missing_bytes != 0 and len(g_storage) >= 2:
+        if total_missing_bytes != 0 and len(g_storage) >= 2 and FROM_OTHER_STORAGE_COPY:
             with tqdm(
                 total=total_missing_bytes,
                 desc=locale.t(
@@ -657,8 +657,14 @@ class WebDav(Storage):
             }
         )
         self.session_lock = asyncio.Lock()
-        self.get_sessions: dict[aiohttp.ClientSession, bool] = {}
-        self.sessions_width = 0
+        self.session_tcp_connector = aiohttp.TCPConnector(limit = LIMIT_SESSION_WEBDAV)
+        self.get_session = aiohttp.ClientSession(
+            connector=self.session_tcp_connector,
+            auth=aiohttp.BasicAuth(
+                self.username,
+                self.password
+            )
+        )
         scheduler.delay(self._list_all)
         scheduler.repeat(self._keepalive, interval=60)
 
@@ -684,24 +690,6 @@ class WebDav(Storage):
             count=unit.format_number(len(old_keys)),
             size=unit.format_bytes(old_size),
         )
-
-    def get_free_session(self):
-        for session, used in self.get_sessions.items():
-            if used:
-                continue
-            self.get_sessions[session] = True
-            return session
-        session = aiohttp.ClientSession(
-            auth=aiohttp.BasicAuth(
-                self.username, self.password
-            )    
-        )
-        self.get_sessions[session] = True
-        return session
-    
-    def free_session(self, session):
-        if session in self.get_sessions:
-            self.get_sessions[session] = False
 
     async def _keepalive(self):
         try:
@@ -850,7 +838,7 @@ class WebDav(Storage):
         await self.lock.wait()
 
     async def get(self, hash: str, offset: int = 0) -> File:
-        if hash in self.cache and self.cache[hash].expiry - 10 > time.time():
+        if hash in self.cache and self.cache[hash].expiry is not None and self.cache[hash].expiry - 10 > time.time():
             self.cache[hash].cache = True
             self.cache[hash].last_hit = time.time()
             return self.cache[hash]
@@ -860,7 +848,7 @@ class WebDav(Storage):
                 hash,
                 size=0,
             )
-            session = self.get_free_session()
+            session = self.get_session
             async with session.get(
                 self.hostname + self._file_endpoint(hash[:2] + "/" + hash),
                 allow_redirects=False,
@@ -889,7 +877,6 @@ class WebDav(Storage):
                     f.expiry = time.time() + expiry
                 if CACHE_ENABLE:
                     self.cache[hash] = f
-            self.free_session(session)
             return f
         except Exception:
             storages.disable(self)
@@ -1151,7 +1138,7 @@ class Cluster:
         await self.enable()
 
     async def cert(self):
-        if self.cert_valid - 600 > time.time():
+        if BYOC or self.cert_valid - 600 > time.time():
             return
         self.channel_lock.acquire()
 
