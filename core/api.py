@@ -19,6 +19,14 @@ class FileCheckType(Enum):
     SIZE = "size"
     HASH = "hash"
 
+class FileType(Enum):
+    LOCAL = "File"
+    WEBDAV = "Webdav"
+
+class FileContentType(Enum):
+    DATA = "data"
+    URL = "url"
+    PATH = "path"
 
 @dataclass
 class BMCLAPIFile:
@@ -45,6 +53,7 @@ class File:
     path: Path | str
     hash: str
     size: int
+    type: FileContentType
     last_hit: float = 0
     last_access: float = 0
     expiry: Optional[float] = None

@@ -41,6 +41,8 @@ from core.api import (
     File,
     BMCLAPIFile,
     FileCheckType,
+    FileContentType,
+    FileType,
     StatsCache,
     Storage,
     get_hash,
@@ -520,7 +522,7 @@ class FileStorage(Storage):
         if self.dir.is_file():
             raise FileExistsError(f"Cannot copy file: '{self.dir}': Is a file.")
         self.dir.mkdir(exist_ok=True, parents=True)
-        self.cache: dict[str, File] = {}
+        self.cache: CacheManager = CacheManager(FileType.LOCAL, FileContentType.DATA if CACHE_ENABLE else FileContentType.PATH)
         self.timer = scheduler.repeat(
             self.clear_cache, delay=CHECK_CACHE, interval=CHECK_CACHE
         )
@@ -532,13 +534,13 @@ class FileStorage(Storage):
             file.cache = True
             return file
         path = Path(str(self.dir) + f"/{hash[:2]}/{hash}")
-        file = File(path, hash, path.stat().st_size)
+        file = File(path, hash, path.stat().st_size, FileContentType.PATH)
         if CACHE_ENABLE:
             buf = io.BytesIO()
             async with aiofiles.open(path, "rb") as r:
                 while data := await r.read(IO_BUFFER):
                     buf.write(data)
-            file = File(path, hash, buf.tell(), time.time(), time.time())
+            file = File(path, hash, buf.tell(), time.time(), time.time(), FileContentType.DATA)
             file.set_data(buf.getbuffer())
             self.cache[hash] = file
             file.cache = False
@@ -646,7 +648,7 @@ class WebDav(Storage):
         self.timer = scheduler.repeat(
             self.clear_cache, delay=CHECK_CACHE, interval=CHECK_CACHE
         )
-        self.empty = File("", "", 0)
+        self.empty = File("", "", 0, FileContentType.DATA)
         self.lock = utils.WaitLock()
         self.session = webdav3_client.Client(
             {
@@ -812,6 +814,7 @@ class WebDav(Storage):
                             file["path"].removeprefix(f"/dav/{self.endpoint}/"),
                             file["name"],
                             int(file["size"]),
+                            FileContentType.URL
                         )
                         try:
                             await asyncio.sleep(0)
@@ -846,7 +849,8 @@ class WebDav(Storage):
             f = File(
                 hash,
                 hash,
-                size=0,
+                0,
+                FileContentType.DATA
             )
             session = self.get_session
             async with session.get(
@@ -864,19 +868,21 @@ class WebDav(Storage):
                             continue
                         f.headers[field] = resp.headers.get(field)
                     f.size = int(resp.headers.get("Content-Length", 0))
+                    f.type = FileContentType.DATA
                     f.set_data(await resp.read())
                     if CACHE_ENABLE:
                         f.expiry = time.time() + CACHE_TIME
                         self.cache[hash] = f
                 elif resp.status // 100 == 3:
                     f.size = await self.get_size(hash)
+                    f.type = FileContentType.URL
                     f.path = resp.headers.get("Location")
                     expiry = re.search(r"max-age=(\d+)", resp.headers.get("Cache-Control", "")) or 0
-                    if expiry == 0:
+                    if max(expiry, CACHE_TIME) == 0:
                         return f
                     f.expiry = time.time() + expiry
-                if CACHE_ENABLE:
-                    self.cache[hash] = f
+                    if CACHE_ENABLE or f.expiry != 0:
+                        self.cache[hash] = f
             return f
         except Exception:
             storages.disable(self)
@@ -1336,11 +1342,27 @@ class Cluster:
             logger.error(traceback.format_exc())
 
 
+class CacheManager:
+    def __init__(self, type: FileType, data: FileContentType):
+        self.type = type
+        self.data = data
+        self.cache: dict[str, File] = {}
+    
+    def set(self, key: str, value: File) -> File:
+        self.cache[key] = value
+        return value
+    
+    def get_or_default(self, key: str) -> Optional[File]:
+        if key not in self.cache:
+            return None
+        return self.cache[key]
+
+
 token = TokenManager()
 cluster: Optional[Cluster] = None
 last_status: str = "-"
 storages = StorageManager()
-
+cache: CacheManager = CacheManager()
 
 async def init():
     if CLUSTER_ID == "":
