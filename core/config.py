@@ -38,6 +38,7 @@ defaults = {
     "advanced.debug": False,
     "advanced.language": "zh_cn",
     "advanced.auto_update": False,
+    "advanced.from_other_storage_copy": True,
     "dashboard.username": "admin",
     "dashboard.websocket": True,
     "dashboard.password": "".join(

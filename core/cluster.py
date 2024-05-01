@@ -377,7 +377,7 @@ class FileCheck:
                     ):
                         missing_files_by_storage[storage].add((file, index_storage))
                         total_missing_bytes += file.size
-        if total_missing_bytes != 0 and len(g_storage) >= 2:
+        if total_missing_bytes != 0 and len(g_storage) >= 2 and FROM_OTHER_STORAGE_COPY:
             with tqdm(
                 total=total_missing_bytes,
                 desc=locale.t(
