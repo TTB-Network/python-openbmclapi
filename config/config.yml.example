@@ -1,5 +1,6 @@
 advanced:
   auto_update: false
+  copy_from_other_storage: true
   debug: false
   download_threads: 64
   file_check_mode: size

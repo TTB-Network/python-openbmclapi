@@ -24,7 +24,6 @@ from core.config import Config
 from core import certificate, dashboard, unit
 from core import scheduler
 import pyzstd as zstd
-from core.timings import logTqdm, logTqdmType
 import core.utils as utils
 import core.stats as stats
 import core.web as web
@@ -280,7 +279,7 @@ class FileDownloader:
             unit_divisor=1024,
             total=sum((file.size for file in miss)),
             unit_scale=True,
-        ) as pbar, logTqdm(pbar, logTqdmType.BYTES):
+        ) as pbar:
             await dashboard.set_status_by_tqdm("files.downloading", pbar)
             for file in miss:
                 await self.queues.put(file)
@@ -344,7 +343,7 @@ class FileCheck:
             total=len(files) * len(storages.get_storages()),
             unit=locale.t("cluster.tqdm.unit.file"),
             unit_scale=True,
-        ) as pbar, logTqdm(pbar):
+        ) as pbar:
             self.pbar = pbar
             self.files = files
             await dashboard.set_status_by_tqdm("files.checking", pbar)
@@ -379,7 +378,7 @@ class FileCheck:
                     ):
                         missing_files_by_storage[storage].add((file, index_storage))
                         total_missing_bytes += file.size
-        if total_missing_bytes != 0 and len(g_storage) >= 2 and FROM_OTHER_STORAGE_COPY:
+        if total_missing_bytes != 0 and len(g_storage) >= 2 and COPY_FROM_OTHER_STORAGE:
             with tqdm(
                 total=total_missing_bytes,
                 desc=locale.t(
@@ -388,7 +387,7 @@ class FileCheck:
                 unit="B",
                 unit_divisor=1024,
                 unit_scale=True,
-            ) as pbar, logTqdm(pbar, logTqdmType.BYTES):
+            ) as pbar:
                 await dashboard.set_status_by_tqdm("files.copying", pbar)
                 removes: defaultdict[Storage, set[tuple[BMCLAPIFile, int]]] = (
                     defaultdict(set)
@@ -452,7 +451,7 @@ class FileCheck:
                     desc=locale.t("cluster.tqdm.desc.delete_old_files"),
                     unit=locale.t("cluster.tqdm.unit.file"),
                     unit_scale=True,
-                ) as pbar, logTqdm(pbar):
+                ) as pbar:
                     await dashboard.set_status_by_tqdm("files.delete_old", pbar)
                     for storage, filelist in more_files.items():
                         removed = await storage.removes(filelist)
@@ -789,7 +788,7 @@ class WebDav(Storage):
             with tqdm(
                 total=len(dirs),
                 desc=f"[WebDav List Files <endpoint: '{self._download_endpoint()}'>]",
-            ) as pbar, logTqdm(pbar):
+            ) as pbar:
                 await dashboard.set_status_by_tqdm("storage.webdav", pbar)
                 r = await self._execute(self.session.list(self._download_endpoint()))
                 if r is asyncio.CancelledError:

@@ -5,7 +5,6 @@ from tqdm import tqdm
 
 from core import dashboard, logger, scheduler
 from core.const import AUTO_DOWNLOAD_RELEASE, IO_BUFFER, VERSION
-from core.timings import logTqdm, logTqdmType
 
 
 github_api = "https://api.github.com"
@@ -55,7 +54,7 @@ async def download():
         async with session.get(download_url) as resp:
             length = int(resp.headers.get("Content-Length") or 0)
             filename = f"{fetched_version}.zip"
-            with tqdm(total=length, desc="Download Release", unit="b", unit_divisor=1024, unit_scale=True) as pbar, logTqdm(pbar, logTqdmType.BYTES), open(f"./releases/{filename}", "wb") as w:
+            with tqdm(total=length, desc="Download Release", unit="b", unit_divisor=1024, unit_scale=True) as pbar, open(f"./releases/{filename}", "wb") as w:
                 while (data := await resp.content.read(IO_BUFFER)):
                     pbar.update(len(data))
                     w.write(data)
