@@ -105,10 +105,10 @@ def repeat(handler, args=(), kwargs={}, delay: float = 0, interval: float = 0) -
     )
     if is_coroutine(handler):
         job = async_scheduler.add_job(
-            wrapper_async, trigger, max_instances=MAX_INSTANCES
+            wrapper_async, trigger, max_instances=MAX_INSTANCES, misfire_grace_time=None
         )
     else:
-        job = sync_scheduler.add_job(wrapper, trigger, max_instances=MAX_INSTANCES)
+        job = sync_scheduler.add_job(wrapper, trigger, max_instances=MAX_INSTANCES, misfire_grace_time=None)
     return _add_task_id(job, is_coroutine(handler))
 
 
