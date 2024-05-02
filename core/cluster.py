@@ -40,8 +40,6 @@ from core.api import (
     File,
     BMCLAPIFile,
     FileCheckType,
-    FileContentType,
-    FileType,
     StatsCache,
     Storage,
     get_hash,
@@ -533,13 +531,13 @@ class FileStorage(Storage):
             file.cache = True
             return file
         path = Path(str(self.dir) + f"/{hash[:2]}/{hash}")
-        file = File(path, hash, path.stat().st_size, FileContentType.PATH)
+        file = File(path, hash, path.stat().st_size)
         if CACHE_ENABLE:
             buf = io.BytesIO()
             async with aiofiles.open(path, "rb") as r:
                 while data := await r.read(IO_BUFFER):
                     buf.write(data)
-            file = File(path, hash, buf.tell(), time.time(), time.time(), FileContentType.DATA)
+            file = File(path, hash, buf.tell(), time.time(), time.time())
             file.set_data(buf.getbuffer())
             self.cache[hash] = file
             file.cache = False
@@ -647,7 +645,7 @@ class WebDav(Storage):
         self.timer = scheduler.repeat(
             self.clear_cache, delay=CHECK_CACHE, interval=CHECK_CACHE
         )
-        self.empty = File("", "", 0, FileContentType.DATA)
+        self.empty = File("", "", 0)
         self.lock = utils.WaitLock()
         self.session = webdav3_client.Client(
             {
@@ -812,8 +810,7 @@ class WebDav(Storage):
                         files[file["name"]] = File(
                             file["path"].removeprefix(f"/dav/{self.endpoint}/"),
                             file["name"],
-                            int(file["size"]),
-                            FileContentType.URL
+                            int(file["size"])
                         )
                         try:
                             await asyncio.sleep(0)
@@ -849,7 +846,6 @@ class WebDav(Storage):
                 hash,
                 hash,
                 0,
-                FileContentType.DATA
             )
             session = self.get_session
             async with session.get(
@@ -867,14 +863,12 @@ class WebDav(Storage):
                             continue
                         f.headers[field] = resp.headers.get(field)
                     f.size = int(resp.headers.get("Content-Length", 0))
-                    f.type = FileContentType.DATA
                     f.set_data(await resp.read())
                     if CACHE_ENABLE:
                         f.expiry = time.time() + CACHE_TIME
                         self.cache[hash] = f
                 elif resp.status // 100 == 3:
                     f.size = await self.get_size(hash)
-                    f.type = FileContentType.URL
                     f.path = resp.headers.get("Location")
                     expiry = re.search(r"max-age=(\d+)", resp.headers.get("Cache-Control", "")) or 0
                     if max(expiry, CACHE_TIME) == 0:
@@ -902,7 +896,7 @@ class WebDav(Storage):
         path = self._file_endpoint(f"{hash[:2]}/{hash}")
         await self._mkdir(self._file_endpoint(f"{hash[:2]}"))
         await self._execute(self.session.upload_to(io.getbuffer(), path))
-        self.files[hash] = File(path, hash, len(io.getbuffer()), FileContentType.URL)
+        self.files[hash] = File(path, hash, len(io.getbuffer()))
         return self.files[hash].size
 
     async def get_files(self, dir: str) -> list[str]:
