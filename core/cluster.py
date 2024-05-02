@@ -1361,6 +1361,7 @@ token = TokenManager()
 cluster: Optional[Cluster] = None
 last_status: str = "-"
 storages = StorageManager()
+cache: CacheManager = CacheManager()
 
 
 async def init():
