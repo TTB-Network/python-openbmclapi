@@ -100,7 +100,7 @@ tar -zxvf /tmp/python-openbmclapi-latest.tar.gz --strip-components 1 -C $BASE_PA
 chown -R openbmclapi "$BASE_PATH"
 chmod -R 766 "$BASE_PATH"
 echo -e "\e[34m==> Installing Python modules\e[0m"
-python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r /opt/python-openbmclapi/requirements.txt --break-system-packages
+python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r /opt/python-openbmclapi/requirements.txt
 echo -e "\e[34m==> Enabling python-openbmclapi.service\e[0m"
 systemctl enable python-openbmclapi.service || exit $?
 
