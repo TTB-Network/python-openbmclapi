@@ -521,7 +521,7 @@ class FileStorage(Storage):
         if self.dir.is_file():
             raise FileExistsError(f"Cannot copy file: '{self.dir}': Is a file.")
         self.dir.mkdir(exist_ok=True, parents=True)
-        self.cache: CacheManager = CacheManager(FileType.LOCAL, FileContentType.DATA if CACHE_ENABLE else FileContentType.PATH)
+        self.cache: dict[str, File] = {}
         self.timer = scheduler.repeat(
             self.clear_cache, delay=CHECK_CACHE, interval=CHECK_CACHE
         )
@@ -902,7 +902,7 @@ class WebDav(Storage):
         path = self._file_endpoint(f"{hash[:2]}/{hash}")
         await self._mkdir(self._file_endpoint(f"{hash[:2]}"))
         await self._execute(self.session.upload_to(io.getbuffer(), path))
-        self.files[hash] = File(path, hash, len(io.getbuffer()))
+        self.files[hash] = File(path, hash, len(io.getbuffer()), FileContentType.URL)
         return self.files[hash].size
 
     async def get_files(self, dir: str) -> list[str]:
@@ -1341,27 +1341,10 @@ class Cluster:
             logger.error(traceback.format_exc())
 
 
-class CacheManager:
-    def __init__(self, type: FileType, data: FileContentType):
-        self.type = type
-        self.data = data
-        self.cache: dict[str, File] = {}
-    
-    def set(self, key: str, value: File) -> File:
-        self.cache[key] = value
-        return value
-    
-    def get_or_default(self, key: str) -> Optional[File]:
-        if key not in self.cache:
-            return None
-        return self.cache[key]
-
-
 token = TokenManager()
 cluster: Optional[Cluster] = None
 last_status: str = "-"
 storages = StorageManager()
-cache: CacheManager = CacheManager()
 
 async def init():
     if CLUSTER_ID == "":
