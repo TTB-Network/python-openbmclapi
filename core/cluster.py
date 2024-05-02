@@ -1101,7 +1101,7 @@ class Cluster:
             logger.tsuccess("cluster.success.cluster.disabled")
             scheduler.cancel(task)
             if err and ack:
-                logger.tsuccess("cluster.warn.cluster.force_exit")
+                logger.tsuccess("cluster.success.cluster.force_exit")
                 await self.sio.disconnect()
 
         task = scheduler.delay(_, args=(True, True), delay=5)

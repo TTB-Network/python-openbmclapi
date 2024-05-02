@@ -41,6 +41,7 @@
   "i18n.prompt.failed": "（错误：无法找到该 i18n 字符串）",
   "cluster.info.cluster.remote_message": "[主控]: $message",
   "cluster.error.cluster.remote_message": "[主控]: $message",
+  "cluster.success.cluster.force_exit": "成功与主控断开连接。",
   "cluster.warn.cluster.failed_to_connect": "无法连接到主控，将在 5 秒后重试。",
   "cluster.warn.cluster.no_storage": "因为当前没有任何存储，已关闭节点。",
   "cluster.erorr.cluster.storage.available": "当前没有可用存储。",
