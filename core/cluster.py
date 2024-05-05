@@ -558,8 +558,6 @@ class FileStorage(Storage):
     async def get(self, hash: str, offset: int = 0) -> File:
         if self.is_cache(hash):
             file = self.get_cache(hash)
-            file.expiry = time.time() + CACHE_TIME
-            file.cache = True
             return file
         path = Path(str(self.dir) + f"/{hash[:2]}/{hash}")
         file = File(hash, path.stat().st_size, FileContentType.EMPTY)
@@ -572,7 +570,6 @@ class FileStorage(Storage):
             file.set_data(buf)
         else:
             file.set_data(path)
-        file.cache = False
         if CACHE_ENABLE:
             self.set_cache(hash, file)
         return file
@@ -815,7 +812,6 @@ class WebDav(Storage):
     async def get(self, hash: str, offset: int = 0) -> File:
         if self.is_cache(hash):
             file = self.get_cache(hash)
-            file.cache = True
             return file
         try:
             f = File(

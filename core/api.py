@@ -12,7 +12,7 @@ import aiofiles
 
 from core import logger, scheduler, unit, web
 from core.config import Config
-from core.const import CACHE_BUFFER_COMPRESSION_MIN_LENGTH, CHECK_CACHE, CACHE_BUFFER
+from core.const import CACHE_BUFFER_COMPRESSION_MIN_LENGTH, CACHE_TIME, CHECK_CACHE, CACHE_BUFFER
 
 
 class FileCheckType(Enum):
@@ -113,7 +113,12 @@ class Storage(metaclass=abc.ABCMeta):
         return self.name
     
     def get_cache(self, hash: str) -> Optional[File]:
-        return self.cache.get(hash, None)
+        file = self.cache.get(hash, None)
+        if file is not None:
+            file.cache = True
+            if not file.is_url():
+                file.expiry = time.time() + CACHE_TIME
+        return file
     
     def is_cache(self, hash: str) -> Optional[File]:
         return hash in self.cache
@@ -131,11 +136,11 @@ class Storage(metaclass=abc.ABCMeta):
         for hash, file in data:
             if file.type == FileContentType.EMPTY:
                 continue
-            size += file.size
+            size += file.data_length
             if (size <= CACHE_BUFFER and file.expiry >= time.time()):
                 continue
             hashs.add(hash)
-            old_size += file.size
+            old_size += file.data_length
         for hash in hashs:
             self.cache.pop(hash)
         logger.tinfo(

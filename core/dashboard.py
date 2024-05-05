@@ -190,6 +190,7 @@ def get_cache_stats() -> StatsCache:
         t = storage.get_cache_stats()
         stat.total += t.total
         stat.bytes += t.bytes
+        stat.data_bytes += t.data_bytes
     return stat
 
 
