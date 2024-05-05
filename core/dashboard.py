@@ -157,7 +157,7 @@ async def process(type: str, data: Any):
             "connections": system.get_connections(),
             "cpu": system.get_cpus(),
             "cache": (
-                asdict(await get_cache_stats()) if cluster.cluster else StatsCache()
+                asdict(get_cache_stats()) if cluster.cluster else StatsCache()
             ),
         }
     if type == "version":
@@ -182,10 +182,10 @@ async def process(type: str, data: Any):
         return system.get_loads_detail()
 
 
-async def get_cache_stats() -> StatsCache:
+def get_cache_stats() -> StatsCache:
     stat = StatsCache()
     for storage in cluster.storages.get_storages():
-        t = await storage.get_cache_stats()
+        t = storage.get_cache_stats()
         stat.total += t.total
         stat.bytes += t.bytes
     return stat

@@ -100,7 +100,7 @@ class Route:
         path: str,
         method: Optional[str],
         handler: Callable[..., Coroutine],
-        access_logs: bool = True,
+        response_configuration: Optional["ResponseConfiguration"] = None,
         **kwargs,
     ) -> None:
         self._path = path if path.startswith("/") else "/" + path
@@ -112,7 +112,7 @@ class Route:
             self.regexp: re.Pattern = re.compile(
                 rf"^{path.replace('{', '(?P<').replace('}', r'>[^/]*)')}$"
             )
-        self.access_logs = access_logs
+        self._response = response_configuration
         self.kwargs = kwargs
 
     def is_params(self):
@@ -512,7 +512,6 @@ class Application:
         return self._routes[0].redierct(path, redirect_to)
 
     async def handle(self, request: "Request"):
-        access_logs = True
         url = request.get_url()
         redirect = None
         for route in self._routes:
@@ -524,11 +523,12 @@ class Application:
             return
         result = None
         cur_route = None
+        response_configuration = None
         method = await request.get_method()
         for route in self._routes:
             cur_route = route.get_route(method, url)
             if cur_route:
-                access_logs = cur_route.access_logs
+                response_configuration = cur_route._response
                 prefix = route.get_prefix()
                 break
         if cur_route is not None:
@@ -608,7 +608,7 @@ class Application:
                         }
                     ),
                     status_code=101,
-                    access_logs=access_logs,
+                    response_configuration=response_configuration
                 )
                 ws.start()
                 if request.get_url() not in self._ws:
@@ -639,7 +639,7 @@ class Application:
         yield Response(
             content=result or "",
             headers=Header({"Server": Config.get("web.server_name")}),
-            access_logs=access_logs,
+            response_configuration=response_configuration,
         )
 
     def mount(self, router: Router):
@@ -714,6 +714,7 @@ class Header:
 @dataclass
 class ResponseConfiguration:
     length: Optional[int] = None
+    access_log: bool = True
 
 
 class Response:
@@ -725,6 +726,7 @@ class Response:
         content_type: Optional[str] = None,
         compress=None,
         status_code: int = 200,
+        response_configuration: Optional[ResponseConfiguration] = None,
         **kwargs,
     ) -> None:
         self.status_code = status_code
@@ -733,6 +735,7 @@ class Response:
         self._cookies = cookies
         self.content_type = content_type
         self._compress = compress
+        self._response_configuration = response_configuration
         self._kwargs = kwargs
 
     def set_headers(self, header: Header | dict[str, Any]):
@@ -788,6 +791,7 @@ class Response:
             self._headers = self.content._headers
             self._cookies = self.content._cookies
             self._kwargs = self.content._kwargs
+            self._response_configuration = self.content._response_configuration
             self.content = self.content.content
         if isinstance(self.content, (Coroutine, Response)):
             await self.raw()
@@ -927,12 +931,12 @@ class Response:
 
 class RedirectResponse(Response):
     def __init__(
-        self, location: str, headers: Header | dict[str, Any] | None = None
+        self, location: str, headers: Header | dict[str, Any] | None = None, response_configuration: Optional[ResponseConfiguration] = None
     ) -> None:
         header = Header()
         header.update(headers)
         header.update({"Location": location})
-        super().__init__(headers=header, status_code=307)
+        super().__init__(headers=header, status_code=307, response_configuration=response_configuration)
 
 
 class Request:
@@ -1310,7 +1314,7 @@ async def handle(data, client: Client):
             await resp(request, client)
             if not log:
                 log = True
-                if resp._kwargs.get("access_logs", True):
+                if resp._response_configuration is None or resp._response_configuration.access_log:
                     logger.info(
                         request.get_request_time(),
                         "|",
