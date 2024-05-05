@@ -19,7 +19,6 @@ from typing import Any, Optional, Type
 import aiohttp.client_exceptions
 import socketio
 from tqdm import tqdm
-import core
 from core import system
 from core.config import Config
 from core import certificate, dashboard, unit
@@ -240,8 +239,8 @@ class FileDownloader:
                 content: io.BytesIO = io.BytesIO()
                 resp = None
                 try:
-                    async with lock:
-                        resp = await session.get(file.path)
+                    #async with lock:
+                    resp = await session.get(file.path)
                     while data := await resp.content.read(IO_BUFFER):
                         if not data:
                             break
@@ -571,10 +570,8 @@ class FileStorage(Storage):
                     buf.write(data)
             file = File(hash, buf.tell(), time.time(), time.time())
             file.set_data(buf)
-            file.type = FileContentType.DATA
         else:
-            file.type = FileContentType.PATH
-            file.data = path
+            file.set_data(path)
         file.cache = False
         if CACHE_ENABLE:
             self.set_cache(hash, file)
@@ -832,7 +829,7 @@ class WebDav(Storage):
                     self.hostname + self._file_endpoint(hash[:2] + "/" + hash),
                     allow_redirects=False,
                 ) as resp:
-                    print(resp.real_url)
+                    print(resp.history)
                     if resp.status == 200:
                         f.headers = {}
                         for field in (
@@ -845,14 +842,12 @@ class WebDav(Storage):
                             f.headers[field] = resp.headers.get(field)
                         f.size = int(resp.headers.get("Content-Length", 0))
                         f.set_data(io.BytesIO(await resp.read()))
-                        f.type = FileContentType.DATA
                         if CACHE_ENABLE:
                             f.expiry = time.time() + CACHE_TIME
                             self.set_cache(hash, f)
                     elif resp.status // 100 == 3:
                         f.size = await self.get_size(hash)
-                        f.data = resp.headers.get("Location")
-                        f.type = FileContentType.URL
+                        f.set_data(resp.headers.get("Location"))
                         expiry = re.search(r"max-age=(\d+)", resp.headers.get("Cache-Control", "")) or 0
                         if max(expiry, CACHE_TIME) == 0:
                             return f

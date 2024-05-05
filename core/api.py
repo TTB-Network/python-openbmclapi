@@ -1,19 +1,18 @@
 import abc
 import asyncio
-from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 import hashlib
 import io
 from pathlib import Path
 import time
-from typing import Any, Optional
+from typing import Optional
 import pyzstd as zstd
 import aiofiles
 
 from core import logger, scheduler, unit, web
 from core.config import Config
-from core.const import CACHE_BUFFER_COMPRESSION_MIN_LENGTH, CHECK_CACHE, CACHE_TIME, CACHE_BUFFER
+from core.const import CACHE_BUFFER_COMPRESSION_MIN_LENGTH, CHECK_CACHE, CACHE_BUFFER
 
 
 class FileCheckType(Enum):
@@ -62,16 +61,26 @@ class File:
     cache: bool = False
     headers: Optional["web.Header"] = None
 
-    def set_data(self, data: io.BytesIO):
-        length = len(data.getbuffer())
-        if CACHE_BUFFER_COMPRESSION_MIN_LENGTH <= length:
-            self.data = io.BytesIO(zstd.compress(data.getbuffer()))
-            self.data_length = len(self.data.getbuffer())
-            self.compressed = True
-        else:
+    def set_data(self, data: io.BytesIO | str | Path):
+        if isinstance(data, io.BytesIO):
+            length = len(data.getbuffer())
+            if CACHE_BUFFER_COMPRESSION_MIN_LENGTH <= length:
+                self.data = io.BytesIO(zstd.compress(data.getbuffer()))
+                self.data_length = len(self.data.getbuffer())
+                self.compressed = True
+            else:
+                self.data = data
+                self.data_length = len(data.getbuffer())
+                self.compressed = False
+            self.type = FileContentType.DATA
+        elif isinstance(data, str):
+            self.data_length = len(data)
             self.data = data
-            self.data_length = len(data.getbuffer())
-            self.compressed = False
+            self.type = FileContentType.URL
+        elif isinstance(data, Path):
+            self.data_length = len(str(data))
+            self.data = data
+            self.type = FileContentType.PATH
 
     def get_data(self):
         if self.compressed:
@@ -88,6 +97,7 @@ class File:
 class StatsCache:
     total: int = 0
     bytes: int = 0
+    data_bytes: int = 0
 
 
 class Storage(metaclass=abc.ABCMeta):
@@ -140,6 +150,7 @@ class Storage(metaclass=abc.ABCMeta):
         for file in self.cache.values():
             stat.total += 1
             stat.bytes += file.size
+            stat.data_bytes += file.data_length
         return stat
 
     @abc.abstractmethod
