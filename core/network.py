@@ -206,7 +206,7 @@ async def check_ports():
                     "core.warn.port_closed",
                     port=port[0].sockets[0].getsockname()[1],
                 )
-                logger.error(traceback.format_exc())
+                logger.warn(traceback.format_exc())
                 closed = True
         if closed:
             restart()
