@@ -445,7 +445,7 @@ class FileCheck:
                             continue
                         size = await storage.write(
                             file.hash,
-                            data.get_data(),
+                            await self.get_content_data(data),
                         )
                         if size == -1:
                             hash = file.hash
