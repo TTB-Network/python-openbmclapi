@@ -355,6 +355,19 @@ class FileCheck:
                     key: OpenbmclapiAgentConfiguration(**value) for key, value in (await resp.json()).items()
                 }
         return sorted(self.configuration.items(), key=lambda x: x[1].concurrency)[0]
+    
+    async def get_content_data(self, file: File) -> io.BytesIO:
+        if file.is_path():
+            async with aiofiles.open(file.get_data(), "rb") as r:
+                return io.BytesIO(await r.read())
+        elif file.is_url():
+            async with aiohttp.ClientSession() as session:
+                async with session.get(file.get_data()) as resp:
+                    return io.BytesIO(await resp.read())
+        else:
+            return file.get_data()
+                
+
     async def __call__(
         self,
     ) -> Any:
