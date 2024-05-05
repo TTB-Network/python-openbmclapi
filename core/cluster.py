@@ -1083,7 +1083,7 @@ class Cluster:
         await self.start()
 
     async def disable(self):
-        if self.keepalive_timer is not None and not self.keepalive_timer.cancelled():
+        if self.keepalive_timer is not None:
             self.keepalive_timer.cancel()
         if not self.enabled:
             return
@@ -1235,10 +1235,7 @@ class Cluster:
 
     async def keepalive(self):
         def _clear():
-            if (
-                self.keepalive_timer is not None
-                and not self.keepalive_timer.cancelled()
-            ):
+            if self.keepalive_timer is not None:
                 self.keepalive_timer.cancel()
             if self.keepalive_timeout_timer is not None:
                 scheduler.cancel(self.keepalive_timeout_timer)
