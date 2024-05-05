@@ -239,8 +239,8 @@ class FileDownloader:
                 content: io.BytesIO = io.BytesIO()
                 resp = None
                 try:
-                    #async with lock:
-                    resp = await session.get(file.path)
+                    async with lock:
+                        resp = await session.get(file.path)
                     while data := await resp.content.read(IO_BUFFER):
                         if not data:
                             break
