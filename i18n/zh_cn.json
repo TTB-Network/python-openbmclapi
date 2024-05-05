@@ -34,7 +34,7 @@
   "cluster.error.check_files.failed_to_copy": "无法复制缺失文件：$hash ($file) => $hash ($target)。",
   "cluster.success.check_files.finished": "文件已全部检查成功！文件数量：$count ($size)。",
   "cluster.info.check_files.missing": "文件缺失：$count。",
-  "cluster.info.clear_cache.count": "过期缓存：$count ($size)。",
+  "cluster.info.clear_cache.count": "$name 过期缓存：$count ($size)。",
   "cluster.tqdm.desc.cleaning_cache": "清除缓存中",
   "cluster.tqdm.desc.parsing_file_list": "解析文件列表中",
   "cluster.tqdm.desc.fetching_webdav_files": "获取 WebDAV <endpoint: '$endpoint'> 文件列表中",
@@ -79,5 +79,6 @@
   "core.info.shutting_down_web_service": "正在关闭 Web 服务……",
   "stats.error.broken_stats": "统计信息已损坏……",
   "system.info.loading": "正在初始化系统信息统计……",
-  "timings.info.finished": "任务已完成，耗时：$time。"
+  "timings.info.finished": "任务已完成，耗时：$time。",
+  "cluster.info.download.configuration": "下载配置策略：$type 下载源：$source 下载并发：$concurrency"
 }

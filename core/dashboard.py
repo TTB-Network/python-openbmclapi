@@ -143,6 +143,8 @@ async def process(type: str, data: Any):
                             "speed": cur_tqdm.speed,
                             "unit": cur_tqdm.object.unit,
                             "desc": cur_tqdm.desc,
+                            "start": utils.format_stime(time.time() - cur_tqdm.object.start_t),
+                            "end": utils.format_stime(((cur_tqdm.object.total - cur_tqdm.object.n) / cur_tqdm.speed)) if cur_tqdm.speed != 0 else utils.format_stime(None)
                         }
                     }
                 )
@@ -157,7 +159,7 @@ async def process(type: str, data: Any):
             "connections": system.get_connections(),
             "cpu": system.get_cpus(),
             "cache": (
-                asdict(await get_cache_stats()) if cluster.cluster else StatsCache()
+                asdict(get_cache_stats()) if cluster.cluster else StatsCache()
             ),
         }
     if type == "version":
@@ -182,12 +184,13 @@ async def process(type: str, data: Any):
         return system.get_loads_detail()
 
 
-async def get_cache_stats() -> StatsCache:
+def get_cache_stats() -> StatsCache:
     stat = StatsCache()
     for storage in cluster.storages.get_storages():
-        t = await storage.get_cache_stats()
+        t = storage.get_cache_stats()
         stat.total += t.total
         stat.bytes += t.bytes
+        stat.data_bytes += t.data_bytes
     return stat
 
 

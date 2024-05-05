@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import gzip
 import os
 from pathlib import Path
+import re
 from typing import Any
 import zlib
 
@@ -22,6 +23,7 @@ ROOT = os.getcwd()
 API_VERSION = "1.10.4"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
 BASE_URL = Config.get("advanced.url", "https://openbmclapi.bangbang93.com/")
+BD_URL = BASE_URL.replace("openbmclapi", "bd")
 CLUSTER_ID: str = Config.get("cluster.id")
 CLUSTER_SECERT: str = Config.get("cluster.secret")
 IO_BUFFER: int = Config.get("advanced.io_buffer")
@@ -51,6 +53,8 @@ FILE_REDIRECTS = ["index.html", "index.htm", "default.html", "default.htm"]
 RESPONSE_HEADERS = {
     "Server": Config.get("web.server_name"),
 }
+CLUSTER_PATTERN = re.compile(r'https?://([a-fA-F0-9]*)\.openbmclapi\.933\.moe(:\d+)/')
+DOWNLOAD_ACCESS_LOG: bool = True
 RESPONSE_DATE = "%a, %d %b %Y %H:%M:%S GMT"
 RESPONSE_COMPRESSION_IGNORE_SIZE_THRESHOLD: int = 16777216
 SKIP_FILE_CHECK: bool = False
