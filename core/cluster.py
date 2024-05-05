@@ -829,7 +829,6 @@ class WebDav(Storage):
                     self.hostname + self._file_endpoint(hash[:2] + "/" + hash),
                     allow_redirects=False,
                 ) as resp:
-                    print(resp.history)
                     if resp.status == 200:
                         f.headers = {}
                         for field in (
