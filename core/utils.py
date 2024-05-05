@@ -454,12 +454,12 @@ def updateDict(dict: dict, new: dict):
 
 def format_stime(n):
     if not n:
-        return "--:--:--"
+        return "--:--"
     n = int(n)
     hour = int(n / 60 / 60)
     minutes = int(n / 60 % 60)
     second = int(n % 60)
-    return f"{hour:02d}:{minutes:02d}:{second:02d}"
+    return f"{minutes:02d}:{second:02d}" if hour == 0 else f"{hour:02d}:{minutes:02d}:{second:02d}"
 
 
 def format_time(k: float):

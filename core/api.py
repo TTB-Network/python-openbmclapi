@@ -5,13 +5,14 @@ from enum import Enum
 import hashlib
 import io
 from pathlib import Path
+import time
 from typing import Optional
 import pyzstd as zstd
 import aiofiles
 
-from core import web
+from core import logger, scheduler, unit, web
 from core.config import Config
-from core.const import CACHE_BUFFER_COMPRESSION_MIN_LENGTH
+from core.const import CACHE_BUFFER_COMPRESSION_MIN_LENGTH, CACHE_TIME, CHECK_CACHE, CACHE_BUFFER
 
 
 class FileCheckType(Enum):
@@ -27,6 +28,7 @@ class FileContentType(Enum):
     DATA = "data"
     URL = "url"
     PATH = "path"
+    EMPTY = "empty"
 
 @dataclass
 class BMCLAPIFile:
@@ -47,56 +49,55 @@ class BMCLAPIFile:
             )
         return False
 
-
 @dataclass
 class File:
-    path: Path | str
     hash: str
     size: int
-    last_hit: float = 0
-    last_access: float = 0
-    expiry: Optional[float] = None
-    data: Optional[io.BytesIO] = None
+    type: FileContentType
+    data: io.BytesIO | str | Path = None
+    expiry: float = 0
+    compressed: bool = False
+    data_length: int = 0
     cache: bool = False
     headers: Optional["web.Header"] = None
-    compressed: bool = False
 
-    def is_url(self):
-        if not isinstance(self.path, str):
-            return False
-        return self.path.startswith("http://") or self.path.startswith("https://")
-    
-    def is_path(self):
-        return isinstance(self.path, Path)
-
-    def get_path(self) -> str | Path:
-        return self.path
+    def set_data(self, data: io.BytesIO | str | Path):
+        if isinstance(data, io.BytesIO):
+            length = len(data.getbuffer())
+            if CACHE_BUFFER_COMPRESSION_MIN_LENGTH <= length:
+                self.data = io.BytesIO(zstd.compress(data.getbuffer()))
+                self.data_length = len(self.data.getbuffer())
+                self.compressed = True
+            else:
+                self.data = data
+                self.data_length = len(data.getbuffer())
+                self.compressed = False
+            self.type = FileContentType.DATA
+        elif isinstance(data, str):
+            self.data_length = len(data)
+            self.data = data
+            self.type = FileContentType.URL
+        elif isinstance(data, Path):
+            self.data_length = len(str(data))
+            self.data = data
+            self.type = FileContentType.PATH
 
     def get_data(self):
-        if not self.data:
-            return io.BytesIO()
-        if not self.compressed:
+        if self.compressed:
+            return io.BytesIO(zstd.decompress(self.data.getbuffer()))
+        else:
             return self.data
-        return io.BytesIO(zstd.decompress(self.data.getbuffer()))
-
-    def set_data(self, data: io.BytesIO | memoryview | bytes):
-        if not isinstance(data, io.BytesIO):
-            data = io.BytesIO(data)
-        data_length = len(data.getbuffer())
-        if data_length >= CACHE_BUFFER_COMPRESSION_MIN_LENGTH:
-            compressed_data = zstd.compress(data.getbuffer())
-            if data_length > len(compressed_data):
-                self.compressed = True
-                self.data = io.BytesIO(compressed_data)
-                return
-        self.compressed = False
-        self.data = data
-
-
+    def is_url(self):
+        return self.type == FileContentType.URL
+    def is_path(self):
+        return self.type == FileContentType.PATH
+    def get_path(self) -> Path:
+        return self.data
 @dataclass
 class StatsCache:
     total: int = 0
     bytes: int = 0
+    data_bytes: int = 0
 
 
 class Storage(metaclass=abc.ABCMeta):
@@ -104,9 +105,58 @@ class Storage(metaclass=abc.ABCMeta):
         self.name = name
         self.disabled = False
         self.width = width
-
+        self.cache: dict[str, File] = {}
+        self.cache_timer = scheduler.repeat(
+            self.clear_cache, delay=CHECK_CACHE, interval=CHECK_CACHE
+        )
     def get_name(self):
         return self.name
+    
+    def get_cache(self, hash: str) -> Optional[File]:
+        file = self.cache.get(hash, None)
+        if file is not None:
+            file.cache = True
+            if not file.is_url():
+                file.expiry = time.time() + CACHE_TIME
+        return file
+    
+    def is_cache(self, hash: str) -> Optional[File]:
+        return hash in self.cache
+
+    def set_cache(self, hash: str, file: File):
+        self.cache[hash] = file
+
+    def clear_cache(self):
+        hashs = set()
+        data = sorted(
+            self.cache.copy().items(), 
+            key=lambda x: x[1].expiry, reverse=True)
+        size = 0
+        old_size = 0
+        for hash, file in data:
+            if file.type == FileContentType.EMPTY:
+                continue
+            size += file.data_length
+            if (size <= CACHE_BUFFER and file.expiry >= time.time()):
+                continue
+            hashs.add(hash)
+            old_size += file.data_length
+        for hash in hashs:
+            self.cache.pop(hash)
+        logger.tinfo(
+            "cluster.info.clear_cache.count",
+            name=self.name,
+            count=unit.format_number(len(hashs)),
+            size=unit.format_bytes(old_size),
+        )
+
+    def get_cache_stats(self) -> StatsCache:
+        stat = StatsCache()
+        for file in self.cache.values():
+            stat.total += 1
+            stat.bytes += file.size
+            stat.data_bytes += file.data_length
+        return stat
 
     @abc.abstractmethod
     async def get(self, file: str, offset: int = 0) -> File:
@@ -175,15 +225,15 @@ class Storage(metaclass=abc.ABCMeta):
         """
         raise NotImplementedError
 
-    @abc.abstractmethod
-    async def get_cache_stats(self) -> StatsCache:
-        """
-        dir: path
-        Getting cache files
-        return StatsCache
-        """
-        raise NotImplementedError
+@dataclass
+class OpenbmclapiAgentConfiguration:
+    source: str
+    concurrency: int
 
+@dataclass
+class ResponseRedirects:
+    status: int 
+    url: str
 
 def get_hash(org):
     if len(org) == 32:

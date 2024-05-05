@@ -1,14 +1,14 @@
 [Unit]
-Description=Py-OpenBmclAPI Service
-Documentation=https://github.com/TTB-Network/python-openbmclapi
+Description=python-openbmclapi-service
+Documentation=https://python-openbmclapi.ttb-network.top/
 Wants=basic.target
 After=network.target
 
 [Service]
 Type=simple
 User=openbmclapi
-WorkingDirectory=/opt/py-openbmclapi
-ExecStart=/opt/py-openbmclapi/start.sh
+WorkingDirectory=/opt/python-openbmclapi
+ExecStart=/opt/python-openbmclapi/start.sh
 ExecReload=kill -s HUP $MAINPID
 RestartSec=30
 Restart=on-failure

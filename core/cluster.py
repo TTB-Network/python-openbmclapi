@@ -16,9 +16,9 @@ import traceback
 import aiofiles
 import aiohttp
 from typing import Any, Optional, Type
+import aiohttp.client_exceptions
 import socketio
 from tqdm import tqdm
-import core
 from core import system
 from core.config import Config
 from core import certificate, dashboard, unit
@@ -37,9 +37,12 @@ from core.exceptions import ClusterIdNotSet, ClusterSecretNotSet
 from core.const import *
 
 from core.api import (
-    File,
     BMCLAPIFile,
+    File,
     FileCheckType,
+    FileContentType,
+    OpenbmclapiAgentConfiguration,
+    ResponseRedirects,
     StatsCache,
     Storage,
     get_hash,
@@ -146,12 +149,9 @@ class FileDownloader:
         ) as session:
             logger.tdebug("cluster.debug.get_files.created_session")
             async with session.get(
-                "/openbmclapi/files",
-                data={
-                    "responseType": "buffer",
-                    "cache": "",
-                    "lastModified": self.last_modified,
-                },
+                "/openbmclapi/files", params={
+                    "lastModified": self.last_modified
+                }
             ) as req:
                 logger.tdebug(
                     "cluster.debug.get_files.response_status", status=req.status
@@ -189,7 +189,6 @@ class FileDownloader:
             content: io.BytesIO = io.BytesIO()
             async with session.get(
                 f"/openbmclapi/download/{hash}",
-                data={"responseType": "buffer", "searchParams": {"noopen": 1}},
             ) as resp:
                 while data := await resp.content.read(IO_BUFFER):
                     if not data:
@@ -214,14 +213,34 @@ class FileDownloader:
             )
             return content
 
-    async def _download(self, pbar: tqdm, session: aiohttp.ClientSession):
+    async def _download(self, pbar: tqdm, lock: asyncio.Semaphore):
+        async def put(size, file: BMCLAPIFile):
+            await self.queues.put(file)
+            pbar.update(-size)
+        async def error(*responses: aiohttp.ClientResponse):
+            msg = []
+            history = list((ResponseRedirects(resp.status, str(resp.real_url)) for resp in responses))
+            source = "主控" if len(history) == 1 else "节点"
+            for history in history:
+                msg.append(f"  > {history.status} | {history.url}")
+            history = '\n'.join(msg)
+            logger.error(f"下载错误 {file.hash}({unit.format_bytes(file.size)}) 来自{source}地址 [{responses[-1].host}] 响应 [{responses[-1].status}] 历史地址：\n{history}")
         while not self.queues.empty() and storages.available:
-            file = await self.queues.get()
-            hash = get_hash(file.hash)
-            size = 0
-            content: io.BytesIO = io.BytesIO()
-            try:
-                async with session.get(file.path) as resp:
+            async with aiohttp.ClientSession(
+                BASE_URL,
+                headers={
+                    "User-Agent": USER_AGENT,
+                    "Authorization": f"Bearer {await token.getToken()}",
+                },
+            ) as session:
+                file = await self.queues.get()
+                hash = get_hash(file.hash)
+                size = 0
+                content: io.BytesIO = io.BytesIO()
+                resp = None
+                try:
+                    #async with lock:
+                    resp = await session.get(file.path)
                     while data := await resp.content.read(IO_BUFFER):
                         if not data:
                             break
@@ -230,18 +249,30 @@ class FileDownloader:
                         pbar.update(byte)
                         content.write(data)
                         hash.update(data)
+                    resp.close()
+                except asyncio.CancelledError:
+                    return
+                except aiohttp.client_exceptions.ClientConnectionError:
+                    if resp is not None:
+                        await error(*resp.history, resp)
+                    await put(size, file)
+                    continue
+                except:
+                    logger.error(traceback.format_exc())
+                    if resp is not None:
+                        await error(*resp.history, resp)
+                    await put(size, file)
+                    continue
                 if file.hash != hash.hexdigest():
-                    raise EOFError
+                    await error(*resp.history, resp)
+                    await put(size, file)
+                    await asyncio.sleep(5)
+                    continue
                 r = await self._mount_file(file, content)
                 if r[0] == -1:
-                    raise EOFError
-            except asyncio.CancelledError:
-                break
-            except:
-                pbar.update(-size)
-                await self.queues.put(file)
-            del content
-        await session.close()
+                    logger.error("放入存储时候错误")
+                    await put(size, file)
+                    continue
 
     async def _mount_file(
         self, file: BMCLAPIFile, buf: io.BytesIO
@@ -251,6 +282,8 @@ class FileDownloader:
             r = -1
             try:
                 r = await storage.write(file.hash, buf)
+            except asyncio.CancelledError:
+                return buf, -1
             except:
                 logger.error(traceback.format_exc())
             if r != file.size:
@@ -267,7 +300,7 @@ class FileDownloader:
             result = result or r
         return buf, result or -1
 
-    async def download(self, miss: list[BMCLAPIFile]):
+    async def download(self, miss: list[BMCLAPIFile], configuration: OpenbmclapiAgentConfiguration):
         if not storages.available:
             logger.terror("cluster.erorr.cluster.storage.available")
             return
@@ -281,23 +314,9 @@ class FileDownloader:
             await dashboard.set_status_by_tqdm("files.downloading", pbar)
             for file in miss:
                 await self.queues.put(file)
-            timers = []
-            for _ in range(0, MAX_DOWNLOAD, max(MAX_DOWNLOAD, 32)):
-                for __ in range(max(32, MAX_DOWNLOAD)):
-                    timers.append(
-                        self._download(
-                            pbar,
-                            aiohttp.ClientSession(
-                                BASE_URL,
-                                headers={
-                                    "User-Agent": USER_AGENT,
-                                    "Authorization": f"Bearer {await token.getToken()}",
-                                },
-                            ),
-                        ),
-                    )
+            lock = asyncio.Semaphore(configuration.concurrency)
             try:
-                await asyncio.gather(*timers)
+                await asyncio.gather(*[self._download(pbar, lock) for _ in range(MAX_DOWNLOAD)])
             except asyncio.CancelledError:
                 raise asyncio.CancelledError
         logger.tsuccess("cluster.info.download.finished")
@@ -316,12 +335,26 @@ class FileCheck:
         self.pbar: Optional[tqdm] = None
         self.check_files_timer: Optional[int] = None
         logger.tinfo("cluster.info.check_files.check_type", type=self.check_type.name)
+        self.configurations: dict[str, OpenbmclapiAgentConfiguration] = {}
 
     def start_task(self):
         if self.check_files_timer:
             scheduler.cancel(self.check_files_timer)
         self.check_files_timer = scheduler.delay(self.__call__, delay=1800)
 
+    async def get_configuration(self) -> tuple[str, OpenbmclapiAgentConfiguration]:
+        async with aiohttp.ClientSession(
+            base_url=BASE_URL,
+            headers={
+                "User-Agent": USER_AGENT,
+                "Authorization": f"Bearer {await token.getToken()}"
+            }
+        ) as session:
+            async with session.get("/openbmclapi/configuration") as resp:
+                self.configuration = {
+                    key: OpenbmclapiAgentConfiguration(**value) for key, value in (await resp.json()).items()
+                }
+        return sorted(self.configuration.items(), key=lambda x: x[1].concurrency)[0]
     async def __call__(
         self,
     ) -> Any:
@@ -473,7 +506,9 @@ class FileCheck:
                 "cluster.info.check_files.missing",
                 count=unit.format_number(len(miss_all_files)),
             )
-            await self.downloader.download(list(miss_all_files))
+            configuration = await self.get_configuration()
+            logger.tinfo("cluster.info.download.configuration", type=configuration[0], source=configuration[1].source, concurrency=configuration[1].concurrency)
+            await self.downloader.download(list(miss_all_files), configuration[1])
         self.start_task()
 
     async def _exists(self, file: BMCLAPIFile, storage: Storage):
@@ -519,28 +554,24 @@ class FileStorage(Storage):
         if self.dir.is_file():
             raise FileExistsError(f"Cannot copy file: '{self.dir}': Is a file.")
         self.dir.mkdir(exist_ok=True, parents=True)
-        self.cache: dict[str, File] = {}
-        self.timer = scheduler.repeat(
-            self.clear_cache, delay=CHECK_CACHE, interval=CHECK_CACHE
-        )
 
     async def get(self, hash: str, offset: int = 0) -> File:
-        if hash in self.cache:
-            file = self.cache[hash]
-            file.last_access = time.time()
-            file.cache = True
+        if self.is_cache(hash):
+            file = self.get_cache(hash)
             return file
         path = Path(str(self.dir) + f"/{hash[:2]}/{hash}")
-        file = File(path, hash, path.stat().st_size)
+        file = File(hash, path.stat().st_size, FileContentType.EMPTY)
         if CACHE_ENABLE:
             buf = io.BytesIO()
             async with aiofiles.open(path, "rb") as r:
                 while data := await r.read(IO_BUFFER):
                     buf.write(data)
-            file = File(path, hash, buf.tell(), time.time(), time.time())
-            file.set_data(buf.getbuffer())
-            self.cache[hash] = file
-            file.cache = False
+            file = File(hash, buf.tell(), time.time(), time.time())
+            file.set_data(buf)
+        else:
+            file.set_data(path)
+        if CACHE_ENABLE:
+            self.set_cache(hash, file)
         return file
 
     async def exists(self, hash: str) -> bool:
@@ -567,29 +598,6 @@ class FileStorage(Storage):
                 await asyncio.sleep(0.001)
         return h.hexdigest()
 
-    async def clear_cache(self):
-        size: int = 0
-        old_keys: list[str] = []
-        old_size: int = 0
-        file: File
-        key: str
-        for key, file in sorted(
-            self.cache.items(), key=lambda x: x[1].last_access, reverse=True
-        ):
-            if size <= CACHE_BUFFER and file.last_access + CACHE_TIME >= time.time():
-                continue
-            old_keys.append(key)
-            old_size += file.size
-        if not old_keys:
-            return
-        for key in old_keys:
-            self.cache.pop(key)
-        logger.tinfo(
-            "cluster.info.clear_cache.count",
-            count=unit.format_number(len(old_keys)),
-            size=unit.format_bytes(old_size),
-        )
-
     async def get_files(self, dir: str) -> list[str]:
         files = []
         if os.path.exists(str(self.dir) + f"/{dir}"):
@@ -615,13 +623,6 @@ class FileStorage(Storage):
                     size += file.stat().st_size
         return size
 
-    async def get_cache_stats(self) -> StatsCache:
-        stat = StatsCache()
-        for file in self.cache.values():
-            stat.total += 1
-            stat.bytes += file.size
-        return stat
-
 
 class WebDav(Storage):
     def __init__(
@@ -637,14 +638,10 @@ class WebDav(Storage):
         self.username = username
         self.password = password
         self.hostname = hostname
-        self.endpoint = endpoint.replace("\\", "/").replace("//", "/").removesuffix("/")
+        self.endpoint = "/" + endpoint.replace("\\", "/").replace("//", "/").removesuffix("/").removeprefix('/')
         self.files: dict[str, File] = {}
         self.dirs: list[str] = []
         self.fetch: bool = False
-        self.cache: dict[str, File] = {}
-        self.timer = scheduler.repeat(
-            self.clear_cache, delay=CHECK_CACHE, interval=CHECK_CACHE
-        )
         self.empty = File("", "", 0)
         self.lock = utils.WaitLock()
         self.session = webdav3_client.Client(
@@ -656,9 +653,8 @@ class WebDav(Storage):
             }
         )
         self.session_lock = asyncio.Lock()
-        self.session_tcp_connector = aiohttp.TCPConnector(limit = LIMIT_SESSION_WEBDAV)
+        self.get_session_lock = asyncio.Semaphore(LIMIT_SESSION_WEBDAV)
         self.get_session = aiohttp.ClientSession(
-            connector=self.session_tcp_connector,
             auth=aiohttp.BasicAuth(
                 self.username,
                 self.password
@@ -666,29 +662,6 @@ class WebDav(Storage):
         )
         scheduler.delay(self._list_all)
         scheduler.repeat(self._keepalive, interval=60)
-
-    async def clear_cache(self):
-        size: int = 0
-        old_keys: list[str] = []
-        old_size: int = 0
-        file: File
-        key: str
-        for key, file in sorted(
-            self.cache.items(), key=lambda x: x[1].expiry, reverse=True
-        ):
-            if size <= CACHE_BUFFER and file.expiry < time.time() - 600:
-                continue
-            old_keys.append(key)
-            old_size += file.size
-        if not old_keys:
-            return
-        for key in old_keys:
-            self.cache.pop(key)
-        logger.tinfo(
-            "cluster.info.clear_cache.count",
-            count=unit.format_number(len(old_keys)),
-            size=unit.format_bytes(old_size),
-        )
 
     async def _keepalive(self):
         try:
@@ -808,9 +781,9 @@ class WebDav(Storage):
                         if file["isdir"]:
                             continue
                         files[file["name"]] = File(
-                            file["path"].removeprefix(f"/dav/{self.endpoint}/"),
                             file["name"],
-                            int(file["size"])
+                            int(file["size"]),
+                            FileContentType.EMPTY
                         )
                         try:
                             await asyncio.sleep(0)
@@ -837,10 +810,9 @@ class WebDav(Storage):
         await self.lock.wait()
 
     async def get(self, hash: str, offset: int = 0) -> File:
-        if hash in self.cache and self.cache[hash].expiry is not None and self.cache[hash].expiry - 10 > time.time():
-            self.cache[hash].cache = True
-            self.cache[hash].last_hit = time.time()
-            return self.cache[hash]
+        if self.is_cache(hash):
+            file = self.get_cache(hash)
+            return file
         try:
             f = File(
                 hash,
@@ -848,34 +820,35 @@ class WebDav(Storage):
                 0,
             )
             session = self.get_session
-            async with session.get(
-                self.hostname + self._file_endpoint(hash[:2] + "/" + hash),
-                allow_redirects=False,
-            ) as resp:
-                if resp.status == 200:
-                    f.headers = {}
-                    for field in (
-                        "ETag",
-                        "Last-Modified",
-                        "Content-Length",
-                    ):
-                        if field not in resp.headers:
-                            continue
-                        f.headers[field] = resp.headers.get(field)
-                    f.size = int(resp.headers.get("Content-Length", 0))
-                    f.set_data(await resp.read())
-                    if CACHE_ENABLE:
-                        f.expiry = time.time() + CACHE_TIME
-                        self.cache[hash] = f
-                elif resp.status // 100 == 3:
-                    f.size = await self.get_size(hash)
-                    f.path = resp.headers.get("Location")
-                    expiry = re.search(r"max-age=(\d+)", resp.headers.get("Cache-Control", "")) or 0
-                    if max(expiry, CACHE_TIME) == 0:
-                        return f
-                    f.expiry = time.time() + expiry
-                    if CACHE_ENABLE or f.expiry != 0:
-                        self.cache[hash] = f
+            async with self.get_session_lock:
+                async with session.get(
+                    self.hostname + self._file_endpoint(hash[:2] + "/" + hash),
+                    allow_redirects=False,
+                ) as resp:
+                    if resp.status == 200:
+                        f.headers = {}
+                        for field in (
+                            "ETag",
+                            "Last-Modified",
+                            "Content-Length",
+                        ):
+                            if field not in resp.headers:
+                                continue
+                            f.headers[field] = resp.headers.get(field)
+                        f.size = int(resp.headers.get("Content-Length", 0))
+                        f.set_data(io.BytesIO(await resp.read()))
+                        if CACHE_ENABLE:
+                            f.expiry = time.time() + CACHE_TIME
+                            self.set_cache(hash, f)
+                    elif resp.status // 100 == 3:
+                        f.size = await self.get_size(hash)
+                        f.set_data(resp.headers.get("Location"))
+                        expiry = re.search(r"max-age=(\d+)", resp.headers.get("Cache-Control", "")) or 0
+                        if max(expiry, CACHE_TIME) == 0:
+                            return f
+                        f.expiry = time.time() + expiry
+                        if CACHE_ENABLE or f.expiry != 0:
+                            self.set_cache(hash, f)
             return f
         except Exception:
             storages.disable(self)
@@ -896,7 +869,7 @@ class WebDav(Storage):
         path = self._file_endpoint(f"{hash[:2]}/{hash}")
         await self._mkdir(self._file_endpoint(f"{hash[:2]}"))
         await self._execute(self.session.upload_to(io.getbuffer(), path))
-        self.files[hash] = File(path, hash, len(io.getbuffer()))
+        self.files[hash] = File(hash, len(io.getbuffer()), FileContentType.EMPTY)
         return self.files[hash].size
 
     async def get_files(self, dir: str) -> list[str]:
@@ -923,18 +896,11 @@ class WebDav(Storage):
     async def removes(self, hashs: list[str]) -> int:
         success = 0
         for hash in hashs:
-            await self._execute(
-                self.session.clean(self._file_endpoint(f"{hash[:2]}/{hash}"))
-            )
+            #await self._execute(
+            #    self.session.clean(self._file_endpoint(f"{hash[:2]}/{hash}"))
+            #)
             success += 1
         return success
-
-    async def get_cache_stats(self) -> StatsCache:
-        stat = StatsCache()
-        for file in self.cache.values():
-            stat.total += 1
-            stat.bytes += file.size
-        return stat
 
 
 class TypeStorage(Enum):
@@ -1396,8 +1362,8 @@ async def init():
             yield b"\x00" * 1024 * 1024
         return
 
-    @app.get("/download/{hash}", access_logs=False)
-    async def _(request: web.Request, hash: str):
+    @app.get("/download/{hash}")
+    async def _(request: web.Request, hash: str, config: web.ResponseConfiguration):
         if (
             not SIGN_SKIP
             and not utils.check_sign(
@@ -1428,10 +1394,11 @@ async def init():
         )
         if not data:
             return web.Response(status_code=404)
+        config.access_log = DOWNLOAD_ACCESS_LOG
         if data.is_url() and isinstance(data.get_path(), str):
-            return web.RedirectResponse(str(data.get_path())).set_headers(name)
+            return web.RedirectResponse(str(data.get_path()), response_configuration=config).set_headers(name)
         return web.Response(
-            data.get_data().getbuffer() if not data.is_path() else data.get_path(), headers=data.headers or {}
+            data.get_data().getbuffer() if not data.is_path() else data.get_path(), headers=data.headers or {}, response_configuration=config
         ).set_headers(name)
 
     dir = Path("./bmclapi_dashboard/")

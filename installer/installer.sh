@@ -11,21 +11,21 @@ echo "MIRROR_PREFIX=${MIRROR_PREFIX}"
 REPO='TTB-Network/python-openbmclapi'
 RAW_PREFIX="${MIRROR_PREFIX}https://raw.githubusercontent.com"
 RAW_REPO="$RAW_PREFIX/$REPO"
-BASE_PATH=/opt/py-openbmclapi
+BASE_PATH=/opt/python-openbmclapi
 USERNAME=openbmclapi
 PY_MIRCO=3.10
 if ! PY_VERSION=$(python -V 2>&1|awk '{print $2}') && $(python -V 2>&1|awk '{print $2}'|awk -F '.' '{print $1}') -lt 3 ; then
-    echo -e "\e[31mERROR: Failed to detect python version\e[0m"
+    echo -e "\e[31mERROR: Failed to detect Python version.\e[0m"
     exit 1
 fi
 PY_VERSION=$(python -V 2>&1|awk '{print $2}'|awk -F '.' '{print $1}').$(python -V 2>&1|awk '{print $2}'|awk -F '.' '{print $2}')
-different=$(echo 2>&1 | awk "{print $PY_VERSION - $PY_MIRCO}")
-compare=$(expr "$different" \> 0)
-#printf $compare
-if  [[ $compare -eq 0 ]] ; then
-    echo -e "\e[31mERROR: Python version not supported;need >=3.10\e[0m"
-    exit 1
-fi
+# different=$(echo 2>&1 | awk "{print $PY_VERSION - $PY_MIRCO}")
+# compare=$(expr "$different" \> 0)
+# #printf $compare
+# if  [[ $compare -eq 0 ]] ; then
+#     echo -e "\e[31mERROR: Unsupported Python version; need >= 3.10\e[0m"
+#     exit 1
+# fi
 
 if ! systemctl --version >/dev/null 2>&1 ; then
 	echo -e "\e[31mERROR: Failed to test systemd\e[0m"
@@ -60,7 +60,7 @@ function fetchBlob(){
 
 	source="$RAW_REPO/master/$file"
 	echo -e "\e[34m==> Downloading $source\e[0m"
-	tmpf=$(mktemp -t py-openbmclapi.XXXXXXXXXXXX.downloading)
+	tmpf=$(mktemp -t python-openbmclapi.XXXXXXXXXXXX.downloading)
 	curl -fsSL -o "$tmpf" "$source" || { rm "$tmpf"; return 1; }
 	echo -e "\e[34m==> Downloaded $source\e[0m"
 	mv "$tmpf" "$target" || return $?
@@ -73,9 +73,9 @@ function fetchBlob(){
 
 echo
 
-if [ -f /usr/lib/systemd/system/py-openbmclapi.service ]; then
-	echo -e "\e[33m==> WARN: py-openbmclapi.service is already installed, stopping\e[0m"
-	systemctl disable --now py-openbmclapi.service
+if [ -f /usr/lib/systemd/system/python-openbmclapi.service ]; then
+	echo -e "\e[33m==> WARN: python-openbmclapi.service is already installed, stopping\e[0m"
+	systemctl disable --now python-openbmclapi.service
 fi
 
 if [ -z "$TARGET_TAG" ]; then
@@ -83,36 +83,32 @@ if [ -z "$TARGET_TAG" ]; then
 	fetchGithubLatestTag
 	TARGET_TAG=$LATEST_TAG
 	echo
-	echo -e "\e[32m*** py-openbmclapi LATEST TAG: $TARGET_TAG ***\e[0m"
+	echo -e "\e[32m*** python-openbmclapi LATEST TAG: $TARGET_TAG ***\e[0m"
 	echo
 fi
 
-fetchBlob installer/py-openbmclapi.service /usr/lib/systemd/system/py-openbmclapi.service 0644 || exit $?
+fetchBlob installer/python-openbmclapi.service /usr/lib/systemd/system/python-openbmclapi.service 0644 || exit $?
 
 [ -d "$BASE_PATH" ] || { mkdir -p "$BASE_PATH" && chmod 0755 "$BASE_PATH" && chown $USERNAME "$BASE_PATH"; } || exit $?
 
 fetchBlob installer/start.sh "$BASE_PATH/start.sh" 0755 || exit $?
-# fetchBlob service/stop-server.sh "$BASE_PATH/stop-server.sh" 0755 || exit $?
-# fetchBlob service/reload-server.sh "$BASE_PATH/reload-server.sh" 0755 || exit $?
-#https://github.com/TTB-Network/python-openbmclapi/archive/refs/tags/v1.10.4-907d74f.tar.gz
 source="${MIRROR_PREFIX}https://github.com/$REPO/archive/refs/tags/$TARGET_TAG.tar.gz"
 echo -e "\e[34m==> Downloading $source\e[0m"
 
-curl -fsSL -o "/tmp/py-obai-latest.tar.gz" "$source"
-#curl "$source" /tmp/py-obai-latest.tar.gz 0755 || exit $?
-tar -zxvf /tmp/py-obai-latest.tar.gz --strip-components 1 -C $BASE_PATH
+curl -fsSL -o "/tmp/python-openbmclapi-latest.tar.gz" "$source"
+tar -zxvf /tmp/python-openbmclapi-latest.tar.gz --strip-components 1 -C $BASE_PATH
 chown -R openbmclapi "$BASE_PATH"
 chmod -R 766 "$BASE_PATH"
 echo -e "\e[34m==> Installing Python modules\e[0m"
-pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r /opt/py-openbmclapi/requirements.txt --break-system-packages
-echo -e "\e[34m==> Enabling py-openbmclapi.service\e[0m"
-systemctl enable py-openbmclapi.service || exit $?
+python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r /opt/python-openbmclapi/requirements.txt
+echo -e "\e[34m==> Enabling python-openbmclapi.service\e[0m"
+systemctl enable python-openbmclapi.service || exit $?
 
 echo -e "
-================================ Install successed ================================
-	\e[37;41m Please check config in /opt/py-openbmclapi/config/config.yml \033[0m
-  Use 'systemctl start py-openbmclapi.service' to start openbmclapi server
-  Use 'systemctl stop py-openbmclapi.service' to stop openbmclapi server
-  Use 'systemctl reload py-openbmclapi.service' to reload openbmclapi server configs
-  Use 'journalctl -f --output cat -u py-openbmclapi.service' to watch the openbmclapi logs
+=================================== Successfully installed ===================================
+	\e[37;41m Please check config in /opt/python-openbmclapi/config/config.yml \033[0m
+  Use 'systemctl start python-openbmclapi.service' to start python-openbmclapi service
+  Use 'systemctl stop python-openbmclapi.service' to stop python-openbmclapi service
+  Use 'systemctl reload python-openbmclapi.service' to reload python-openbmclapi configuration
+  Use 'journalctl -f --output cat -u python-openbmclapi.service' to watch the python-openbmclapi logs
 "
