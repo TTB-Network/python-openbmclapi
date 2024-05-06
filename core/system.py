@@ -17,9 +17,12 @@ def _run():
     global cpus, memories, connections, length, last_curs
     for _ in range(max(length - 60, 0)):
         cur = last_curs.pop(0)
-        cpus.pop(cur)
-        memories.pop(cur)
-        connections.pop(cur)
+        if cur in cpus:
+            cpus.pop(cur)
+        if cur in memories:
+            memories.pop(cur)
+        if cur in connections:
+            connections.pop(cur)
         length -= 1
     cur = get_uptime()
     cpus[cur] = process.cpu_percent(1)

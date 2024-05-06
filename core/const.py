@@ -20,7 +20,7 @@ else:
 CACHE_BUFFER_COMPRESSION_MIN_LENGTH: int = 64
 DEBUG: bool = Config.get("advanced.debug")
 ROOT = os.getcwd()
-API_VERSION = "1.10.4"
+API_VERSION = "1.10.5"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
 BASE_URL = Config.get("advanced.url", "https://openbmclapi.bangbang93.com/")
 BD_URL = BASE_URL.replace("openbmclapi", "bd")
