@@ -1084,7 +1084,7 @@ class Cluster:
 
     async def retry(self):
         if self.cur_token_timestamp != token.token_expires and self.sio.connected:
-            self.sio.disconnect()
+            await self.sio.disconnect()
             logger.tdebug("cluster.debug.cluster.socketio.disconnect")
             await self.connect()
         if RECONNECT_RETRY != -1 and self._retry >= RECONNECT_RETRY:

@@ -540,7 +540,7 @@ def stats_pro(day):
     t = get_query_hour_tohour(0) - (day * 24)
     g_ua = ",".join((f"`{ua.value}`" for ua in UserAgent))
     s_ua: defaultdict[str, int] = defaultdict(int)
-    s_ip: dict[int, defaultdict[str, int]] = {}
+    s_ip: defaultdict[int, defaultdict[str, int]] = defaultdict(lambda: defaultdict(int))
     file_bytes, file_download = 0, 0
     for q in queryAllData(
         "select sum(bytes + cache_bytes), sum(hit + cache_hit) from access_storage where hour >= ?",
@@ -564,8 +564,6 @@ def stats_pro(day):
         try:
             data = DataInputStream(zstd.decompress(q[1]))
             for ip, c in {data.readString(): data.readVarInt() for _ in range(data.readVarInt())}.items():
-                if hour not in s_ip:
-                    s_ip[hour] = defaultdict(int)
                 s_ip[hour][ip] += c
         except:
             new_data = DataOutputStream()
@@ -574,15 +572,15 @@ def stats_pro(day):
             for ip, c in data_ip.items():
                 new_data.writeString(ip)
                 new_data.writeVarInt(c)
-                if hour not in s_ip:
-                    s_ip[hour] = defaultdict(int)
                 s_ip[hour][ip] += c
             execute("update access_ip set data = ? where hour = ?", zstd.compress(new_data.io.getbuffer()), hour)
             
     addresses: defaultdict[location.IPInfo, int] = defaultdict(int)
-    for ips in s_ip.values():
-        for address, count in ips.items():
+    distinct_ip_count: set[str] = set()
+    for addr in map(lambda x: x.items(), s_ip.values()):
+        for address, count in addr:
             addresses[location.query(address)] += count
+            distinct_ip_count.add(address)
     return {
         "useragents": {key: value for key, value in s_ua.items() if value},
         "addresses": [
@@ -597,6 +595,7 @@ def stats_pro(day):
             ): len(ip)
             for hour, ip in sorted(s_ip.items())
         },
+        "distinct_ip_count": len(distinct_ip_count),
         "bytes": file_bytes,
         "downloads": file_download,
     }
