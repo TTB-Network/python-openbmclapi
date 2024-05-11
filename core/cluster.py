@@ -43,7 +43,6 @@ from core.api import (
     FileContentType,
     OpenbmclapiAgentConfiguration,
     ResponseRedirects,
-    StatsCache,
     Storage,
     get_hash,
 )
@@ -1324,11 +1323,6 @@ async def init():
         raise ClusterSecretNotSet
     global cluster
     cluster = Cluster()
-    system.init()
-    plugins.load_plugins()
-    for plugin in plugins.get_plugins():
-        await plugin.init()
-        await plugin.enable()
     for storage in STORAGES:
         if storage.type == "file":
             storages.add_storage(
@@ -1467,8 +1461,7 @@ async def init():
 
     @app.get("/config/dashboard.js")
     async def _():
-        config = {"websocket": DASHBOARD_WEBSOCKET}
-        return f"const __CONFIG__={json.dumps(config)}"
+        return f"const __CONFIG__={json.dumps(DASHBOARD_CONFIGURATION)}"
 
     @app.get("/auth")
     async def _(request: web.Request):

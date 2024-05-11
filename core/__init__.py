@@ -39,16 +39,26 @@ async def async_init():
     from .cluster import exit as cluster_exit
     from .stats import init as stats_init
     from .update import init as update_init
+    from .system import init as system_init
+    import plugins 
 
     update_init()
     scheduler.delay(network_init)
     stats_init()
     await cluster_init()
 
+    system_init()
+    plugins.load_plugins()
+    for plugin in plugins.get_plugins():
+        await plugin.init()
+        await plugin.enable()
+
     await wait_exit.wait()
     env["EXIT"] = True
     network_exit()
     await cluster_exit()
+    for plugin in plugins.get_enable_plugins():
+        await plugin.disable()
     scheduler_exit()
 
 

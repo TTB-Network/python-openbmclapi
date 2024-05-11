@@ -127,6 +127,9 @@ MAX_INSTANCES: int = 9999
 AUTO_DOWNLOAD_RELEASE: bool = Config.get("update.auto_download")
 CERTIFICATE: 'Certificate' = None
 COPY_FROM_OTHER_STORAGE: bool = Config.get("advanced.copy_from_another_storage")
+DASHBOARD_CONFIGURATION: dict = {
+    "websocket": DASHBOARD_WEBSOCKET
+}
 
 @dataclass
 class StorageParse:
