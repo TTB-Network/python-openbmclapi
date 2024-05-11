@@ -19,11 +19,11 @@ else:
     VERSION = "Unknown"
 CACHE_BUFFER_COMPRESSION_MIN_LENGTH: int = 64
 DEBUG: bool = Config.get("advanced.debug")
-ROOT = os.getcwd()
-API_VERSION = "1.10.5"
-USER_AGENT = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
-BASE_URL = Config.get("advanced.url", "https://openbmclapi.bangbang93.com/")
-BD_URL = BASE_URL.replace("openbmclapi", "bd")
+ROOT: str = os.getcwd()
+API_VERSION: str = "1.10.5"
+USER_AGENT: str = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
+BASE_URL: str = Config.get("advanced.url", "https://openbmclapi.bangbang93.com/")
+BD_URL: str = BASE_URL.replace("openbmclapi", "bd")
 CLUSTER_ID: str = Config.get("cluster.id")
 CLUSTER_SECERT: str = Config.get("cluster.secret")
 IO_BUFFER: int = Config.get("advanced.io_buffer")
@@ -49,7 +49,7 @@ DASHBOARD_WEBSOCKET: bool = Config.get("dashboard.websocket")
 LIMIT_SESSION_WEBDAV: int = 512
 TIMEOUT: int = Config.get("advanced.timeout")
 REQUEST_BUFFER: int = Config.get("advanced.request_buffer")
-FILE_REDIRECTS = ["index.html", "index.htm", "default.html", "default.htm"]
+FILE_REDIRECTS: list[str] = ["index.html", "index.htm", "default.html", "default.htm"]
 RESPONSE_HEADERS = {
     "Server": Config.get("web.server_name"),
 }
