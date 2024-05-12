@@ -354,9 +354,10 @@ def write_database():
             )
         )
     last_ip = hour
+    t_ip = globalStats.ip.copy()
     binary = DataOutputStream()
-    binary.writeVarInt(len(globalStats.ip))
-    for ip, c in globalStats.ip.items():
+    binary.writeVarInt(len(t_ip))
+    for ip, c in t_ip.items():
         binary.writeString(ip)
         binary.writeVarInt(c)
     cmds.append(

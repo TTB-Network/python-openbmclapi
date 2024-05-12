@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import asdict, dataclass, is_dataclass
 import hashlib
 import platform
@@ -122,11 +123,11 @@ async def process(type: str, data: Any):
             k: v for k, v in web.statistics.get_all_qps().items() if k > c - 300
         }
         return {
-            utils.format_time(i): (sum((raw_data.get(i + j, 0) for j in range(5))))
+            utils.format_time(i + -(time.timezone / 3600)): (sum((raw_data.get(i + j, 0) for j in range(5))))
             for i in range(c - 300, c, 5)
         }
     if type == "status":
-        resp: dict = {
+        resp = {
             "key": last_status,
         }
         if cur_tqdm is not None and cur_tqdm.object is not None:
@@ -152,7 +153,7 @@ async def process(type: str, data: Any):
     if type == "master":
         async with aiohttp.ClientSession(BASE_URL) as session:
             async with session.get(data) as resp:
-                return resp.json()
+                return await resp.json()
     if type == "system":
         return {
             "memory": system.get_used_memory(),
@@ -179,7 +180,7 @@ async def process(type: str, data: Any):
                 day = 30
             elif t >= 3:
                 day = -1
-        return stats.stats_pro(day)
+        return await asyncio.get_event_loop().run_in_executor(None, stats.stats_pro, day)
     if type == "system_details":
         return system.get_loads_detail()
 
