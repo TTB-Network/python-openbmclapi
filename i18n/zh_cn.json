@@ -22,6 +22,8 @@
   "cluster.tqdm.desc.download": "下载文件中",
   "cluster.debug.download_temp.downloading": "正在下载文件：$hash。",
   "cluster.debug.download_temp.downloaded": "成功下载文件：$hash。",
+  "cluster.error.download.failed": "无法下载文件 $hash（$size）（$source $host $status），历史地址：\n$history",
+  "cluster.error.download.failed_to_upload": "在尝试上传文件时发生错误。",
   "cluster.info.download.finished": "成功下载所有文件。",
   "cluster.info.check_files.check_type": "当前文件检查模式：$type。",
   "cluster.warn.check_files.skipped": "当前并无可用文件，已跳过文件检查。",
@@ -80,5 +82,5 @@
   "stats.error.broken_stats": "统计信息已损坏……",
   "system.info.loading": "正在初始化系统信息统计……",
   "timings.info.finished": "任务已完成，耗时：$time。",
-  "cluster.info.download.configuration": "下载配置策略：$type 下载源：$source 下载并发：$concurrency"
+  "cluster.info.download.configuration": "下载配置策略：$type，下载源：$source，下载并发：$concurrency。"
 }

@@ -221,9 +221,10 @@ class FileDownloader:
             history = list((ResponseRedirects(resp.status, str(resp.real_url)) for resp in responses))
             source = "主控" if len(history) == 1 else "节点"
             for history in history:
-                msg.append(f"  > {history.status} | {history.url}")
+                msg.append(f"> {history.status} | {history.url}")
             history = '\n'.join(msg)
-            logger.error(f"下载错误 {file.hash}({unit.format_bytes(file.size)}) 来自{source}地址 [{responses[-1].host}] 响应 [{responses[-1].status}] 历史地址：\n{history}")
+            logger.terror("cluster.error.download.failed", hash=file.hash, size=unit.format_bytes(file.size), 
+                          source=source, host=responses[-1].host, status=responses[-1].status, history=history)
         while not self.queues.empty() and storages.available:
             async with aiohttp.ClientSession(
                 BASE_URL,
@@ -269,7 +270,7 @@ class FileDownloader:
                     continue
                 r = await self._mount_file(file, content)
                 if r[0] == -1:
-                    logger.error("放入存储时候错误")
+                    logger.terror("cluster.error.download.failed_to_upload")
                     await put(size, file)
                     continue
 

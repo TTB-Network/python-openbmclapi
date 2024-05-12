@@ -55,7 +55,7 @@ plugins: list[Plugin] = []
 
 
 def load_plugins():
-    logger.info(locale.t("plugins.info.attempt_loading"))
+    logger.tinfo("plugins.info.attempt_loading")
     dirlist = os.listdir("./plugins")
     for file in dirlist:
         load = None
@@ -67,7 +67,7 @@ def load_plugins():
             if file[0] != "_" and file.endswith(".py"):
                 load = file[:-3]
         if load:
-            logger.debug(locale.t("plugins.debug.loading", name=load))
+            logger.debug("plugins.debug.loading", name=load)
             try:
                 plugin = Plugin(importlib.import_module("plugins." + load))
                 logger.info(
