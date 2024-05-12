@@ -229,7 +229,7 @@ async def start():
                     "core.info.listening_ssl",
                     port=ssl_server.sockets[0].getsockname()[1],
                 )
-            logger.info(locale.t("core.info.listening", port=PORT))
+            logger.tinfo("core.info.listening", port=PORT)
             if cert:
                 async with server, ssl_server:
                     await asyncio.gather(server.serve_forever(), ssl_server.serve_forever())

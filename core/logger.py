@@ -57,9 +57,6 @@ class LoggingLogger:
     def warn(self, *args, **kwargs):
         self._log_with_args("WARNING", *args, **kwargs)
 
-    def exception(self, *args, **kwargs):
-        self._log_with_args("EXCEPTION", *args, **kwargs)
-
     def success(self, *args, **kwargs):
         self._log_with_args("SUCCESS", *args, **kwargs)
 
@@ -81,11 +78,6 @@ class LoggingLogger:
     def twarn(self, key: str, failed_prompt=True, *args, **kwargs):
         self._log_with_args(
             "WARNING", locale.t(key=key, failed_prompt=failed_prompt, *args, **kwargs)
-        )
-
-    def texception(self, key: str, failed_prompt=True, *args, **kwargs):
-        self._log_with_args(
-            "EXCEPTION", locale.t(key=key, failed_prompt=failed_prompt, *args, **kwargs)
         )
 
     def tsuccess(self, key: str, failed_prompt=True, *args, **kwargs):
