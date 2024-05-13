@@ -32,7 +32,7 @@ import plugins
 from core.i18n import locale
 import aiowebdav.client as webdav3_client
 import aiowebdav.exceptions as webdav3_exceptions
-from core.exceptions import ClusterIdNotSet, ClusterSecretNotSet
+from core.exceptions import ClusterIdNotSet, ClusterSecretNotSet, PutQueueIgnoreError
 
 from core.const import *
 
@@ -136,6 +136,7 @@ class FileDownloader:
     def __init__(self) -> None:
         self.files = []
         self.queues: asyncio.Queue[BMCLAPIFile] = asyncio.Queue()
+        self.failed_files: defaultdict[BMCLAPIFile, int] = defaultdict(int)
         self.last_modified: int = 0
 
     async def get_files(self) -> list[BMCLAPIFile]:
@@ -215,7 +216,9 @@ class FileDownloader:
     async def _download(self, pbar: tqdm, lock: asyncio.Semaphore):
         async def put(size, file: BMCLAPIFile):
             await self.queues.put(file)
+            self.failed_files[file] += 1
             pbar.update(-size)
+            raise PutQueueIgnoreError # raised ignore error, continue to next code.
         async def error(*responses: aiohttp.ClientResponse):
             msg = []
             history = list((ResponseRedirects(resp.status, str(resp.real_url)) for resp in responses))
@@ -226,53 +229,59 @@ class FileDownloader:
             logger.terror("cluster.error.download.failed", hash=file.hash, size=unit.format_bytes(file.size), 
                           source=source, host=responses[-1].host, status=responses[-1].status, history=history)
         while not self.queues.empty() and storages.available:
-            async with aiohttp.ClientSession(
-                BASE_URL,
-                headers={
-                    "User-Agent": USER_AGENT,
-                    "Authorization": f"Bearer {await token.getToken()}",
-                },
-            ) as session:
+            try:
                 file = await self.queues.get()
-                hash = get_hash(file.hash)
-                size = 0
-                content: io.BytesIO = io.BytesIO()
-                resp = None
-                try:
-                    async with lock:
-                        resp = await session.get(file.path)
-                    while data := await resp.content.read(IO_BUFFER):
-                        if not data:
-                            break
-                        byte = len(data)
-                        size += byte
-                        pbar.update(byte)
-                        content.write(data)
-                        hash.update(data)
-                    resp.close()
-                except asyncio.CancelledError:
-                    return
-                except aiohttp.client_exceptions.ClientConnectionError:
-                    if resp is not None:
+                if file in self.failed_files:
+                    logger.error(f"该文件 {file.hash}({unit.format_bytes(file.size)}) 将在 {DOWNLOAD_RETRY_DELAY} 后执行，已重试 {self.failed_files[file]} 次下载")
+                    try:
+                        await asyncio.sleep(DOWNLOAD_RETRY_DELAY)
+                    except asyncio.CancelledError:
+                        return
+                async with aiohttp.ClientSession(
+                    BASE_URL,
+                    headers={
+                        "User-Agent": USER_AGENT,
+                        "Authorization": f"Bearer {await token.getToken()}",
+                    },
+                ) as session:
+                    hash = get_hash(file.hash)
+                    size = 0
+                    content: io.BytesIO = io.BytesIO()
+                    resp = None
+                    try:
+                        async with lock:
+                            resp = await session.get(file.path)
+                        while data := await resp.content.read(IO_BUFFER):
+                            if not data:
+                                break
+                            byte = len(data)
+                            size += byte
+                            pbar.update(byte)
+                            content.write(data)
+                            hash.update(data)
+                        resp.close()
+                    except asyncio.CancelledError:
+                        return
+                    except aiohttp.client_exceptions.ClientConnectionError:
+                        if resp is not None:
+                            await error(*resp.history, resp)
+                        await put(size, file)
+                    except:
+                        logger.error(traceback.format_exc())
+                        if resp is not None:
+                            await error(*resp.history, resp)
+                        await put(size, file)
+                    if file.hash != hash.hexdigest():
                         await error(*resp.history, resp)
-                    await put(size, file)
-                    continue
-                except:
-                    logger.error(traceback.format_exc())
-                    if resp is not None:
-                        await error(*resp.history, resp)
-                    await put(size, file)
-                    continue
-                if file.hash != hash.hexdigest():
-                    await error(*resp.history, resp)
-                    await put(size, file)
-                    await asyncio.sleep(5)
-                    continue
-                r = await self._mount_file(file, content)
-                if r[0] == -1:
-                    logger.terror("cluster.error.download.failed_to_upload")
-                    await put(size, file)
-                    continue
+                        await put(size, file)
+                    r = await self._mount_file(file, content)
+                    if r[0] == -1:
+                        logger.terror("cluster.error.download.failed_to_upload")
+                        await put(size, file)
+            except PutQueueIgnoreError:
+                ...
+            except Exception as r:
+                raise r
 
     async def _mount_file(
         self, file: BMCLAPIFile, buf: io.BytesIO
