@@ -363,7 +363,7 @@ def daily():
 def stats_pro(day: int):
     format_day = day == 30
     t = get_query_hour_tohour(0) - (day * 24)
-    status_arr = list(status.value for status in Status)
+    status_arr = list(f'sum({status.value})' for status in Status)
     status: defaultdict[str, int] = defaultdict(int)
     d_address: defaultdict[int, defaultdict[str, int]] = defaultdict(lambda: defaultdict(int))
     d_ip: dict[str, bool] = {}
