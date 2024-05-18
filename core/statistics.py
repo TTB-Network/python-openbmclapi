@@ -377,7 +377,7 @@ def stats_pro(day: int):
         for i, status_val in enumerate(status_arr):
             status[status_val] += q[4 + i] or 0
     for q in queryAllData(f"select hour, addresses, useragents from access_globals where hour >= ?", t):
-        hour = q[0]
+        hour = (q[0] + get_utc_offset()) if not format_day else (q[0] + get_utc_offset()) // 24
         data_address = q[1]
         data_useragent = q[2]
         if data_address:
