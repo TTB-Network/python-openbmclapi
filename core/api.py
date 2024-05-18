@@ -101,10 +101,11 @@ class StatsCache:
 
 
 class Storage(metaclass=abc.ABCMeta):
-    def __init__(self, name, width: int) -> None:
+    def __init__(self, name, type: str, width: int) -> None:
         self.name = name
         self.disabled = False
         self.width = width
+        self.type: str = type
         self.cache: dict[str, File] = {}
         self.cache_timer = scheduler.repeat(
             self.clear_cache, delay=CHECK_CACHE, interval=CHECK_CACHE
@@ -112,6 +113,9 @@ class Storage(metaclass=abc.ABCMeta):
     def get_name(self):
         return self.name
     
+    def get_type(self):
+        return self.type
+
     def get_cache(self, hash: str) -> Optional[File]:
         file = self.cache.get(hash, None)
         if file is not None:
@@ -159,7 +163,7 @@ class Storage(metaclass=abc.ABCMeta):
         return stat
 
     @abc.abstractmethod
-    async def get(self, file: str, offset: int = 0) -> File:
+    async def get(self, file: str, start: int = 0, end: Optional[int] = None) -> File:
         """
         get file metadata.
         return File

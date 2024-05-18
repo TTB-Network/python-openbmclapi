@@ -8,7 +8,7 @@ _NUMBER_ = ("", "k", "M", "G", "T", "P", "E")
 def format_bytes(size):
     if size == 0:
         return f"{size:.2f}{_BYTES_[0]}"
-    i = min(int(math.floor(math.log(size, 1024))), len(_BYTES_))
+    i = min(int(math.floor(math.log(-size if size < 0 else size, 1024))), len(_BYTES_))
     if i != 0:
         size = round(size / (1024**i), 2)
     return f"{size}{_BYTES_[i]}"
@@ -18,7 +18,7 @@ def format_more_bytes(*sizes):
     size = max(*sizes)
     if size == 0:
         return (f"{size:.2f}{_NUMBER_[0]}" for size in sizes)
-    i = min(int(math.floor(math.log(size, 1024))), len(_BYTES_))
+    i = min(int(math.floor(math.log(-size if size < 0 else size, 1024))), len(_BYTES_))
     if i != 0:
         return (f"{round(size / (1024 ** i), 2)}{_BYTES_[i]}" for size in sizes)
     return (f"{size}{_BYTES_[i]}" for size in sizes)
@@ -31,7 +31,7 @@ def format_bits(size):
 def format_number(number):
     if number == 0:
         return f"{number}{_NUMBER_[0]}"
-    i = min(int(math.floor(math.log(number, 1000))), len(_NUMBER_))
+    i = min(int(math.floor(math.log(-number if number < 0 else number, 1000))), len(_NUMBER_))
     if i != 0:
         number = round(number / (1000**i), 2)
     return f"{number}{_NUMBER_[i]}"
