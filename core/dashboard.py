@@ -10,7 +10,7 @@ import zlib
 import aiohttp
 from tqdm import tqdm
 
-from core import stats, system, update, utils, web
+from core import location, statistics, system, update, utils, web
 from core import cluster
 from core.api import StatsCache
 from core import scheduler
@@ -115,7 +115,7 @@ async def process(type: str, data: Any):
     if type == "uptime":
         return float(env["STARTUP"] or 0)
     if type == "dashboard":
-        return {"hourly": stats.hourly(), "days": stats.daily()}
+        return {"hourly": statistics.hourly(), "days": statistics.daily()}
     if type == "qps":
         c = web.statistics.get_time()
         c -= c % 5
@@ -180,9 +180,15 @@ async def process(type: str, data: Any):
                 day = 30
             elif t >= 3:
                 day = -1
-        return await asyncio.get_event_loop().run_in_executor(None, stats.stats_pro, day)
+        return await asyncio.get_event_loop().run_in_executor(None, statistics.stats_pro, day)
     if type == "system_details":
         return system.get_loads_detail()
+    
+    if type == "unknown_addresses":
+        if data is not None:
+            with open("ignore.txt", "w", encoding="utf-8") as w:
+                w.write('\n'.join(location.get_warned()))
+        return location.get_warned()
 
 
 def get_cache_stats() -> StatsCache:

@@ -18,14 +18,14 @@ import aiohttp
 from typing import Any, Optional, Type
 import aiohttp.client_exceptions
 import socketio
+import socketio.exceptions
 from tqdm import tqdm
-from core import system
 from core.config import Config
 from core import certificate, dashboard, unit
 from core import scheduler
 import pyzstd as zstd
 import core.utils as utils
-import core.stats as stats
+import core.statistics as statistics
 import core.web as web
 from core.logger import logger
 import plugins
@@ -571,13 +571,13 @@ class FileCheck:
 
 class FileStorage(Storage):
     def __init__(self, name: str, dir: Path, width: int) -> None:
-        super().__init__(name, width)
+        super().__init__(name, "file", width)
         self.dir = dir
         if self.dir.is_file():
             raise FileExistsError(f"Cannot copy file: '{self.dir}': Is a file.")
         self.dir.mkdir(exist_ok=True, parents=True)
 
-    async def get(self, hash: str, offset: int = 0) -> File:
+    async def get(self, hash: str, start: int = 0, end: int = 0) -> File:
         if self.is_cache(hash):
             file = self.get_cache(hash)
             return file
@@ -656,7 +656,7 @@ class WebDav(Storage):
         hostname: str,
         endpoint: str,
     ) -> None:
-        super().__init__(name, width)
+        super().__init__(name, "webdav", width)
         self.username = username
         self.password = password
         self.hostname = hostname
@@ -769,14 +769,13 @@ class WebDav(Storage):
                 del tqdm
             self.lock.acquire()
             self.fetch = False
+            logger.error("无法获取 WebDav 文件列表")
             raise asyncio.CancelledError
         try:
             await self._mkdir(self._download_endpoint())
             r = await self._execute(self.session.list(self._download_endpoint()))
             if r is asyncio.CancelledError:
-                self.lock.acquire()
-                self.fetch = False
-                raise asyncio.CancelledError
+                stop()
             dirs = r[1:]
             with tqdm(
                 total=len(dirs),
@@ -831,7 +830,7 @@ class WebDav(Storage):
             return
         await self.lock.wait()
 
-    async def get(self, hash: str, offset: int = 0) -> File:
+    async def get(self, hash: str, start: int, end: int) -> File:
         if self.is_cache(hash):
             file = self.get_cache(hash)
             return file
@@ -934,7 +933,6 @@ class StorageManager:
     def __init__(self) -> None:
         self._storages: list[Storage] = []
         self._interface_storage: dict[TypeStorage, Type[Storage]] = {}
-        self._storage_stats: dict[Storage, stats.StorageStats] = {}
         self.available_width = False
         self.available = False
         self.storage_widths: dict[Storage, int] = {}
@@ -952,14 +950,8 @@ class StorageManager:
             self.available = False
             scheduler.delay(cluster.retry)
 
-    def add_storage(self, storage):
+    def add_storage(self, storage: Storage):
         self._storages.append(storage)
-        type = "Unknown"
-        if isinstance(storage, FileStorage):
-            type = "File"
-        elif isinstance(storage, WebDav):
-            type = "Webdav"
-        self._storage_stats[storage] = stats.get_storage(f"{type}_{storage.get_name()}")
         self.available = True
         if storage.width != -1:
             self.available_width = True
@@ -987,9 +979,6 @@ class StorageManager:
             if not storage.disabled and storage.width != -1
         ]
 
-    def get_storage_stats(self):
-        return self._storage_stats
-
     def get_storage_width(self):
         keys = list(self.storage_widths.keys())
         storage: Storage = keys[self.storage_cur]
@@ -1003,7 +992,7 @@ class StorageManager:
         return storage
 
     async def get(
-        self, hash: str, offset: int, ip: str, ua: str = ""
+        self, hash: str, start: int, end: Optional[int], ip: str, ua: str = ""
     ) -> Optional[File]:
         first_storage = self.get_storage_width()
         storage = first_storage
@@ -1016,14 +1005,15 @@ class StorageManager:
             if storage == first_storage:
                 break
         if not exists:
+            statistics.hit(storage, None, 0, ip, ua, statistics.Status.NOTEXISTS)
             return None
-        file = await storage.get(hash, offset)
+        file = await storage.get(hash, start, end)
         if file is not None:
-            self._storage_stats[storage].hit(file, offset, ip, ua)
+            end = end or file.size - 1
+            statistics.hit(storage, file, end - start + 1, ip, ua, statistics.Status.REDIRECT if file.is_url() else (statistics.Status.SUCCESS if start == 0 else statistics.Status.PARTIAL))
+        else:
+            statistics.hit(storage, None, 0, ip, ua, statistics.Status.ERROR)
         return file
-
-    def get_storage_stat(self, storage):
-        return self._storage_stats[storage]
 
 
 class Cluster:
@@ -1237,6 +1227,7 @@ class Cluster:
             self.keepalive_failed += 1
 
         async def _(err, ack):
+            scheduler.cancel(self.keepalive_timeout_timer)
             if err:
                 await self.retry()
                 return
@@ -1251,12 +1242,9 @@ class Cluster:
             ping = int((time.time() - utils.parse_iso_time(ack).timestamp()) * 1000)
             storage_data = {"hits": 0, "bytes": 0}
             for storage in cur_storages:
-                shits = max(0, storage.sync_hits)
-                sbytes = max(0, storage.sync_bytes)
-                storage.object.add_last_hits(shits)
-                storage.object.add_last_bytes(sbytes)
-                storage_data["hits"] += shits
-                storage_data["bytes"] += sbytes
+                storage_data["hits"] += storage.hit
+                storage_data["bytes"] += storage.bytes
+            statistics.sync(cur_storages)
             hits = unit.format_number(storage_data["hits"])
             bytes = unit.format_bytes(storage_data["bytes"])
             storage_count = len(cur_storages)
@@ -1267,21 +1255,22 @@ class Cluster:
                 count=storage_count,
                 ping=ping,
             )
+            cur_storages.clear()
 
         async def _start():
             data = {"hits": 0, "bytes": 0}
             for storage in cur_storages:
-                data["hits"] += max(0, storage.sync_hits)
-                data["bytes"] += max(0, storage.sync_bytes)
+                data["hits"] += storage.hit
+                data["bytes"] += storage.bytes
             await self.emit(
-                "keep-alive", {"time": int(time.time() * 1000), **data}, callback=_
+                "keep-alive", {"time": int(time.time() * 1000), **{k: max(0, v) for k, v in data.items()}}, callback=_
             )
 
         _clear()
         self.keepalive_timer = asyncio.get_running_loop().call_later(
             60, lambda: asyncio.create_task(self.keepalive())
         )
-        cur_storages = stats.get_offset_storages()
+        cur_storages: list[statistics.SyncStorage] = statistics.get_sync_storages()
         self.keepalive_timeout_timer = scheduler.delay(_failed, delay=10)
         await _start()
 
@@ -1300,11 +1289,16 @@ class Cluster:
             channel=channel,
             data=data,
         )
-        await self.sio.emit(
-            channel,
-            data,
-            callback=lambda x: scheduler.delay(self.message, (channel, x, callback)),
-        )
+        try:
+            await self.sio.emit(
+                channel,
+                data,
+                callback=lambda x: scheduler.delay(self.message, (channel, x, callback)),
+            )
+        except socketio.exceptions.BadNamespaceError:
+            await self.sio.disconnect()
+            logger.tdebug("cluster.debug.cluster.socketio.disconnect")
+            await self.connect()
 
     async def message(self, channel, data: list[Any], callback=None):
         if len(data) == 1:
@@ -1394,20 +1388,22 @@ async def init():
             return web.Response(status_code=403)
         if not storages.available_width:
             return web.Response(status_code=503)
-        start_bytes = 0
+        start_bytes, end_bytes = 0, None
         range_str = await request.get_headers("range", "")
         range_match = re.search(r"bytes=(\d+)-(\d+)", range_str, re.S) or re.search(
             r"bytes=(\d+)-", range_str, re.S
         )
         if range_match:
             start_bytes = int(range_match.group(1)) if range_match else 0
+            if range_match.lastindex == 2:
+                end_bytes = int(range_match.group(2))
         name = {}
         if request.get_url_params().get("name"):
             name["Content-Disposition"] = (
                 f"attachment; filename={request.get_url_params().get('name')}"
             )
         data = await storages.get(
-            hash, start_bytes, request.get_ip(), request.get_user_agent()
+            hash, start_bytes, end_bytes, request.get_ip(), request.get_user_agent()
         )
         if not data:
             return web.Response(status_code=404)

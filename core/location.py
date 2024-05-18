@@ -4,6 +4,7 @@ import re
 import socket
 import struct
 
+from core import logger
 from core.const import (
     XDB_HeaderInfoLength as HeaderInfoLength,
     XDB_VectorIndexRows as VectorIndexRows,
@@ -11,8 +12,43 @@ from core.const import (
     XDB_VectorIndexSize as VectorIndexSize,
     XDB_SegmentIndexSize as SegmentIndexSize,
 )
+from core.utils import DataInputStream
+import pyzstd as zstd
 
-
+class FixedLocation:
+    def __init__(self, filename: str) -> None:
+        self.cache: dict[tuple[str|None, str|None, str|None, str|None], IPInfo] = {}
+        self.filename = filename
+        self.init()
+        self.unknown = None
+    
+    def init(self):
+        with open(self.filename, "rb") as r:
+            input = DataInputStream(r.read())
+            origin_length = input.readVarInt()
+            origin_compressed_length = input.readVarInt()
+            origin_data = DataInputStream(zstd.decompress(input.read(origin_compressed_length)))
+            self.version = (origin_data.readVarInt(), origin_data.readVarInt(), origin_data.readVarInt())
+            self.create_at = (origin_data.readVarInt() / 1000.0)
+            self.count = origin_data.readVarInt()
+            data_origin_length = origin_data.readVarInt()
+            data_origin_compression_length = origin_data.readVarInt()
+            data = DataInputStream(zstd.decompress(origin_data.read(data_origin_compression_length)))
+            for _ in range(self.count):
+                ip = tuple(int(i) if i.isnumeric() else None for i in data.readString().split("."))
+                self.cache[ip] = IPInfo(
+                    data.readString(), data.readString()
+                )
+            self.cache = dict(sorted(self.cache.items(), key=lambda x: tuple(i if i is not None else 0 for i in x[0])))
+    def lookup(self, ip: str):  
+        padded_addr = [None] * 4  
+        for i, part in enumerate(ip.split(".")):  
+            padded_addr[i] = int(part)  
+        for i in range(4, -1, -1):  
+            taddr = tuple(padded_addr[:i] + [None] * (4 - i))  
+            if taddr in self.cache:  
+                return self.cache[taddr]  
+        return self.unknown
 class XdbSearcher(object):
     __f = None
 
@@ -164,7 +200,6 @@ class XdbSearcher(object):
         self.vectorIndex = None
         self.contentBuff = None
 
-
 @dataclass
 class IPInfo:
     country: str = ""
@@ -180,8 +215,6 @@ class IPInfo:
             and self.province == value.province
         )
 
-
-fixed_ip: dict[str, str] = {"104.166.": "美国|0|0|0|0"}
 country_iso = {
     "安道尔": "AD",
     "阿联酋": "AE",
@@ -445,20 +478,30 @@ ipaddress: XdbSearcher = XdbSearcher(
 cn_level: str = (
     r"(省|市|自治区|壮族自治区|回族自治区|维吾尔自治区|藏族自治区|蒙古族自治区|林区)"
 )
-
-
+l = FixedLocation("assets/fixed_location.fxdb")
+warned: dict[str, bool] = {}
 def query(ip: str) -> IPInfo:
     if ip in cache:
         return cache[ip]
-    data = [
-        "" if data == "0" else data
-        for data in fixed_ip.get(
-            ".".join(ip.split(".", 3)[0:2]) + ".", ipaddress.searchByIPStr(ip)
-        ).split("|")
-    ]
-    country = country_iso.get(data[0], data[0])
-    info = IPInfo(
-        country or "LOCAL", re.sub(cn_level, "", data[2]) if country == "CN" else ""
-    )
+    fixedip = l.lookup(ip)
+    country = None
+    province = None
+    data = None
+    if fixedip is None:
+        data = [
+            "" if data == "0" else data
+            for data in ipaddress.searchByIPStr(ip).split("|")
+        ]
+        country = country_iso.get(data[0], data[0])
+        province = data[2]
+    else:
+        country = country_iso.get(fixedip.country, fixedip.country)
+        province = fixedip.province
+    info = IPInfo(country or "LOCAL", re.sub(cn_level, "", province) if country == "CN" else "")
+    if ip not in warned and (info.country == "" or (info.country == "CN" and info.province == "")):
+        warned[ip] = True
     cache[ip] = info
     return info
+
+def get_warned():
+    return list(warned.keys())
