@@ -16,6 +16,8 @@ defaults = {
     "cluster.timeout.keepalive": 300,
     "cluster.reconnect.delay": 60,
     "cluster.reconnect.retry": -1,
+    "cluster.download.access_logs": True,
+    "cluster.download.retry_delay": 60,
     "cache.buffer": 536870912,
     "cache.time": 1800,
     "cache.check": 360,

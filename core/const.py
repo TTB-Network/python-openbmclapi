@@ -54,8 +54,8 @@ RESPONSE_HEADERS = {
     "Server": Config.get("web.server_name"),
 }
 CLUSTER_PATTERN = re.compile(r'https?://([a-fA-F0-9]*)\.openbmclapi\.933\.moe(:\d+)/')
-DOWNLOAD_ACCESS_LOG: bool = True
-DOWNLOAD_RETRY_DELAY: int = 60
+DOWNLOAD_ACCESS_LOG: bool = Config.get("cluster.download.access_logs")
+DOWNLOAD_RETRY_DELAY: int = Config.get("cluster.download.retry_delay")
 DOWNLOAD_FILE: bool = False
 DOWNLOAD_CONFIGURATION: bool = True
 RESPONSE_DATE = "%a, %d %b %Y %H:%M:%S GMT"
