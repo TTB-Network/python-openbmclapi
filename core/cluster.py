@@ -38,6 +38,7 @@ from core.const import *
 
 from core.api import (
     BMCLAPIFile,
+    DownloadReason,
     File,
     FileCheckType,
     FileContentType,
@@ -219,7 +220,7 @@ class FileDownloader:
             self.failed_files[file] += 1
             pbar.update(-size)
             raise PutQueueIgnoreError # raised ignore error, continue to next code.
-        async def error(*responses: aiohttp.ClientResponse, file: Optional[BMCLAPIFile] = None, hash: Optional[str] = None):
+        async def error(responses: tuple[aiohttp.ClientResponse], reason: DownloadReason):
             msg = []
             history = list((ResponseRedirects(resp.status, str(resp.real_url)) for resp in responses))
             source = "主控" if len(history) == 1 else "节点"
@@ -227,7 +228,7 @@ class FileDownloader:
                 msg.append(f"> {history.status} | {history.url}")
             history = '\n'.join(msg)
             logger.terror("cluster.error.download.failed", hash=file.hash, size=unit.format_bytes(file.size), 
-                          source=source, host=responses[-1].host, status=responses[-1].status, history=history, reason=locale.t("cluster.error.download.failed.hash") if file is not None and hash is not None else locale.t("cluster.error.download.failed.default"))
+                          source=source, host=responses[-1].host, status=responses[-1].status, history=history, reason=locale.t(f"cluster.error.download.failed.{reason.value}"))
         while not self.queues.empty() and storages.available:
             try:
                 file = await self.queues.get()
@@ -267,18 +268,21 @@ class FileDownloader:
                         return
                     except aiohttp.client_exceptions.ClientConnectionError:
                         if resp is not None:
-                            await error(*resp.history, resp)
+                            await error((*resp.history, resp), DownloadReason.NETWORK)
                         await put(size, file)
                     except:
                         logger.error(traceback.format_exc())
                         if resp is not None:
-                            await error(*resp.history, resp)
+                            await error((*resp.history, resp), DownloadReason.NETWORK)
                         await put(size, file)
+                    if resp.status // 100 != 2:
+                        await error((*resp.history, resp), DownloadReason.STATUS)
                     if file.hash != hash.hexdigest():
-                        await error(*resp.history, resp, file, hash.hexdigest())
+                        await error((*resp.history, resp), DownloadReason.HASH)
                         await put(size, file)
                     r = await self._mount_file(file, content)
                     if r[0] == -1:
+                        await error((*resp.history, resp), DownloadReason.STORAGE)
                         logger.terror("cluster.error.download.failed_to_upload")
                         await put(size, file)
             except PutQueueIgnoreError:

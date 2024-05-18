@@ -30,6 +30,12 @@ class FileContentType(Enum):
     PATH = "path"
     EMPTY = "empty"
 
+class DownloadReason(Enum):
+    NETWORK = "network"
+    HASH = "hash"
+    STATUS = "status"
+    STORAGE = "storage"
+
 @dataclass
 class BMCLAPIFile:
     path: str
