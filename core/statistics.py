@@ -363,14 +363,14 @@ def daily():
 def stats_pro(day: int):
     format_day = day == 30
     t = get_query_hour_tohour(0) - (day * 24)
-    status_arr = list(f'sum({status.value})' for status in Status)
+    status_arr = list(status.value for status in Status)
     status: defaultdict[str, int] = defaultdict(int)
     d_address: defaultdict[int, defaultdict[str, int]] = defaultdict(lambda: defaultdict(int))
     d_ip: dict[str, bool] = {}
     d_geo: defaultdict[IPInfo, int] = defaultdict(int)
     d_useragent: defaultdict[UserAgent, int] = defaultdict(int)
     d_hit, d_bytes, d_sync_hit, d_sync_bytes = 0, 0, 0, 0
-    for q in queryAllData(f"select sum(hit + cache_hit) as hit, sum(bytes + cache_bytes) as bytes, sync_hit, sync_bytes, {', '.join(status_arr)} from access_storage where hour >= ?", t):
+    for q in queryAllData(f"select sum(hit + cache_hit) as hit, sum(bytes + cache_bytes) as bytes, sync_hit, sync_bytes, {', '.join((f'sum({arr})' for arr in status_arr))} from access_storage where hour >= ?", t):
         d_hit += q[0] or 0
         d_bytes += q[1] or 0
         d_sync_hit += q[2] or 0
