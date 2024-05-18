@@ -277,6 +277,7 @@ class FileDownloader:
                         await put(size, file)
                     if resp.status // 100 != 2:
                         await error((*resp.history, resp), DownloadReason.STATUS)
+                        await put(size, file)
                     if file.hash != hash.hexdigest():
                         await error((*resp.history, resp), DownloadReason.HASH)
                         await put(size, file)
