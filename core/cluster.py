@@ -833,7 +833,7 @@ class WebDav(Storage):
             return
         await self.lock.wait()
 
-    async def get(self, hash: str, start: int, end: int) -> File:
+    async def get(self, hash: str, start: int = 0, end: int = 0) -> File:
         if self.is_cache(hash):
             file = self.get_cache(hash)
             return file
