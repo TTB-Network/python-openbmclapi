@@ -120,7 +120,6 @@ def init():
         *(status.value for status in Status)
     ):
         addColumns("access_storage", field, "unsigned bigint not null default 0")
-    addColumns("access_storage", "status", "blob not null")
 
     execute("create table if not exists access_globals(hour unsigned bigint not null, addresses blob not null, useragents bigint not null)")
     for q in queryAllData(f"select hour, name, type, hit, bytes, cache_hit, cache_bytes, sync_hit, sync_bytes FROM access_storage"):
@@ -168,7 +167,7 @@ def hit(storage: Storage, file: File, length: int, ip: str, ua: str, status: Sta
     if (storage.get_name() not in storages or storages[storage.get_name()] != hour) and not exists("select hour from access_storage where hour = ? and name = ? and type = ?", 
         hour, storage.get_name(), storage.get_type()
     ):
-        add_execute("insert into access_storage(hour, name, type, status) values (?,?,?,?)", hour, storage.get_name(), storage.get_type(), b'')
+        add_execute("insert into access_storage(hour, name, type) values (?,?,?)", hour, storage.get_name(), storage.get_type())
     storages[storage.get_name()] = hour
     cur_storage = None
     data_storages = get_data_storage()
