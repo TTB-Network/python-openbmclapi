@@ -219,7 +219,7 @@ class FileDownloader:
             self.failed_files[file] += 1
             pbar.update(-size)
             raise PutQueueIgnoreError # raised ignore error, continue to next code.
-        async def error(*responses: aiohttp.ClientResponse):
+        async def error(*responses: aiohttp.ClientResponse, file: Optional[BMCLAPIFile] = None, hash: Optional[str] = None):
             msg = []
             history = list((ResponseRedirects(resp.status, str(resp.real_url)) for resp in responses))
             source = "主控" if len(history) == 1 else "节点"
@@ -227,7 +227,7 @@ class FileDownloader:
                 msg.append(f"> {history.status} | {history.url}")
             history = '\n'.join(msg)
             logger.terror("cluster.error.download.failed", hash=file.hash, size=unit.format_bytes(file.size), 
-                          source=source, host=responses[-1].host, status=responses[-1].status, history=history)
+                          source=source, host=responses[-1].host, status=responses[-1].status, history=history, reason=locale.t("cluster.error.download.failed.hash") if file is not None and hash is not None else locale.t("cluster.error.download.failed.default"))
         while not self.queues.empty() and storages.available:
             try:
                 file = await self.queues.get()
@@ -249,7 +249,10 @@ class FileDownloader:
                     content: io.BytesIO = io.BytesIO()
                     resp = None
                     try:
-                        async with lock:
+                        if DOWNLOAD_CONFIGURATION:
+                            async with lock:
+                                resp = await session.get(file.path)
+                        else:
                             resp = await session.get(file.path)
                         while data := await resp.content.read(IO_BUFFER):
                             if not data:
@@ -272,7 +275,7 @@ class FileDownloader:
                             await error(*resp.history, resp)
                         await put(size, file)
                     if file.hash != hash.hexdigest():
-                        await error(*resp.history, resp)
+                        await error(*resp.history, resp, file, hash.hexdigest())
                         await put(size, file)
                     r = await self._mount_file(file, content)
                     if r[0] == -1:
@@ -1322,9 +1325,9 @@ storages = StorageManager()
 
 async def init():
     if CLUSTER_ID == "":
-        raise ClusterIdNotSet
+        raise ClusterIdNotSet("当前配置文件 Cluster ID 没有配置好")
     if CLUSTER_SECERT == "":
-        raise ClusterSecretNotSet
+        raise ClusterSecretNotSet("当前配置文件 Cluster Secret 没有配置好")
     global cluster
     cluster = Cluster()
     for storage in STORAGES:

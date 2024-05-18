@@ -48,7 +48,7 @@ def get_loads_detail():
     return {
         "cpu": {format_time(t + startup): v for t, v in get_filled(cpus.copy()).items()},
         "memory": {format_time(t + startup): v for t, v in get_filled(memories.copy()).items()},
-        "connections": {format_time(t + startup): len(v) for t, v in get_filled_list(connections).items()},
+        "connections": {format_time(t + startup): len(v) for t, v in get_filled_list(connections.copy()).items()},
     }
 
 

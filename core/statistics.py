@@ -10,7 +10,7 @@ from typing import Any, Optional
 
 from tqdm import tqdm
 
-from core import scheduler, utils
+from core import logger, scheduler, unit, utils
 from core import location
 from core.api import File, Storage
 from core.location import IPInfo
@@ -281,10 +281,12 @@ async def task():
 def exit():
     global running
     running = 0
+    logger.info(f"正在保存 [{unit.format_number(queues.qsize())}] 统计中")
     while not queues.empty():
         cmd, params = queues.get()
         db.execute(cmd, params)
     db.commit()
+    logger.success(f"成功保存统计")
     lock.release()
 
 def get_utc_offset():

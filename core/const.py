@@ -57,6 +57,7 @@ CLUSTER_PATTERN = re.compile(r'https?://([a-fA-F0-9]*)\.openbmclapi\.933\.moe(:\
 DOWNLOAD_ACCESS_LOG: bool = True
 DOWNLOAD_RETRY_DELAY: int = 60
 DOWNLOAD_FILE: bool = False
+DOWNLOAD_CONFIGURATION: bool = True
 RESPONSE_DATE = "%a, %d %b %Y %H:%M:%S GMT"
 RESPONSE_COMPRESSION_IGNORE_SIZE_THRESHOLD: int = 16777216
 SKIP_FILE_CHECK: bool = False
