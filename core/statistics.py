@@ -15,7 +15,6 @@ from core import location
 from core.api import File, Storage
 from core.location import IPInfo
 
-
 class UserAgent(Enum):
     OPENBMCLAPI_CLUSTER = "openbmclapi-cluster"
     PYTHON = "python-openbmclapi"
@@ -43,11 +42,9 @@ class UserAgent(Enum):
 
     @staticmethod
     def get_ua(ua: str) -> "UserAgent":
-        for _ in UserAgent:
-            if _.value == ua:
-                return _
-        return UserAgent.OTHER
-
+        global g_ua
+        return g_ua.get(ua, UserAgent.OTHER)
+    
 class Status(Enum):
     SUCCESS = "success"
     REDIRECT = "redirect"
@@ -106,8 +103,11 @@ storages: dict[str, int] = {}
 lock: utils.WaitLock = utils.WaitLock()
 running: int = 1
 data_storage: defaultdict[int, list[DataStorage]] = defaultdict(list)
+g_ua: dict[str, "UserAgent"] = {}
 
-
+for _ in UserAgent:
+    g_ua[_.value] = _
+    
 def init():
     execute("create table if not exists access_storage(hour unsigned bigint not null, name text not null, type text not null)")
     for field in (
@@ -225,7 +225,6 @@ def hit(storage: Storage, file: File, length: int, ip: str, ua: str, status: Sta
     add_execute("update access_globals set addresses = ?, useragents = ? where hour = ?", zstd.compress(output_address.io.getbuffer()), zstd.compress(output_useragent.io.getbuffer()), hour)
 
 
-
 def get_sync_storages():
     data = []    
     for storages in get_data_storage().values():
@@ -266,7 +265,6 @@ def sync(storages: list[SyncStorage]):
         cur_storage.sync_database = True
 
 
-
 async def task():
     global running
     while running:
@@ -289,6 +287,7 @@ def exit():
     logger.success(f"成功保存统计")
     lock.release()
 
+
 def get_utc_offset():
     return -(time.timezone / 3600)
 
@@ -301,6 +300,7 @@ def get_query_day_tohour(day):
 def get_query_hour_tohour(hour):
     t = int(time.time())
     return int((t - ((t + get_utc_offset() * 3600) % 3600) - 3600 * hour) / 3600)
+
 
 def hourly():
     data = []
@@ -329,6 +329,7 @@ def hourly():
             }
         )
     return data
+
 
 def daily():
     data = []
@@ -366,10 +367,12 @@ def stats_pro(day: int):
     status_arr = list(status.value for status in Status)
     status: defaultdict[str, int] = defaultdict(int)
     d_address: defaultdict[int, defaultdict[str, int]] = defaultdict(lambda: defaultdict(int))
-    d_ip: dict[str, bool] = {}
+    d_ip: set[str] = set()
     d_geo: defaultdict[IPInfo, int] = defaultdict(int)
     d_useragent: defaultdict[UserAgent, int] = defaultdict(int)
     d_hit, d_bytes, d_sync_hit, d_sync_bytes = 0, 0, 0, 0
+    stats_t = StatsTiming()
+    stats_t.start("storage")
     for q in queryAllData(f"select sum(hit + cache_hit) as hit, sum(bytes + cache_bytes) as bytes, sync_hit, sync_bytes, {', '.join((f'sum({arr})' for arr in status_arr))} from access_storage where hour >= ?", t):
         d_hit += q[0] or 0
         d_bytes += q[1] or 0
@@ -377,6 +380,7 @@ def stats_pro(day: int):
         d_sync_bytes += q[3] or 0
         for i, status_val in enumerate(status_arr):
             status[status_val] += q[4 + i] or 0
+    stats_t.start("globals", "storage")
     for q in queryAllData(f"select hour, addresses, useragents from access_globals where hour >= ?", t):
         hour = (q[0] + get_utc_offset()) if not format_day else (q[0] + get_utc_offset()) // 24
         data_address = q[1]
@@ -386,16 +390,18 @@ def stats_pro(day: int):
             for _ in range(input.readVarInt()):
                 addr, c = input.readString(), input.readVarInt()
                 d_address[hour][addr] += c
-                d_ip[addr] = True
+                d_ip.add(addr)
         if data_useragent:
             input = utils.DataInputStream(zstd.decompress(data_useragent))
             for _ in range(input.readVarInt()):
                 u, c = input.readString(), input.readVarInt()
                 d_useragent[UserAgent.get_ua(u)] += c
-        
+    stats_t.start("location", "globals")
     for addr in map(lambda x: x.items(), d_address.values()):
         for address, count in addr:
             d_geo[location.query(address)] += count
+    stats_t.end("location")
+    stats_t.print()
     
     return {
         "useragents": {key.value: value for key, value in d_useragent.items() if value},
@@ -411,7 +417,7 @@ def stats_pro(day: int):
             ): len(ip)
             for hour, ip in sorted(d_address.items())
         },
-        "distinct_ip_count": len(d_ip.keys()),
+        "distinct_ip_count": len(d_ip),
         "status": {k: v for k, v in status.items() if v != 0},
         "bytes": d_bytes,
         "downloads": d_hit,
@@ -465,3 +471,45 @@ def addColumns(table, params, data, default=None):
             execute(f"UPDATE {table} SET {params}={default}")
     except:
         ...
+
+
+def get_unknown_ip():
+    unknown = set()
+    for input in (utils.DataInputStream(zstd.decompress(q[0])) for q in queryAllData(f"select addresses from access_globals")):
+        for _ in range(input.readVarInt()):
+            addr, c = input.readString(), input.readVarInt()
+            info = location.query(addr)     
+            if info.country == "" or (info.country == "CN" and info.province == "") or not info.country.isalpha():
+                unknown.add(addr)
+    return sorted(unknown)
+
+
+class StatsTiming:
+    def __init__(self) -> None:
+        self.init = time.monotonic()
+        self.startup = time.time()
+        self.starts: dict[str, float] = {}
+        self.ends: dict[str, float] = {}
+    def start(self, start: str, end: Optional[str] = None):
+        t = time.monotonic_ns()
+        self.starts[start] = t
+        if end is not None:
+            self.ends[end] = t 
+    def end(self, end: str):
+        t = time.monotonic_ns()
+        self.ends[end] = t 
+    def print(self):
+        times = [*self.ends.values(), *self.starts.values()] or [0]
+        end_time = max(times)
+        start_time = min(times)
+        logger.debug(f"{'=' * 16} Stats Timings {'=' * 16}")
+        logger.debug(f"Finished stats {(end_time - start_time) / 1000000000.0:.2f}s")
+        for name in self.starts.keys():
+            st = self.starts[name]
+            sd = self.ends.get(name, None)
+            if sd is None:
+                logger.debug(f"  {name} finished in -s")
+            else:
+                logger.debug(f"  {name} finished in {(sd - st) / 1000000000.0:.2f}s")
+                
+        logger.debug(f"{'=' * 16}==============={'=' * 16}")

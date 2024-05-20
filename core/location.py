@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import io
+import os
 import re
 import socket
 import struct
@@ -23,6 +24,8 @@ class FixedLocation:
         self.unknown = None
     
     def init(self):
+        if not os.path.exists(self.filename):
+            return
         with open(self.filename, "rb") as r:
             input = DataInputStream(r.read())
             origin_length = input.readVarInt()
@@ -479,7 +482,6 @@ cn_level: str = (
     r"(省|市|自治区|壮族自治区|回族自治区|维吾尔自治区|藏族自治区|蒙古族自治区|林区)"
 )
 l = FixedLocation("assets/fixed_location.fxdb")
-warned: dict[str, bool] = {}
 def query(ip: str) -> IPInfo:
     if ip in cache:
         return cache[ip]
@@ -498,10 +500,5 @@ def query(ip: str) -> IPInfo:
         country = country_iso.get(fixedip.country, fixedip.country)
         province = fixedip.province
     info = IPInfo(country or "LOCAL", re.sub(cn_level, "", province) if country == "CN" else "")
-    if ip not in warned and (info.country == "" or (info.country == "CN" and info.province == "")):
-        warned[ip] = True
     cache[ip] = info
     return info
-
-def get_warned():
-    return list(warned.keys())

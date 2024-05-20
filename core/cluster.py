@@ -46,6 +46,7 @@ from core.api import (
     ResponseRedirects,
     Storage,
     get_hash,
+    get_hash_content,
 )
 
 
@@ -670,6 +671,7 @@ class WebDav(Storage):
         self.hostname = hostname
         self.endpoint = "/" + endpoint.replace("\\", "/").replace("//", "/").removesuffix("/").removeprefix('/')
         self.files: dict[str, File] = {}
+        self.keepalive_file: Optional[File] = None
         self.dirs: list[str] = []
         self.fetch: bool = False
         self.empty = File("", "", 0)
@@ -697,7 +699,33 @@ class WebDav(Storage):
         try:
             hostname = self.hostname
             endpoint = self.endpoint
-            await self._list_all()
+            if self.keepalive_file is None and self.files:
+                self.keepalive_file = (sorted(filter(lambda x: x.size != 0, list(self.files.values())) or [], key=lambda x: x.size) or [None])[0]
+            if self.keepalive_file is None:
+                if not self.disabled:
+                    logger.twarn(
+                        "cluster.warn.webdav.no_connection",
+                        hostname=hostname,
+                        endpoint=endpoint,
+                    )
+                storages.disable(self)
+                self.fetch = False
+                return
+            async with self.session_lock:
+                async with self.get_session.get(
+                    self.hostname + self._file_endpoint(self.keepalive_file.hash[:2] + "/" + self.keepalive_file.hash),
+                ) as resp:
+                    content = io.BytesIO(await resp.read())
+                    if not get_hash_content(self.keepalive_file.hash, content):
+                        if not self.disabled:
+                            logger.twarn(
+                                "cluster.warn.webdav.file_hash",
+                                hostname=hostname,
+                                endpoint=endpoint,
+                            )
+                        storages.disable(self)
+                        self.fetch = False
+                        return
             if not self.disabled:
                 logger.tsuccess(
                     "cluster.success.webdav.keepalive",
@@ -1131,10 +1159,10 @@ class Cluster:
             if err:
                 logger.terror("cluster.error.cert.failed", ack=ack)
                 return
-            self.cert_valid = utils.parse_iso_time(ack["expires"])
+            self.cert_valid = utils.parse_iso_time(ack["expires"]).timestamp()
             logger.tsuccess(
                 "cluster.success.cert.requested",
-                time=utils.parse_datetime_to_gmt(self.cert_valid.timetuple()),
+                time=utils.parse_time_to_gmt(self.cert_valid),
             )
             certificate.load_text(ack["cert"], ack["key"])
             await dashboard.set_status("cluster.got.cert")

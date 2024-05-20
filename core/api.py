@@ -250,6 +250,15 @@ def get_hash(org):
         return hashlib.md5()
     else:
         return hashlib.sha1()
+    
+def get_hash_content(org, content: io.BytesIO):
+    h = None
+    if len(org) == 32:
+        h = hashlib.md5()
+    else:
+        h = hashlib.sha1()
+    h.update(content)
+    return org == h.hexdigest()
 
 
 async def get_file_hash(org: str, path: Path):

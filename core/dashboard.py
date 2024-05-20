@@ -89,7 +89,7 @@ def serialize(data: Any):
     elif isinstance(data, int):
         buf.writeVarInt(3)
         buf.writeString(str(data))
-    elif isinstance(data, list):
+    elif isinstance(data, (list, set, tuple)):
         buf.writeVarInt(4)
         buf.writeVarInt(len(data))
         buf.write(b"".join((serialize(v).io.getvalue() for v in data)))
@@ -185,10 +185,11 @@ async def process(type: str, data: Any):
         return system.get_loads_detail()
     
     if type == "unknown_addresses":
+        unknown = await asyncio.get_event_loop().run_in_executor(None, statistics.get_unknown_ip)
         if data is not None:
             with open("ignore.txt", "w", encoding="utf-8") as w:
-                w.write('\n'.join(location.get_warned()))
-        return location.get_warned()
+                w.write('\n'.join(unknown))
+        return unknown
 
 
 def get_cache_stats() -> StatsCache:
