@@ -5,10 +5,10 @@ import os
 import ssl
 import traceback
 from typing import Optional
-from core.certificate import get_loaded, client_side_ssl, server_side_ssl
+from core.certificate import get_loaded, client_side_ssl, server_side_ssl, load_cert
 from core.config import Config
 from core.utils import Client
-from core.i18n import locale
+from core.const import *
 from core import env, logger, scheduler, web
 
 
@@ -106,11 +106,6 @@ ssl_server: Optional[asyncio.Server] = None
 server: Optional[asyncio.Server] = None
 proxy: Proxy = Proxy()
 check_port_key = os.urandom(8)
-PORT: int = Config.get("web.port")
-TIMEOUT: int = Config.get("advanced.timeout")
-SSL_PORT: int = Config.get("web.ssl_port")
-PROTOCOL_HEADER_BYTES = Config.get("advanced.header_bytes")
-IO_BUFFER: int = Config.get("advanced.io_buffer")
 
 async def _handle_ssl(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     return await _handle_process(
@@ -215,6 +210,8 @@ async def check_ports():
 
 async def start():
     global server, ssl_server
+    if not CERTIFICATE.empty():
+        load_cert(CERTIFICATE.cert, CERTIFICATE.path)
     while "EXIT" not in env:
         close()
         try:

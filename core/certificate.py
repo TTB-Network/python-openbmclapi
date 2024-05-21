@@ -16,9 +16,10 @@ client_side_ssl.check_hostname = False
 _loaded: bool = False
 
 
-def load_cert(cert, key):
+def _load_cert(cert, key):
     global server_side_ssl, client_side_ssl, _loaded
     if not os.path.exists(cert) or not os.path.exists(key):
+        logger.terror("cert.error.failed.file", cert=cert, key=key)
         return False
     try:
         server_side_ssl.load_cert_chain(cert, key)
@@ -28,6 +29,13 @@ def load_cert(cert, key):
     except:
         logger.terror("cert.error.failed", failure=traceback.format_exc())
         return False
+    
+def load_cert(cert: str, key: str):
+    if _load_cert(cert, key):
+        logger.tsuccess("cert.success.loaded_cert")
+        from core.network import restart
+
+        restart()
 
 
 def get_loaded() -> bool:
@@ -41,7 +49,7 @@ def load_text(cert: str, key: str):
     with open(cert_file, "w") as c, open(key_file, "w") as k:
         c.write(cert)
         k.write(key)
-    if load_cert(cert_file, key_file):
+    if _load_cert(cert_file, key_file):
         logger.tsuccess("cert.success.loaded_cert")
         from core.network import restart
 

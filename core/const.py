@@ -146,6 +146,9 @@ class Certificate:
     cert: str = ""
     path: str = ""
 
+    def empty(self):
+        return self.cert == self.path == ""
+
 if Config.get("storages") is not None:
     for name in Config.get("storages"):
         storage = Config.get(f"storages.{name}")
@@ -156,7 +159,8 @@ if Config.get("storages") is not None:
         )
 
 CERTIFICATE = Certificate(Config.get("certificate.cert"), Config.get("certificate.key"))
-
+SSL_PORT: int = Config.get("web.ssl_port")
+PROTOCOL_HEADER_BYTES = Config.get("advanced.header_bytes")
 # xdb 默认参数
 XDB_HeaderInfoLength = 256
 XDB_VectorIndexRows = 256

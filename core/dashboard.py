@@ -170,7 +170,7 @@ async def process(type: str, data: Any):
             "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
             "os": platform.platform(),
         }
-    if type == "pro_stats":
+    if type == "pro_stats" or type == "geo_stats":
         day = 1
         if isinstance(data, dict):
             t = data.get("type", 0)
@@ -180,7 +180,9 @@ async def process(type: str, data: Any):
                 day = 30
             elif t >= 3:
                 day = -1
-        return await asyncio.get_event_loop().run_in_executor(None, statistics.stats_pro, day)
+        func = statistics.stats_pro if type == "pro_stats" else statistics.geo_pro
+        return await asyncio.get_event_loop().run_in_executor(None, func, day)
+    
     if type == "system_details":
         return system.get_loads_detail()
     

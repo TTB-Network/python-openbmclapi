@@ -361,26 +361,15 @@ def daily():
     return data
 
 
-def stats_pro(day: int):
+def geo_pro(day: int):
     format_day = day == 30
     t = get_query_hour_tohour(0) - (day * 24)
-    status_arr = list(status.value for status in Status)
-    status: defaultdict[str, int] = defaultdict(int)
     d_address: defaultdict[int, defaultdict[str, int]] = defaultdict(lambda: defaultdict(int))
     d_ip: set[str] = set()
     d_geo: defaultdict[IPInfo, int] = defaultdict(int)
     d_useragent: defaultdict[UserAgent, int] = defaultdict(int)
-    d_hit, d_bytes, d_sync_hit, d_sync_bytes = 0, 0, 0, 0
     stats_t = StatsTiming()
-    stats_t.start("storage")
-    for q in queryAllData(f"select sum(hit + cache_hit) as hit, sum(bytes + cache_bytes) as bytes, sync_hit, sync_bytes, {', '.join((f'sum({arr})' for arr in status_arr))} from access_storage where hour >= ?", t):
-        d_hit += q[0] or 0
-        d_bytes += q[1] or 0
-        d_sync_hit += q[2] or 0
-        d_sync_bytes += q[3] or 0
-        for i, status_val in enumerate(status_arr):
-            status[status_val] += q[4 + i] or 0
-    stats_t.start("globals", "storage")
+    stats_t.start("globals")
     for q in queryAllData(f"select hour, addresses, useragents from access_globals where hour >= ?", t):
         hour = (q[0] + get_utc_offset()) if not format_day else (q[0] + get_utc_offset()) // 24
         data_address = q[1]
@@ -402,7 +391,6 @@ def stats_pro(day: int):
             d_geo[location.query(address)] += count
     stats_t.end("location")
     stats_t.print()
-    
     return {
         "useragents": {key.value: value for key, value in d_useragent.items() if value},
         "addresses": [
@@ -418,6 +406,25 @@ def stats_pro(day: int):
             for hour, ip in sorted(d_address.items())
         },
         "distinct_ip_count": len(d_ip),
+    }
+def stats_pro(day: int):
+    t = get_query_hour_tohour(0) - (day * 24)
+    status_arr = list(status.value for status in Status)
+    status: defaultdict[str, int] = defaultdict(int)
+    d_hit, d_bytes, d_sync_hit, d_sync_bytes = 0, 0, 0, 0
+    stats_t = StatsTiming()
+    stats_t.start("storage")
+    for q in queryAllData(f"select sum(hit + cache_hit) as hit, sum(bytes + cache_bytes) as bytes, sync_hit, sync_bytes, {', '.join((f'sum({arr})' for arr in status_arr))} from access_storage where hour >= ?", t):
+        d_hit += q[0] or 0
+        d_bytes += q[1] or 0
+        d_sync_hit += q[2] or 0
+        d_sync_bytes += q[3] or 0
+        for i, status_val in enumerate(status_arr):
+            status[status_val] += q[4 + i] or 0
+    stats_t.end("storage")
+    stats_t.print()
+    
+    return {
         "status": {k: v for k, v in status.items() if v != 0},
         "bytes": d_bytes,
         "downloads": d_hit,
