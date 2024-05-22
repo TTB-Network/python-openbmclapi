@@ -257,7 +257,7 @@ def get_hash_content(org, content: io.BytesIO):
         h = hashlib.md5()
     else:
         h = hashlib.sha1()
-    h.update(content)
+    h.update(content.getbuffer())
     return org == h.hexdigest()
 
 

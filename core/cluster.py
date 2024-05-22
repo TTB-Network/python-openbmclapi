@@ -402,6 +402,7 @@ class FileCheck:
             self.start_task()
             return
         with tqdm(
+            desc=locale.t("cluster.tqdm.desc.check_files"),
             total=len(files) * len(storages.get_storages()),
             unit=locale.t("cluster.tqdm.unit.file"),
             unit_scale=True,
@@ -409,7 +410,6 @@ class FileCheck:
             self.pbar = pbar
             self.files = files
             await dashboard.set_status_by_tqdm("files.checking", pbar)
-            pbar.set_description(locale.t("cluster.tqdm.desc.check_files"))
             try:
                 miss_storage: list[list[BMCLAPIFile]] = await asyncio.gather(
                     *[

@@ -19,7 +19,6 @@ import traceback
 import zlib
 from core.exceptions import (
     WebSocketError,
-    ServerWebSocketError,
     ServerWebSocketUnknownDataError,
 )
 from typing import (
@@ -906,13 +905,10 @@ class Response:
                 client.write(content.getbuffer()[start_bytes : end_bytes + 1])
                 await client.drain()
             elif isinstance(content, Path):
-                async with aiofiles.open(content, "rb") as r:
-                    cur_length: int = 0
-                    await r.seek(start_bytes, os.SEEK_SET)
-                    while data := await r.read(max(0, min(IO_BUFFER, length - cur_length))):
-                        cur_length += len(data)
-                        client.write(data)
-                        await client.drain()
+                with open(content, "rb") as r:
+                    await asyncio.get_event_loop().sendfile(
+                        client.writer.transport, r, start_bytes, length
+                    )
             else:
                 cur_length: int = 0
                 bound: bool = False
