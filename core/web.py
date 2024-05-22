@@ -925,7 +925,7 @@ class Response:
             client.close()
 
 
-class RedirectResponse(Response):
+class TemporarilyRedirectResponse(Response):
     def __init__(
         self, location: str, headers: Header | dict[str, Any] | None = None, response_configuration: Optional[ResponseConfiguration] = None
     ) -> None:
@@ -933,6 +933,16 @@ class RedirectResponse(Response):
         header.update(headers)
         header.update({"Location": location})
         super().__init__(headers=header, status_code=307, response_configuration=response_configuration)
+
+
+class RedirectResponse(Response):
+    def __init__(
+        self, location: str, headers: Header | dict[str, Any] | None = None, response_configuration: Optional[ResponseConfiguration] = None
+    ) -> None:
+        header = Header()
+        header.update(headers)
+        header.update({"Location": location})
+        super().__init__(headers=header, status_code=302, response_configuration=response_configuration)
 
 
 class Request:
@@ -1299,7 +1309,7 @@ async def handle(data, client: Client):
         request: Request = Request(data, client)
         statistics.add_qps()
         if FORCE_SSL and not client.is_ssl:
-            await RedirectResponse(
+            await TemporarilyRedirectResponse(
                 "https://" + await request.get_headers("Host") + request.url
             )(request, client)
             await request.skip()
