@@ -696,22 +696,31 @@ class WebDav(Storage):
         scheduler.repeat(self._keepalive, interval=60)
 
     async def _keepalive(self):
+        def get_keepalive_file():
+            self.keepalive_file = (sorted(filter(lambda x: x.size != 0, list(self.files.values())) or [], key=lambda x: x.size) or [None])[0]
+            if self.keepalive_file is None:
+                disable("no_file")
+        def disable(reason, *args, **kwargs):
+            if not self.disabled:
+                logger.twarn(
+                    "cluster.warn.webdav." + reason,
+                    hostname=self.hostname, 
+                    endpoint=self.endpoint
+                    *args,
+                    **kwargs
+                )
+            storages.disable(self)
+            self.fetch = False
         try:
             hostname = self.hostname
             endpoint = self.endpoint
-            if self.keepalive_file is None and self.files:
-                self.keepalive_file = (sorted(filter(lambda x: x.size != 0, list(self.files.values())) or [], key=lambda x: x.size) or [None])[0]
-                if self.keepalive_file is None:
-                    if not self.disabled:
-                        logger.twarn(
-                            "cluster.warn.webdav.no_connection",
-                            hostname=hostname,
-                            endpoint=endpoint,
-                        )
-                    storages.disable(self)
-                    self.fetch = False
-                    return
-            await self._list_all()
+            get_keepalive_file()
+            if not self.keepalive_file:
+                await self._list_all()
+            get_keepalive_file()
+            if not self.keepalive_file:
+                disable("no_file")
+                return
             async with self.session_lock:
                 async with self.get_session.get(
                     self.hostname + self._file_endpoint(self.keepalive_file.hash[:2] + "/" + self.keepalive_file.hash),
@@ -741,14 +750,7 @@ class WebDav(Storage):
                     endpoint=endpoint,
                 )
         except webdav3_exceptions.NoConnection:
-            if not self.disabled:
-                logger.twarn(
-                    "cluster.warn.webdav.no_connection",
-                    hostname=hostname,
-                    endpoint=endpoint,
-                )
-            storages.disable(self)
-            self.fetch = False
+            disable("no_connection")
         except:
             logger.error(traceback.format_exc())
 
