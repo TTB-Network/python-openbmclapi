@@ -701,16 +701,17 @@ class WebDav(Storage):
             endpoint = self.endpoint
             if self.keepalive_file is None and self.files:
                 self.keepalive_file = (sorted(filter(lambda x: x.size != 0, list(self.files.values())) or [], key=lambda x: x.size) or [None])[0]
-            if self.keepalive_file is None:
-                if not self.disabled:
-                    logger.twarn(
-                        "cluster.warn.webdav.no_connection",
-                        hostname=hostname,
-                        endpoint=endpoint,
-                    )
-                storages.disable(self)
-                self.fetch = False
-                return
+                if self.keepalive_file is None:
+                    if not self.disabled:
+                        logger.twarn(
+                            "cluster.warn.webdav.no_connection",
+                            hostname=hostname,
+                            endpoint=endpoint,
+                        )
+                    storages.disable(self)
+                    self.fetch = False
+                    return
+            await self._list_all()
             async with self.session_lock:
                 async with self.get_session.get(
                     self.hostname + self._file_endpoint(self.keepalive_file.hash[:2] + "/" + self.keepalive_file.hash),
