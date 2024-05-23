@@ -1219,18 +1219,23 @@ class Cluster:
         await self.channel_lock.wait()
         await dashboard.set_status("cluster.want_enable")
         self.trusted = True
+        available_storages = storages.get_available_storages()
         storage_str = {"file": 0, "webdav": 0}
-        for storage in storages.get_available_storages():
+        for storage in available_storages:
             if isinstance(storage, FileStorage):
                 storage_str["file"] += 1
             elif isinstance(storage, WebDav):
                 storage_str["webdav"] += 1
         logger.tinfo(
             "cluster.info.cluster.storage_available_count",
-            total=len(storages.get_available_storages()),
+            total=len(available_storages),
             local=storage_str["file"],
             webdav=storage_str["webdav"],
         )
+        if len(available_storages) == 0:
+            return await _({
+                "message": "无法启动服务：当前无可用的存储"
+            }, None)
         await self.emit(
             "enable",
             {
