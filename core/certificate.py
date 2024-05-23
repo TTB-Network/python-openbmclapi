@@ -18,7 +18,7 @@ _loaded: bool = False
 
 def _load_cert(cert, key):
     global server_side_ssl, client_side_ssl, _loaded
-    if not os.path.exists(cert) or not os.path.exists(key):
+    if cert is None or key is None or not os.path.exists(cert) or not os.path.exists(key):
         logger.terror("cert.error.failed.file", cert=cert, path=key)
         return False
     try:
