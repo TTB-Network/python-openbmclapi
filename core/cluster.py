@@ -981,12 +981,16 @@ class StorageManager:
         storage.disabled = False
         if not self.available and not cluster.enabled:
             self.available = True
+            if cluster.first_start:
+                return
             scheduler.delay(cluster.start)
 
     def disable(self, storage: Storage):
         storage.disabled = True
         if self.available and not self.get_storages():
             self.available = False
+            if cluster.first_start:
+                return
             scheduler.delay(cluster.retry)
 
     def add_storage(self, storage: Storage):
@@ -1063,6 +1067,7 @@ class Cluster:
         self.sio.on("message", self._message)
         self.sio.on("exception", self._exception)
         self.enabled: bool = False
+        self.first_start = True
         self.cert_valid: float = 0
         self.cur_token_timestamp: float = 0
         self._retry: int = 0
@@ -1199,6 +1204,7 @@ class Cluster:
                 await self.retry()
                 return
             self.enabled = True
+            self.first_start = False
             logger.tsuccess("cluster.success.cluster.connected_to_center_server")
             logger.tinfo(
                 "cluster.info.cluster.hosting",

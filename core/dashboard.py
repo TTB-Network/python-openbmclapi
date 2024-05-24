@@ -192,6 +192,9 @@ async def process(type: str, data: Any):
             with open("ignore.txt", "w", encoding="utf-8") as w:
                 w.write('\n'.join(unknown))
         return unknown
+    
+    if type == "summary_basic":
+        return statistics.summary_basic()
 
 
 def get_cache_stats() -> StatsCache:

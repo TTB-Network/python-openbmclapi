@@ -1,5 +1,6 @@
 import asyncio
 import base64
+from collections import defaultdict
 from dataclasses import asdict, dataclass
 import datetime
 from enum import Enum
@@ -1245,7 +1246,7 @@ class FormParse:
 
 class Statistics:
     def __init__(self) -> None:
-        self.qps = {}
+        self.qps: defaultdict[int, int] = defaultdict(int)
         scheduler.repeat(self._clear, delay=1, interval=1)
 
     def _clear(self):
@@ -1259,8 +1260,6 @@ class Statistics:
 
     def add_qps(self):
         t = self.get_time()
-        if t not in self.qps:
-            self.qps[t] = 0
         self.qps[t] += 1
 
     def get_time(self):
@@ -1271,7 +1270,7 @@ class Statistics:
 
     def get_in_time_qps(self, t: float):
         c = self.get_time()
-        return {k: v for k, v in self.qps.items() if k - t <= c}
+        return {k: v for k, v in self.qps.copy().items() if k - t <= c}
 
     def get_all_qps(self):
         return self.qps.copy()

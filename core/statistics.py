@@ -94,6 +94,29 @@ class SyncStorage:
     type: str
     hit: int
     bytes: int
+
+
+@dataclass
+class SummaryStorage:
+    time: str = ""
+    hits: int = 0
+    bytes: int = 0
+    cache_hits: int = 0
+    cache_bytes: int = 0
+    last_hits: int = 0
+    last_bytes: int = 0
+    success: int = 0
+    redirect: int = 0
+    not_exists: int = 0
+    error: int = 0
+    partial: int = 0
+
+@dataclass
+class SummaryBasic:
+    bytes: Optional[SummaryStorage] = None
+    hit: Optional[SummaryStorage] = None
+
+
 last_hour: Optional[int] = None
 datadir: Path = Path("./data")
 datadir.mkdir(exist_ok=True, parents=True)
@@ -407,6 +430,8 @@ def geo_pro(day: int):
         },
         "distinct_ip_count": len(d_ip),
     }
+
+
 def stats_pro(day: int):
     t = get_query_hour_tohour(0) - (day * 24)
     status_arr = list(status.value for status in Status)
@@ -431,6 +456,57 @@ def stats_pro(day: int):
         "sync_bytes": d_sync_bytes,
         "sync_downloads": d_sync_hit
     }
+
+
+def summary_basic():
+    status = (status.value for status in Status)
+    hours: defaultdict[int, SummaryStorage] = defaultdict(lambda: SummaryStorage())
+    days: defaultdict[int, SummaryStorage] = defaultdict(lambda: SummaryStorage())
+    total: StatsStorage = StatsStorage()
+    summary_storage: dict[str, SummaryBasic | StatsStorage] = {
+        "hour": SummaryBasic(),
+        "day": SummaryBasic(),
+        "total": total
+    }
+    for q in queryAllData(f"select hour, hit, bytes, cache_hit, cache_bytes, sync_hit, sync_bytes, {', '.join(status)} from access_storage order by hour desc"):
+        hour =              q[0]
+        day  =              (q[0] + get_utc_offset()) // 24
+        for storage in (
+            hours[hour],
+            days[day]
+        ):
+            for i, attr in enumerate((
+                "hits",        
+                "bytes",       
+                "cache_hits",  
+                "cache_bytes", 
+                "last_hits",   
+                "last_bytes",  
+                "success",     
+                "redirect",    
+                "not_exists",  
+                "error",       
+                "partial",    
+            )):
+                setattr(storage, attr, getattr(storage, attr, 0) + q[i + 1])
+                setattr(total, attr, getattr(total, attr, 0) + q[i + 1])
+        for type in (
+            ("hour", hours[hour], utils.format_datetime(hour * 3600)), 
+            ("day", days[day], utils.format_datetime(day * 86400))
+        ):
+            storage = summary_storage[type[0]]
+            data_storage: SummaryStorage = type[1]
+            if storage.bytes is None or (storage.bytes.bytes + storage.bytes.cache_bytes) < data_storage.bytes + data_storage.cache_bytes:
+                summary_storage[type[0]].bytes = copy_summary_storage(data_storage)
+            if storage.hit is None or (storage.hit.hits + storage.hit.cache_hits) < data_storage.hits + data_storage.cache_hits:
+                summary_storage[type[0]].hit = copy_summary_storage(data_storage)
+            summary_storage[type[0]].bytes.time = type[2]
+            summary_storage[type[0]].hit.time = type[2]
+    return summary_storage
+
+
+def copy_summary_storage(origin: SummaryStorage):
+    return SummaryStorage(**asdict(origin))
 
 
 def execute(cmd: str, *params) -> None:
