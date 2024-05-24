@@ -290,7 +290,7 @@ class FileDownloader:
             except PutQueueIgnoreError:
                 ...
             except Exception as r:
-                raise r
+                logger.error(traceback.format_exc())
 
     async def _mount_file(
         self, file: BMCLAPIFile, buf: io.BytesIO
