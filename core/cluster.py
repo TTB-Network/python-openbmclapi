@@ -1435,8 +1435,18 @@ async def init():
             )
             or not cluster
         ):
+            statistics.hit(None, File(
+                hash = hash,
+                size = 0,
+                type = FileContentType.EMPTY
+            ), 0, request.get_ip(), request.get_user_agent(), statistics.Status.FORBIDDEN)
             return web.Response(status_code=403)
         if not storages.available_width:
+            statistics.hit(None, File(
+                hash = hash,
+                size = 0,
+                type = FileContentType.EMPTY
+            ), 0, request.get_ip(), request.get_user_agent(), statistics.Status.ERROR)
             return web.Response(status_code=503)
         start_bytes, end_bytes = 0, None
         range_str = await request.get_headers("range", "")

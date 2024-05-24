@@ -51,6 +51,7 @@ class Status(Enum):
     NOTEXISTS = "not_exists"
     ERROR = "error"
     PARTIAL = "partial"
+    FORBIDDEN = "forbidden"
 
 @dataclass
 class GEOInfo:
@@ -71,6 +72,7 @@ class StatsStorage:
     not_exists: int = 0
     error: int = 0
     partial: int = 0
+    forbidden: int = 0
 
 @dataclass
 class DataStorage:
@@ -110,6 +112,7 @@ class SummaryStorage:
     not_exists: int = 0
     error: int = 0
     partial: int = 0
+    forbidden: int = 0
 
 @dataclass
 class SummaryBasic:
@@ -187,34 +190,35 @@ def hit(storage: Storage, file: File, length: int, ip: str, ua: str, status: Sta
     global storages, last_hour
     lock.acquire()
     hour = get_hour(0)
-    if (storage.get_name() not in storages or storages[storage.get_name()] != hour) and not exists("select hour from access_storage where hour = ? and name = ? and type = ?", 
-        hour, storage.get_name(), storage.get_type()
-    ):
-        add_execute("insert into access_storage(hour, name, type) values (?,?,?)", hour, storage.get_name(), storage.get_type())
-    storages[storage.get_name()] = hour
-    cur_storage = None
-    data_storages = get_data_storage()
-    for origin_storage in data_storages[hour]:
-        if origin_storage.name == storage.name and origin_storage.type == storage.type:
-            cur_storage = origin_storage
-    if cur_storage is None:
-        cur_storage = DataStorage(
-            hour, storage.name, storage.type
+    if storage is not None:
+        if (storage.get_name() not in storages or storages[storage.get_name()] != hour) and not exists("select hour from access_storage where hour = ? and name = ? and type = ?", 
+            hour, storage.get_name(), storage.get_type()
+        ):
+            add_execute("insert into access_storage(hour, name, type) values (?,?,?)", hour, storage.get_name(), storage.get_type())
+        storages[storage.get_name()] = hour
+        cur_storage = None
+        data_storages = get_data_storage()
+        for origin_storage in data_storages[hour]:
+            if origin_storage.name == storage.name and origin_storage.type == storage.type:
+                cur_storage = origin_storage
+        if cur_storage is None:
+            cur_storage = DataStorage(
+                hour, storage.name, storage.type
+            )
+            data_storages[hour].append(cur_storage)
+        data = ()
+        if not file.cache:
+            cur_storage.hit += 1
+            cur_storage.bytes += length
+            data = (1, length, 0, 0)
+        else:
+            cur_storage.cache_hit += 1
+            cur_storage.cache_bytes += length
+            data = (0, 0, 1, length)
+        add_execute(f"update access_storage set hit = hit + ?, bytes = bytes + ?, cache_hit = cache_hit + ?, cache_bytes = cache_bytes + ?, {status.value} = {status.value} + 1 where hour = ? and name = ? and type = ?", 
+            *data, hour, storage.get_name(), storage.get_type()
         )
-        data_storages[hour].append(cur_storage)
-    data = ()
-    if not file.cache:
-        cur_storage.hit += 1
-        cur_storage.bytes += length
-        data = (1, length, 0, 0)
-    else:
-        cur_storage.cache_hit += 1
-        cur_storage.cache_bytes += length
-        data = (0, 0, 1, length)
-    add_execute(f"update access_storage set hit = hit + ?, bytes = bytes + ?, cache_hit = cache_hit + ?, cache_bytes = cache_bytes + ?, {status.value} = {status.value} + 1 where hour = ? and name = ? and type = ?", 
-        *data, hour, storage.get_name(), storage.get_type()
-    )
-    cur_storage.sync_database = False
+        cur_storage.sync_database = False
     if last_hour != hour and not exists("select addresses, useragents from access_globals where hour = ?", hour):
         add_execute("insert into access_globals(hour, addresses, useragents) values (?, ?, ?)", hour, b'', b'')
     data_address, data_useragent = query("select addresses, useragents from access_globals where hour = ?", hour) or [b'', b'']
@@ -344,6 +348,7 @@ def hourly():
         storage.not_exists  += q[9]
         storage.error       += q[10]
         storage.partial     += q[11]
+        storage.forbidden   += q[12]
     for hour in sorted(hours.keys()):
         data.append(
             {
@@ -374,6 +379,7 @@ def daily():
         storage.not_exists  += q[9]
         storage.error       += q[10]
         storage.partial     += q[11]
+        storage.forbidden   += q[12]
     for day in sorted(days.keys()):
         data.append(
             {
@@ -482,7 +488,8 @@ def summary_basic():
             "redirect",    
             "not_exists",  
             "error",       
-            "partial",    
+            "partial", 
+            "forbidden"   
         )):
             for storage in (
                 hours[hour],
