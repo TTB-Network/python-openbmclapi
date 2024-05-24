@@ -1048,7 +1048,11 @@ class StorageManager:
             if storage == first_storage:
                 break
         if not exists:
-            statistics.hit(storage, None, 0, ip, ua, statistics.Status.NOTEXISTS)
+            statistics.hit(storage, File(
+                hash = hash,
+                size = 0,
+                type = FileContentType.EMPTY
+            ), 0, ip, ua, statistics.Status.NOTEXISTS)
             return None
         file = await storage.get(hash, start, end)
         if file is not None:
