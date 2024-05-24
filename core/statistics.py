@@ -471,25 +471,25 @@ def summary_basic():
     for q in queryAllData(f"select hour, hit, bytes, cache_hit, cache_bytes, sync_hit, sync_bytes, {', '.join(status)} from access_storage order by hour desc"):
         hour =              q[0]
         day  =              (q[0] + get_utc_offset()) // 24
-        for storage in (
-            hours[hour],
-            days[day]
-        ):
-            for i, attr in enumerate((
-                "hits",        
-                "bytes",       
-                "cache_hits",  
-                "cache_bytes", 
-                "last_hits",   
-                "last_bytes",  
-                "success",     
-                "redirect",    
-                "not_exists",  
-                "error",       
-                "partial",    
-            )):
+        for i, attr in enumerate((
+            "hits",        
+            "bytes",       
+            "cache_hits",  
+            "cache_bytes", 
+            "last_hits",   
+            "last_bytes",  
+            "success",     
+            "redirect",    
+            "not_exists",  
+            "error",       
+            "partial",    
+        )):
+            for storage in (
+                hours[hour],
+                days[day]
+            ):
                 setattr(storage, attr, getattr(storage, attr, 0) + q[i + 1])
-                setattr(total, attr, getattr(total, attr, 0) + q[i + 1])
+            setattr(total, attr, getattr(total, attr, 0) + q[i + 1])
         for type in (
             ("hour", hours[hour], utils.format_datetime(hour * 3600)), 
             ("day", days[day], utils.format_datetime(day * 86400))
