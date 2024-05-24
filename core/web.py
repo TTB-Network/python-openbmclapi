@@ -769,6 +769,7 @@ class Response:
 
     async def _iter(self):
         if isinstance(self.content, (str, int, float)):
+            self.content_type = "text/plain"
             yield str(self.content).encode("utf-8")
         elif isinstance(self.content, (dict, list, tuple, bool)):
             self.content_type = "application/json"
@@ -783,8 +784,10 @@ class Response:
             yield b""
 
     async def raw(self):
-        if isinstance(self.content, Coroutine):
+        if isinstance(self.content, Coroutine) or asyncio.iscoroutinefunction(self.content):
             self.content = await self.content
+        if asyncio.iscoroutine(self.content):
+            self.content = await self.content()
         if isinstance(self.content, Response):
             self.status_code = self.content.status_code
             self.content_type = self.content.content_type
@@ -793,7 +796,7 @@ class Response:
             self._kwargs = self.content._kwargs
             self._response_configuration = self.content._response_configuration
             self.content = self.content.content
-        if isinstance(self.content, (Coroutine, Response)):
+        if isinstance(self.content, (Coroutine, Response)) or asyncio.iscoroutinefunction(self.content) or asyncio.iscoroutine(self.content):
             await self.raw()
 
     async def __call__(
@@ -822,7 +825,7 @@ class Response:
         if isinstance(content, Path):
             self.content_type = self.content_type or self._get_content_type(content)
             length = content.stat().st_size
-            if length <= RESPONSE_COMPRESSION_IGNORE_SIZE_THRESHOLD:
+            if RESPONSE_COMPRESSION_MIN_THRESHOLD <= length <= RESPONSE_COMPRESSION_IGNORE_SIZE_THRESHOLD:
                 async with aiofiles.open(content, "rb") as r:
                     content = io.BytesIO(await r.read())
         elif isinstance(content, io.BytesIO):
@@ -852,7 +855,7 @@ class Response:
             )
             self.status_code = 206 if start_bytes > 0 else 200
             length = length - start_bytes
-        if isinstance(content, io.BytesIO) and len(content.getbuffer()) != 0:
+        if isinstance(content, io.BytesIO) and len(content.getbuffer()) != 0 and RESPONSE_COMPRESSION_MIN_THRESHOLD <= len(content.getbuffer()) <= RESPONSE_COMPRESSION_IGNORE_SIZE_THRESHOLD:
             self.content_type = self.content_type or self._get_content_type(content)
             compression: Compressor = compressor(
                 await request.get_headers("Accept-Encoding", ""),

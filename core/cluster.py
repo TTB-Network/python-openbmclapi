@@ -1420,7 +1420,7 @@ async def init():
             request.get_url_params().get("s") or "",
             request.get_url_params().get("e") or "",
         ):
-            yield web.Response(status_code=403)
+            yield web.Response("Forbidden", status_code=403)
             return
         config.length = size * 1024 * 1024
         for _ in range(size):
@@ -1444,14 +1444,14 @@ async def init():
                 size = 0,
                 type = FileContentType.EMPTY
             ), 0, request.get_ip(), request.get_user_agent(), statistics.Status.FORBIDDEN)
-            return web.Response(status_code=403)
+            return web.Response("Forbidden", status_code=403)
         if not storages.available_width:
             statistics.hit(None, File(
                 hash = hash,
                 size = 0,
                 type = FileContentType.EMPTY
             ), 0, request.get_ip(), request.get_user_agent(), statistics.Status.ERROR)
-            return web.Response(status_code=503)
+            return web.Response("No available storage", status_code=503)
         start_bytes, end_bytes = 0, None
         range_str = await request.get_headers("range", "")
         range_match = re.search(r"bytes=(\d+)-(\d+)", range_str, re.S) or re.search(
@@ -1470,7 +1470,7 @@ async def init():
             hash, start_bytes, end_bytes, request.get_ip(), request.get_user_agent()
         )
         if not data:
-            return web.Response(status_code=404)
+            return web.Response("Not Found", status_code=404)
         config.access_log = DOWNLOAD_ACCESS_LOG
         if data.is_url() and isinstance(data.get_path(), str):
             return web.RedirectResponse(str(data.get_path()), response_configuration=config).set_headers(name)
@@ -1539,12 +1539,12 @@ async def init():
         try:
             info = json.loads(base64.b64decode(auth))
         except:
-            return web.Response(status_code=401)
+            return web.Response("Unauthorized", status_code=401)
         if (
             info["username"] != DASHBOARD_USERNAME
             or info["password"] != DASHBOARD_PASSWORD
         ):
-            return web.Response(status_code=401)
+            return web.Response("Unauthorized", status_code=401)
         token = dashboard.generate_token(request)
         return web.Response(
             DASHBOARD_USERNAME,
