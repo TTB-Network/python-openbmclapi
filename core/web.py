@@ -1251,10 +1251,7 @@ class Statistics:
 
     def _clear(self):
         t = self.get_time()
-        pops = []
-        for k in self.qps.copy().keys():
-            if t - k > 86400:
-                pops.append(k)
+        pops = filter(lambda x: t - x > 86400, list(self.qps.keys()))
         for pop in pops:
             self.qps.pop(pop)
 
