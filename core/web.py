@@ -1252,7 +1252,7 @@ class Statistics:
     def _clear(self):
         t = self.get_time()
         pops = []
-        for k in self.qps.keys():
+        for k in self.qps.copy().keys():
             if t - k > 86400:
                 pops.append(k)
         for pop in pops:
