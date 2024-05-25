@@ -9,7 +9,7 @@ import zlib
 import aiohttp
 from tqdm import tqdm
 
-from core import location, statistics, system, update, utils, web
+from core import statistics, system, update, utils, web
 from core import cluster
 from core.api import StatsCache
 from core import scheduler

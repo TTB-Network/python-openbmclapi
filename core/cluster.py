@@ -726,15 +726,10 @@ class WebDav(Storage):
                     self.hostname + self._file_endpoint(self.keepalive_file.hash[:2] + "/" + self.keepalive_file.hash),
                 ) as resp:
                     content = io.BytesIO(await resp.read())
-                    if not get_hash_content(self.keepalive_file.hash, content):
-                        if not self.disabled:
-                            logger.twarn(
-                                "cluster.warn.webdav.file_hash",
-                                hostname=hostname,
-                                endpoint=endpoint,
-                            )
-                        storages.disable(self)
-                        self.fetch = False
+                    h = get_hash(self.keepalive_file.hash)
+                    h.update(content.getbuffer())
+                    if h.hexdigest() != self.keepalive_file.hash:
+                        disable("file_hash", hash=h.hexdigest())
                         return
             if not self.disabled:
                 logger.tsuccess(
