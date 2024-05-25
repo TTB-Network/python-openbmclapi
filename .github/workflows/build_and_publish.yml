@@ -46,8 +46,8 @@ jobs:
           tag_name: ${{github.ref}}
           release_name: Release ${{github.ref}}
           file: |
-            - PythonOpenBMCLAPI-${GITHUB_REF#refs/*/}.zip
-            - PythonOpenBMCLAPI-${GITHUB_REF#refs/*/}.tar.gz
+            - PythonOpenBMCLAPI-${{ steps.get_version.outputs.VERSION }}.zip
+            - PythonOpenBMCLAPI-${{ steps.get_version.outputs.VERSION }}.tar.gz
           draft: false
           prerelease: false
   build:
