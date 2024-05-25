@@ -89,5 +89,6 @@
   "timings.info.finished": "任务已完成，耗时：$time。",
   "cluster.info.download.configuration": "下载配置策略：$type，下载源：$source，下载并发：$concurrency。",
   "cert.error.failed.file": "无法从本地文件中加载证书",
-  "cluster.warn.webdav.file_hash": "存活失败 $url($status) 文件校验失败，原文件：$hash($hash_size)，内容：$file_hash($file_size)"
+  "cluster.warn.webdav.file_hash": "存活失败 $url($status) 文件校验失败，原文件：$hash($hash_size)，内容：$file_hash($file_size)",
+  "cluster.debug.webdav.response": "$url($status) 文件校验失败，内容：\n$response"
 }
