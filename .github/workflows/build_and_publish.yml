@@ -25,7 +25,7 @@ jobs:
       - name: Compress zip 
         uses: montudor/action-zip@v1
         with:
-          args: zip -qq -r PythonOpenBMCLAPI-${{github.ref}}.zip ./
+          args: zip -qq -r PythonOpenBMCLAPI-${GITHUB_REF#refs/*/}.zip ./
       - name: Compress tar.gz
         uses: a7ul/tar-action@v1.1.0
         id: compress
@@ -34,7 +34,7 @@ jobs:
           cwd: ./temp
           files: |
             ./
-          outPath: PythonOpenBMCLAPI-${{github.ref}}.tar.gz
+          outPath: PythonOpenBMCLAPI-${GITHUB_REF#refs/*/}.tar.gz
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
@@ -44,8 +44,8 @@ jobs:
           tag_name: ${{github.ref}}
           release_name: Release ${{github.ref}}
           file: |
-            - PythonOpenBMCLAPI-${{github.ref}}.zip
-            - PythonOpenBMCLAPI-${{github.ref}}.tar.gz
+            - PythonOpenBMCLAPI-${GITHUB_REF#refs/*/}.zip
+            - PythonOpenBMCLAPI-${GITHUB_REF#refs/*/}.tar.gz
           draft: false
           prerelease: false
   build:
