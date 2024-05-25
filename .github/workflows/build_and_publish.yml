@@ -22,19 +22,18 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -a -m ":sparkles: 更新 VERSION"
           git push
-      - uses: montudor/action-zip@v1
       - name: Compress zip 
+        uses: montudor/action-zip@v1
         with:
           args: zip -qq PythonOpenBMCLAPI-${{github.ref}}.zip ./
-      - uses: actions/checkout@master
       - name: Compress tar.gz
         uses: a7ul/tar-action@v1.1.0
         id: compress
         with:
           command: c
-          cwd: ./test
+          cwd: ./temp
           files: |
-            ./toCompress
+            ./
           outPath: PythonOpenBMCLAPI-${{github.ref}}.tar.gz
       - name: Create Release
         id: create_release
