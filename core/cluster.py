@@ -696,7 +696,8 @@ class WebDav(Storage):
         scheduler.repeat(self._keepalive, interval=60)
 
     async def _keepalive(self):
-        def get_keepalive_file():
+        async def get_keepalive_file():
+            await self._wait_lock()
             self.keepalive_file = (sorted(filter(lambda x: x.size != 0, list(self.files.values())) or [], key=lambda x: x.size) or [None])[0]
             if self.keepalive_file is None:
                 disable("no_file")
@@ -714,10 +715,10 @@ class WebDav(Storage):
         try:
             hostname = self.hostname
             endpoint = self.endpoint
-            get_keepalive_file()
+            await get_keepalive_file()
             if not self.keepalive_file:
                 await self._list_all()
-            get_keepalive_file()
+            await get_keepalive_file()
             if not self.keepalive_file:
                 disable("no_file")
                 return
