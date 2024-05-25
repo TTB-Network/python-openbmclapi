@@ -664,6 +664,7 @@ class WebDav(Storage):
         password: str,
         hostname: str,
         endpoint: str,
+        headers: dict[str, Any] = {}
     ) -> None:
         super().__init__(name, "webdav", width)
         self.username = username
@@ -690,7 +691,8 @@ class WebDav(Storage):
             auth=aiohttp.BasicAuth(
                 self.username,
                 self.password
-            )
+            ),
+            
         )
         scheduler.delay(self._list_all)
         scheduler.repeat(self._keepalive, interval=60)
@@ -1392,6 +1394,9 @@ async def init():
                     storage.kwargs["password"],
                     storage.kwargs["endpoint"],
                     storage.path,
+                    storage.kwargs.get("headers", {
+                        "User-Agent": USER_AGENT,
+                    })
                 )
             )
     storage_str = {"file": 0, "webdav": 0}

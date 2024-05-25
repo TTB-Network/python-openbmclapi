@@ -152,7 +152,7 @@ class Certificate:
 
 if Config.get("storages") is not None:
     for name in Config.get("storages"):
-        storage = Config.get(f"storages.{name}")
+        storage: dict = Config.get(f"storages.{name}")
         STORAGES.append(
             StorageParse(
                 name, storage["type"], storage["path"], storage.get("width", 0), storage
