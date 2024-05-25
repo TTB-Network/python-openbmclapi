@@ -34,7 +34,6 @@ jobs:
         id: compress
         with:
           command: c
-          cwd: ./temp
           files: |
             ./
           outPath: PythonOpenBMCLAPI-${{ steps.get_version.outputs.VERSION }}.tar.gz
