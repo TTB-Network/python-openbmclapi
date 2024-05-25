@@ -2,7 +2,7 @@ import os
 import time
 
 import psutil
-
+import platform
 from core import logger, scheduler
 from core.utils import get_uptime, format_time
 from core.env import env
