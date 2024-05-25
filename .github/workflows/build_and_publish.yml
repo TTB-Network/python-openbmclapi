@@ -21,7 +21,9 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -a -m ":sparkles: 更新 VERSION"
+          git tag "${steps.get_version.outputs.VERSION}"
           git push
+          git push origin --tags
       - name: Get version
         id: get_version
         run: echo ::set-output name=VERSION::${GITHUB_REF#refs/*/}
