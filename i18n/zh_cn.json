@@ -87,5 +87,6 @@
   "stats.error.broken_stats": "统计信息已损坏……",
   "system.info.loading": "正在初始化系统信息统计……",
   "timings.info.finished": "任务已完成，耗时：$time。",
-  "cluster.info.download.configuration": "下载配置策略：$type，下载源：$source，下载并发：$concurrency。"
+  "cluster.info.download.configuration": "下载配置策略：$type，下载源：$source，下载并发：$concurrency。",
+  "cert.error.failed.file": "无法从本地文件中加载证书"
 }
