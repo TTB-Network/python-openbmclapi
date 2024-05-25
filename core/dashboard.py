@@ -157,7 +157,7 @@ async def process(type: str, data: Any):
     if type == "system":
         return {
             "memory": system.get_used_memory(),
-            "connections": get_connection(),
+            "connections": system.get_connections(),
             "cpu": system.get_cpus(),
             "cache": (
                 asdict(get_cache_stats()) if cluster.cluster else StatsCache()
