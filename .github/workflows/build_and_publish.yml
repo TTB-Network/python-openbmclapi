@@ -25,47 +25,15 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -a -m ":sparkles: 更新 VERSION"
           git push
-      - name: Compress zip 
-        uses: montudor/action-zip@v1
-        with:
-          args: zip -qq -r PythonOpenBMCLAPI-${{ steps.get_version.outputs.VERSION }}.zip ./
-      - name: Compress tar.gz
-        uses: a7ul/tar-action@v1.1.0
-        id: compress
-        with:
-          command: c
-          files: |
-            ./
-          outPath: PythonOpenBMCLAPI-${{ steps.get_version.outputs.VERSION }}.tar.gz
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
         with:
-          tag_name: ${{github.ref}}
           release_name: Release ${{github.ref}}
           draft: false
           prerelease: false
-      - name: Upload ZIP Asset  
-        uses: actions/upload-release-asset@v1  
-        env:  
-          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}  
-        with:  
-          upload_url: ${{ steps.create_release.outputs.upload_url }}  
-          asset_path: ./PythonOpenBMCLAPI-${{ steps.get_version.outputs.VERSION }}.zip  
-          asset_name: PythonOpenBMCLAPI-${{ steps.get_version.outputs.VERSION }}.zip  
-          asset_content_type: application/zip  
-
-      - name: Upload TAR.GZ Asset  
-        uses: actions/upload-release-asset@v1  
-        env:  
-          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}  
-        with:  
-          upload_url: ${{ steps.create_release.outputs.upload_url }}  
-          asset_path: ./PythonOpenBMCLAPI-${{ steps.get_version.outputs.VERSION }}.tar.gz  
-          asset_name: PythonOpenBMCLAPI-${{ steps.get_version.outputs.VERSION }}.tar.gz  
-          asset_content_type: application/gzip  
   build:
     runs-on: ubuntu-latest
     steps:
