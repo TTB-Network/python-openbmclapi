@@ -13,6 +13,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: master
+      - name: Get version
+        id: get_version
+        run: echo ::set-output name=VERSION::${GITHUB_REF#refs/*/}
       - name: Write version
         run: echo "${GITHUB_REF#refs/*/}" > VERSION
       - name: Commit and push
@@ -25,7 +28,7 @@ jobs:
       - name: Compress zip 
         uses: montudor/action-zip@v1
         with:
-          args: zip -qq -r PythonOpenBMCLAPI-${GITHUB_REF#refs/*/}.zip ./
+          args: zip -qq -r PythonOpenBMCLAPI-${{ steps.get_version.outputs.VERSION }}.zip ./
       - name: Compress tar.gz
         uses: a7ul/tar-action@v1.1.0
         id: compress
@@ -34,7 +37,7 @@ jobs:
           cwd: ./temp
           files: |
             ./
-          outPath: PythonOpenBMCLAPI-${GITHUB_REF#refs/*/}.tar.gz
+          outPath: PythonOpenBMCLAPI-${{ steps.get_version.outputs.VERSION }}.tar.gz
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
