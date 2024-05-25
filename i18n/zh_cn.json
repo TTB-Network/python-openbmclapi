@@ -88,5 +88,6 @@
   "system.info.loading": "正在初始化系统信息统计……",
   "timings.info.finished": "任务已完成，耗时：$time。",
   "cluster.info.download.configuration": "下载配置策略：$type，下载源：$source，下载并发：$concurrency。",
-  "cert.error.failed.file": "无法从本地文件中加载证书"
+  "cert.error.failed.file": "无法从本地文件中加载证书",
+  "cluster.warn.webdav.file_hash": "文件哈希值不对应或获取失败，该文件哈希值为$file_hash"
 }
