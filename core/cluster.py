@@ -730,7 +730,7 @@ class WebDav(Storage):
                     h = get_hash(self.keepalive_file.hash)
                     h.update(content.getbuffer())
                     if h.hexdigest() != self.keepalive_file.hash:
-                        logger.tdebug("cluster.debug.webdav.", status=resp.status, url=resp.real_url, response=repr(content.getvalue())[2:-1])
+                        logger.tdebug("cluster.debug.webdav.response", status=resp.status, url=resp.real_url, response=repr(content.getvalue())[2:-1])
                         disable("file_hash", status=resp.status, url=resp.real_url, file_hash=h.hexdigest(), file_size=unit.format_bytes(len(content.getbuffer())), hash=self.keepalive_file.hash, hash_size=self.keepalive_file.size)
                         return
             if not self.disabled:
