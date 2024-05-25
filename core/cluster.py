@@ -704,10 +704,10 @@ class WebDav(Storage):
             if not self.disabled:
                 logger.twarn(
                     "cluster.warn.webdav." + reason,
+                    *args,
+                    **kwargs,
                     hostname=self.hostname, 
                     endpoint=self.endpoint
-                    *args,
-                    **kwargs
                 )
             storages.disable(self)
             self.fetch = False
@@ -729,7 +729,7 @@ class WebDav(Storage):
                     h = get_hash(self.keepalive_file.hash)
                     h.update(content.getbuffer())
                     if h.hexdigest() != self.keepalive_file.hash:
-                        disable("file_hash", hash=h.hexdigest())
+                        disable("file_hash", status=resp.status, url=resp.real_url, file_hash=h.hexdigest(), file_size=unit.format_bytes(len(content.getbuffer())), hash=self.keepalive_file.hash, hash_size=self.keepalive_file.size)
                         return
             if not self.disabled:
                 logger.tsuccess(
