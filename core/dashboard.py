@@ -1,7 +1,6 @@
 import asyncio
 from dataclasses import asdict, dataclass, is_dataclass
 import hashlib
-import platform
 import sys
 import time
 from typing import Any, Optional

@@ -2,27 +2,15 @@ import os
 import time
 
 import psutil
-import platform
 from core import logger, scheduler
 from core.utils import get_uptime, format_time
 from core.env import env
 import subprocess
 
-def get_connection():
-    if platform.system() == "Linux":
-        result = subprocess.run(['conntrack', '-C'], capture_output=True, text=True, check=True)
-        output = result.stdout
-        connection = int(output.split()[-1]) 
-        return connection
-    if platform.system() == "Windows":
-        result = subprocess.run(['netstat', '-n'], capture_output=True, text=True, check=True)
-        output = result.stdout
-        connection = len([line for line in output.splitlines() if "ESTABLISHED" in line])
-        return connection
 process: psutil.Process = psutil.Process(os.getpid())
 cpus: dict[float, float] = {}
 memories: dict[float, int] = {}
-connections: dict[float, get_connection] = {}
+connections: dict[float, list["psutil.pconn"]] = {}
 length: int = 0
 last_curs: list[float] = []
 
@@ -41,7 +29,7 @@ def _run():
     cur = get_uptime()
     cpus[cur] = process.cpu_percent(1)
     memories[cur] = process.memory_full_info().uss
-    connections[cur] = get_connection()
+    connections[cur] = process.connections()
     length += 1
     last_curs.append(cur)
 
@@ -60,7 +48,7 @@ def get_loads_detail():
     return {
         "cpu": {format_time(t + startup): v for t, v in get_filled(cpus.copy()).items()},
         "memory": {format_time(t + startup): v for t, v in get_filled(memories.copy()).items()},
-        "connections": {format_time(t + startup): v for t, v in get_filled_list(connections.copy()).items()},
+        "connections": {format_time(t + startup): len(v) for t, v in get_filled_list(connections.copy()).items()},
     }
 
 
@@ -90,7 +78,7 @@ def get_used_memory() -> int:
 
 
 def get_connections() -> int:
-    return get_connection()
+    return len(process.connections())
 
 
 def init():
