@@ -23,11 +23,19 @@ jobs:
           git commit -a -m ":sparkles: 更新 VERSION"
           git push
       - uses: montudor/action-zip@v1
+      - name: Compress zip 
         with:
           args: zip -qq PythonOpenBMCLAPI-${{github.ref}}.zip ./
-      - uses: edgarrc/action-7z@v1
+      - uses: actions/checkout@master
+      - name: Compress tar.gz
+        uses: a7ul/tar-action@v1.1.0
+        id: compress
         with:
-          args: 7z a -t7z -mx=9 PythonOpenBMCLAPI-${{github.ref}}.zip ./
+          command: c
+          cwd: ./test
+          files: |
+            ./toCompress
+          outPath: PythonOpenBMCLAPI-${{github.ref}}.tar.gz
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
@@ -36,6 +44,9 @@ jobs:
         with:
           tag_name: ${{github.ref}}
           release_name: Release ${{github.ref}}
+          file: |
+            - PythonOpenBMCLAPI-${{github.ref}}.zip
+            - PythonOpenBMCLAPI-${{github.ref}}.tar.gz
           draft: false
           prerelease: false
   build:
