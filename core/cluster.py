@@ -714,6 +714,15 @@ class WebDav(Storage):
                 )
             storages.disable(self)
             self.fetch = False
+        async def process_content(resp: aiohttp.ClientResponse) -> bool:
+            content = io.BytesIO(await resp.read())
+            h = get_hash(self.keepalive_file.hash)
+            h.update(content.getbuffer())
+            if h.hexdigest() != self.keepalive_file.hash:
+                logger.tdebug("cluster.debug.webdav.response", status=resp.status, url=resp.real_url, response=repr(content.getvalue())[2:-1])
+                disable("file_hash", status=resp.status, url=resp.real_url, file_hash=h.hexdigest(), file_size=unit.format_bytes(len(content.getbuffer())), hash=self.keepalive_file.hash, hash_size=unit.format_bytes(self.keepalive_file.size))
+                return False
+            return True
         try:
             hostname = self.hostname
             endpoint = self.endpoint
@@ -727,14 +736,18 @@ class WebDav(Storage):
             async with self.session_lock:
                 async with self.get_session.get(
                     self.hostname + self._file_endpoint(self.keepalive_file.hash[:2] + "/" + self.keepalive_file.hash),
+                    allow_redirects=False
                 ) as resp:
-                    content = io.BytesIO(await resp.read())
-                    h = get_hash(self.keepalive_file.hash)
-                    h.update(content.getbuffer())
-                    if h.hexdigest() != self.keepalive_file.hash:
-                        logger.tdebug("cluster.debug.webdav.response", status=resp.status, url=resp.real_url, response=repr(content.getvalue())[2:-1])
-                        disable("file_hash", status=resp.status, url=resp.real_url, file_hash=h.hexdigest(), file_size=unit.format_bytes(len(content.getbuffer())), hash=self.keepalive_file.hash, hash_size=self.keepalive_file.size)
-                        return
+                    if resp.status // 100 == 3:
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(
+                                resp.headers.get("Location")
+                            ) as resp:
+                                if not await process_content(resp):
+                                    return
+                    else:
+                        if not await process_content(resp):
+                            return
             if not self.disabled:
                 logger.tsuccess(
                     "cluster.success.webdav.keepalive",
