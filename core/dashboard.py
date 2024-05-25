@@ -14,7 +14,7 @@ from core import location, statistics, system, update, utils, web
 from core import cluster
 from core.api import StatsCache
 from core import scheduler
-
+import psutil
 from core.const import *
 from core.env import env
 
@@ -157,7 +157,7 @@ async def process(type: str, data: Any):
     if type == "system":
         return {
             "memory": system.get_used_memory(),
-            "connections": system.get_connections(),
+            "connections": get_connection(),
             "cpu": system.get_cpus(),
             "cache": (
                 asdict(get_cache_stats()) if cluster.cluster else StatsCache()
