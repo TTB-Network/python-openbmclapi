@@ -167,7 +167,6 @@ async def process(type: str, data: Any):
             "cur": update.VERSION,
             "latest": update.fetched_version,
             "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-            "os": platform.platform(),
         }
     if type == "pro_stats" or type == "geo_stats":
         day = 1
