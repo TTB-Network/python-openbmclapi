@@ -1,12 +1,14 @@
+import asyncio
 import importlib
 import inspect
 import os
 import traceback
 from types import ModuleType
-from typing import Any
+from typing import Any, Awaitable, Coroutine, Callable, Union
 from pathlib import Path
 from core.logger import logger
 from core.i18n import locale
+from . import events
 
 
 class Plugin:
@@ -65,6 +67,9 @@ def load_plugins():
                 load = file
         elif os.path.isfile(file_path):
             if file[0] != "_" and file.endswith(".py"):
+                with open(file_path, "r", encoding="utf-8") as r:
+                    if r.read(16) == "# do not load...":
+                        continue
                 load = file[:-3]
         if load:
             logger.debug("plugins.debug.loading", name=load)
@@ -90,3 +95,18 @@ def get_plugins():
 
 def get_enable_plugins():
     return [plugin for plugin in plugins if plugin._enable]
+
+
+def call_event(event: events.Event, callback: Callable[["events.Event"], Union[Awaitable[Any], Any]]) -> None:
+    def __callback_event(*args, **kwargs):
+        if inspect.iscoroutinefunction(callback):
+            return asyncio.gather(asyncio.create_task(callback(event)))
+        else:
+            return callback(event)
+    tasks = []
+    for priority, handlers in events.registry_handlers.items():
+        for handler in handlers:
+            tasks.append(asyncio.create_task(handler(event)))
+    asyncio.gather(*tasks).add_done_callback(
+        __callback_event
+    )
