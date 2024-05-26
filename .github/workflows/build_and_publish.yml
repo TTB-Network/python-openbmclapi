@@ -14,7 +14,9 @@ jobs:
         with:
           ref: master
       - name: Set env
-        run: echo "RELEASE_VERSION=$(<VERSION)" >> $GITHUB_ENV
+        run: |
+          echo "RELEASE_VERSION=$(<VERSION)" >> $GITHUB_ENV
+          echo "RELAESE_NAME='Release ${ env.RELEASE_VERSION }+${ github.sha:0:6 }'" >> $GITHUB_ENV
       - name: Push a new tag
         run: |
           git config --global user.name "github-actions[bot]"
@@ -28,7 +30,7 @@ jobs:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
         with:
           tag_name: ${{ env.RELEASE_VERSION }}
-          release_name: Release ${{ env.RELEASE_VERSION }}+${{ github.sha:0:6 }}
+          release_name: ${{ enc.RELEASE_NAME }}
           draft: false
           prerelease: false
   build:
