@@ -25,16 +25,11 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag "${{ env.RELEASE_VERSION }}"
           git push origin --tags
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+      - uses: ncipollo/release-action@v1
         with:
-          tag_name: ${{ env.RELEASE_VERSION }}
-          release_name: ${{ env.RELEASE_NAME }}
-          draft: false
-          prerelease: false
+          tag: ${{ env.RELEASE_VERSION }}
+          name: ${{ env.RELEASE_NAME }}
+          generateReleaseNotes: true
   build:
     runs-on: ubuntu-latest
     steps:
