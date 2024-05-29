@@ -1,6 +1,7 @@
 import asyncio
 from dataclasses import asdict, dataclass, is_dataclass
 import hashlib
+import json
 import sys
 import time
 from typing import Any, Optional
@@ -55,7 +56,7 @@ authentication_module: list[str] = [
 
 
 def deserialize(data: utils.DataInputStream):
-    match (data.readVarInt()):
+    """match (data.readVarInt()):
         case 0:
             return data.readString()
         case 1:
@@ -71,12 +72,20 @@ def deserialize(data: utils.DataInputStream):
                 deserialize(data): deserialize(data) for _ in range(data.readVarInt())
             }
         case 6:
-            return None
+            return None"""
+    return json.loads(data.readString())
 
 
 def serialize(data: Any):
     buf = utils.DataOutputStream()
-    if isinstance(data, str):
+    def _convert(data: list | tuple | set | dict | Any):
+        if isinstance(data, (list, tuple, set)):
+            return _convert(list(data))
+        elif is_dataclass(data):
+            return _convert(asdict(data))
+        elif isinstance(data, dict):
+            return {_convert(k): _convert(v) for k, v in data.items()}
+    """if isinstance(data, str):
         buf.writeVarInt(0)
         buf.writeString(data)
     elif isinstance(data, bool):
@@ -107,6 +116,9 @@ def serialize(data: Any):
         buf.write(serialize(asdict(data)).io.getvalue())
     elif data is None:
         buf.writeVarInt(6)
+    return buf"""
+    content = json.dumps(data)
+    buf.writeString(json.dumps(data))
     return buf
 
 
