@@ -81,9 +81,13 @@ class Client:
         return data
 
     async def readline(self, timeout: Optional[float] = timeout):
+        if self.is_closed():
+            return b""
         start_time = time.time()
         data = await asyncio.wait_for(self.reader.readline(), timeout=timeout)
         self.record_network(0, len(data))
+        if not data:
+            self.closed = True
         return self._record_after(start_time, data)
 
     async def readuntil(
@@ -98,6 +102,8 @@ class Client:
             self.reader.readuntil(separator=separator), timeout=timeout
         )
         self.record_network(0, len(data))
+        if not data:
+            self.closed = True
         return self._record_after(start_time, data)
 
     async def read(self, n: int = -1, timeout: Optional[float] = timeout):
@@ -106,6 +112,8 @@ class Client:
         start_time = time.time()
         data: bytes = await asyncio.wait_for(self.reader.read(n), timeout=timeout)
         self.record_network(0, len(data))
+        if not data:
+            self.closed = True
         return self._record_after(start_time, data)
 
     async def readexactly(self, n: int, timeout: Optional[float] = timeout):
@@ -114,6 +122,8 @@ class Client:
         start_time = time.time()
         data = await asyncio.wait_for(self.reader.readexactly(n), timeout=timeout)
         self.record_network(0, len(data))
+        if not data:
+            self.closed = True
         return self._record_after(start_time, data)
 
     def __aiter__(self):
@@ -180,7 +190,7 @@ class Client:
         return self.writer.close()
 
     def is_closed(self):
-        return self.closed or self.writer.is_closing()
+        return self.closed or self.writer.is_closing() or self.reader.at_eof() or self.reader.exception() is not None
 
     def set_log_network(self, handler):
         self.log_network = handler

@@ -910,9 +910,11 @@ class Response:
                 await client.drain()
             elif isinstance(content, Path):
                 with open(content, "rb") as r:
-                    await asyncio.get_event_loop().sendfile(
+                    sent = await asyncio.get_event_loop().sendfile(
                         client.writer.transport, r, start_bytes, length
                     )
+                    if sent != length:
+                        logger.debug(f"Warning: sendfile sent {sent}, length {length}")
             else:
                 cur_length: int = 0
                 bound: bool = False
