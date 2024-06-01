@@ -33,4 +33,6 @@ body:
       description: 任何其他的内容。
   - type: checkboxes
     attributes:
-      - label: 如果可以的话，我可以帮助或自行实现这个功能。
+      label: 如果……
+      options: 
+       - label: 如果可以的话，我可以帮助或自行实现这个功能。
