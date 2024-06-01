@@ -16,6 +16,8 @@ from core.const import (
 from core.utils import DataInputStream
 import pyzstd as zstd
 
+from functools import cache
+
 class FixedLocation:
     def __init__(self, filename: str) -> None:
         self.cache: dict[tuple[str|None, str|None, str|None, str|None], IPInfo] = {}
@@ -472,7 +474,6 @@ country_iso = {
     "肯尼亚": "KE",
     "蒙古": "MN",
 }
-cache: dict[str, IPInfo] = {}
 empty: IPInfo = IPInfo()
 
 ipaddress: XdbSearcher = XdbSearcher(
@@ -482,9 +483,8 @@ cn_level: str = (
     r"(省|市|自治区|壮族自治区|回族自治区|维吾尔自治区|藏族自治区|蒙古族自治区|林区)"
 )
 l = FixedLocation("assets/fixed_location.fxdb")
+@cache
 def query(ip: str) -> IPInfo:
-    if ip in cache:
-        return cache[ip]
     fixedip = l.lookup(ip)
     country = None
     province = None
@@ -500,5 +500,4 @@ def query(ip: str) -> IPInfo:
         country = country_iso.get(fixedip.country, fixedip.country)
         province = fixedip.province
     info = IPInfo(country or "LOCAL", re.sub(cn_level, "", province) if country == "CN" else "")
-    cache[ip] = info
     return info

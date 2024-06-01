@@ -55,78 +55,21 @@ authentication_module: list[str] = [
 ]
 
 
-def deserialize(data: utils.DataInputStream):
-    """match (data.readVarInt()):
-        case 0:
-            return data.readString()
-        case 1:
-            return data.readBoolean()
-        case 2:
-            return int(data.readString())
-        case 3:
-            return float(data.readString())
-        case 4:
-            return [deserialize(data) for _ in range(data.readVarInt())]
-        case 5:
-            return {
-                deserialize(data): deserialize(data) for _ in range(data.readVarInt())
-            }
-        case 6:
-            return None"""
-    return json.loads(data.readString())
-
-
-def serialize(data: Any):
-    buf = utils.DataOutputStream()
-    def _convert(data: list | tuple | set | dict | Any):
-        if isinstance(data, (list, tuple, set)):
-            return _convert(list(data))
-        elif is_dataclass(data):
-            return _convert(asdict(data))
-        elif isinstance(data, dict):
-            return {_convert(k): _convert(v) for k, v in data.items()}
-    """if isinstance(data, str):
-        buf.writeVarInt(0)
-        buf.writeString(data)
-    elif isinstance(data, bool):
-        buf.writeVarInt(1)
-        buf.writeBoolean(data)
-    elif isinstance(data, float):
-        buf.writeVarInt(2)
-        buf.writeString(str(data))
-    elif isinstance(data, int):
-        buf.writeVarInt(3)
-        buf.writeString(str(data))
-    elif isinstance(data, (list, set, tuple)):
-        buf.writeVarInt(4)
-        buf.writeVarInt(len(data))
-        buf.write(b"".join((serialize(v).io.getvalue() for v in data)))
-    elif isinstance(data, dict):
-        buf.writeVarInt(5)
-        buf.writeVarInt(len(data.keys()))
-        buf.write(
-            b"".join(
-                (
-                    serialize(k).io.getvalue() + serialize(v).io.getvalue()
-                    for k, v in data.items()
-                )
-            )
-        )
+def parse_json(data: tuple | set | dict | Any):
+    if isinstance(data, (list, tuple, set)):
+        return [parse_json(data) for data in data]
     elif is_dataclass(data):
-        buf.write(serialize(asdict(data)).io.getvalue())
-    elif data is None:
-        buf.writeVarInt(6)
-    return buf"""
-    content = json.dumps(data)
-    buf.writeString(json.dumps(data))
-    return buf
+        return parse_json(asdict(data))
+    elif isinstance(data, dict):
+        return {parse_json(k): parse_json(v) for k, v in data.items()}
+    return data
 
 
 async def process(type: str, data: Any):
     if type == "uptime":
         return float(env["STARTUP"] or 0)
-    if type == "dashboard":
-        return {"hourly": statistics.hourly(), "days": statistics.daily()}
+    if type == "statistics":
+        return statistics.get_storage_stats(data)
     if type == "qps":
         c = web.statistics.get_time()
         c -= c % 5
@@ -140,6 +83,8 @@ async def process(type: str, data: Any):
     if type == "status":
         resp = {
             "key": last_status,
+            "uptime": float(env["STARTUP"] or 0),
+            "timestamp": data
         }
         if cur_tqdm is not None and cur_tqdm.object is not None:
             if cur_tqdm.object is None or cur_tqdm.object.disable:
@@ -261,17 +206,12 @@ async def set_status(text):
 
 
 async def trigger(type: str, data: Any = None):
-    output = to_bytes(0, type, await process(type, data))
     for ws in websockets:
-        await ws.send(output.io.getvalue())
-
-
-def to_bytes(key: int, type: str, data: Any):
-    output = utils.DataOutputStream()
-    output.writeVarInt(key)
-    output.writeString(type)
-    output.write(serialize(data).io.getvalue())
-    return output
+        await ws.send({
+            'id': 0,
+            'namespace': type,
+            'data': await process(type, data)
+        })
 
 
 async def generate_token(request: "web.Request") -> Token:
