@@ -1504,43 +1504,28 @@ async def init():
 
     @app.post("/pages/{name}/{sub}")
     @app.post("/pages/{name}")
-    async def _(request: web.Request, namespace: str, key: int = 0):
+    async def _(request: web.Request, namespace: str):
         data = await dashboard.process(
-            namespace, base64.b64decode(await request.read_all())
+            namespace, await request.json()
         )
-        if "binary" in await request.get_headers("X-Accept-Encoding", ""):
-            return web.Response(
-                dashboard.to_bytes(key, namespace, data).io,
-                headers={"X-Encoding": "binary"},
-            )
-        else:
-            return web.Response({"data": data}, headers={"X-Encoding": "json"})
+        return web.Response({"data": data})
 
     @app.websocket("/pages/{name}/{sub}")
     @app.websocket("/pages/{name}")
     async def _(request: web.Request, ws: web.WebSocket):
         dashboard.websockets.append(ws)
-        auth_cookie = (await request.get_cookies()).get("auth") or None
-        auth = dashboard.token_isvaild(auth_cookie.value if auth_cookie else None)
-        if not auth:
-            await ws.send(dashboard.to_bytes(0, "auth", None).io.getbuffer())
-        else:
-            await ws.send(
-                dashboard.to_bytes(0, "auth", DASHBOARD_USERNAME).io.getbuffer()
-            )
         async for raw_data in ws:
-            if isinstance(raw_data, str):
-                continue
-            if isinstance(raw_data, io.BytesIO):
-                raw_data = raw_data.getvalue()
-            input = utils.DataInputStream(raw_data)
-            key = input.readVarInt()
-            type = input.readString()
-            data = dashboard.deserialize(input)
+            data: dict[str, Any] = json.loads(raw_data)
             await ws.send(
-                dashboard.to_bytes(
-                    key, type, await dashboard.process(type, data)
-                ).io.getbuffer()
+                {
+                    'id': data.get('id', -1),
+                    'namespace': data['namespace'],
+                    'data': dashboard.parse_json(
+                        await dashboard.process(
+                            data['namespace'], data.get('data')
+                        )
+                    )
+                }
             )
         dashboard.websockets.remove(ws)
 

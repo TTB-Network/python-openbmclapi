@@ -1,6 +1,7 @@
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from enum import Enum
+import hashlib
 from pathlib import Path
 from queue import Queue
 import sqlite3
@@ -14,6 +15,8 @@ from core import logger, scheduler, unit, utils
 from core import location
 from core.api import File, Storage
 from core.location import IPInfo
+
+from functools import cache
 
 class UserAgent(Enum):
     OPENBMCLAPI_CLUSTER = "openbmclapi-cluster"
@@ -129,6 +132,9 @@ storages: dict[str, int] = {}
 lock: utils.WaitLock = utils.WaitLock()
 running: int = 1
 data_storage: defaultdict[int, list[DataStorage]] = defaultdict(list)
+cache_ua: defaultdict[UserAgent, int] = defaultdict(int)
+cache_address: defaultdict[str, int] = defaultdict(int) 
+fetch_globals: bool = False
 g_ua: dict[str, "UserAgent"] = {}
 
 for _ in UserAgent:
@@ -187,7 +193,7 @@ def get_data_storage():
 
 
 def hit(storage: Storage, file: File, length: int, ip: str, ua: str, status: Status):
-    global storages, last_hour
+    global storages, last_hour, cache_ua, cache_address, fetch_globals
     lock.acquire()
     hour = get_hour(0)
     if storage is not None:
@@ -221,35 +227,41 @@ def hit(storage: Storage, file: File, length: int, ip: str, ua: str, status: Sta
         cur_storage.sync_database = False
     if last_hour != hour and not exists("select addresses, useragents from access_globals where hour = ?", hour):
         add_execute("insert into access_globals(hour, addresses, useragents) values (?, ?, ?)", hour, b'', b'')
-    data_address, data_useragent = query("select addresses, useragents from access_globals where hour = ?", hour) or [b'', b'']
-    address: defaultdict[str, int] = defaultdict(int)
-    useragent: defaultdict[UserAgent, int] = defaultdict(int)
-    if data_address:
-        input = utils.DataInputStream(zstd.decompress(data_address))
-        for _ in range(input.readVarInt()):
-            addr, c = input.readString(), input.readVarInt()
-            address[addr] += c
-    if data_useragent:
-        input = utils.DataInputStream(zstd.decompress(data_useragent))
-        for _ in range(input.readVarInt()):
-            u, c = input.readString(), input.readVarInt()
-            useragent[UserAgent.get_ua(u)] += c
-    address[ip] += 1
+        save_globals(hour)
+        cache_address.clear()
+        cache_ua.clear()
+    if fetch_globals:
+        data_address, data_useragent = query("select addresses, useragents from access_globals where hour = ?", hour) or [b'', b'']
+        if data_address:
+            input = utils.DataInputStream(zstd.decompress(data_address))
+            for _ in range(input.readVarInt()):
+                addr, c = input.readString(), input.readVarInt()
+                cache_address[addr] += c
+        if data_useragent:
+            input = utils.DataInputStream(zstd.decompress(data_useragent))
+            for _ in range(input.readVarInt()):
+                u, c = input.readString(), input.readVarInt()
+                cache_ua[UserAgent.get_ua(u)] += c
+    cache_address[ip] += 1
     for ua in UserAgent.parse_ua(ua):
-        useragent[ua] += 1
-    
+        cache_ua[ua] += 1
+    last_hour = hour
+
+def save_globals(hour: int):
+    global cache_address, cache_ua
     output_address = utils.DataOutputStream()
-    output_address.writeVarInt(len(address))
-    for key, value in address.items():
+    output_address.writeVarInt(len(cache_address))
+    for key, value in cache_address.items():
         output_address.writeString(key)
         output_address.writeVarInt(value)
 
     output_useragent = utils.DataOutputStream()
-    output_useragent.writeVarInt(len(useragent))
-    for key, value in useragent.items():
+    output_useragent.writeVarInt(len(cache_ua))
+    for key, value in cache_ua.items():
         output_useragent.writeString(key.value)
         output_useragent.writeVarInt(value)
     add_execute("update access_globals set addresses = ?, useragents = ? where hour = ?", zstd.compress(output_address.io.getbuffer()), zstd.compress(output_useragent.io.getbuffer()), hour)
+
 
 
 def get_sync_storages():
@@ -293,9 +305,10 @@ def sync(storages: list[SyncStorage]):
 
 
 async def task():
-    global running
+    global running, last_hour
     while running:
         await lock.wait()
+        save_globals(last_hour or get_hour(0))
         while not queues.empty() and running:
             cmd, params = queues.get()
             db.execute(cmd, params)
@@ -306,6 +319,7 @@ async def task():
 def exit():
     global running
     running = 0
+    save_globals(last_hour or get_hour(0))
     logger.info(f"正在保存 [{unit.format_number(queues.qsize())}] 统计中")
     while not queues.empty():
         cmd, params = queues.get()
@@ -329,12 +343,11 @@ def get_query_hour_tohour(hour):
     return int((t - ((t + get_utc_offset() * 3600) % 3600) - 3600 * hour) / 3600)
 
 
-def hourly():
-    data = []
+def hourly(storage_name: str):
     t = get_query_day_tohour(0)
     status = (status.value for status in Status)
     hours: defaultdict[int, StatsStorage] = defaultdict(lambda: StatsStorage())
-    for q in queryAllData(f"select hour, hit, bytes, cache_hit, cache_bytes, sync_hit, sync_bytes, {', '.join(status)} from access_storage where hour >= ?", t):
+    for q in queryAllData(f"select hour, hit, bytes, cache_hit, cache_bytes, sync_hit, sync_bytes, {', '.join(status)} from access_storage where hour >= ? and name = ?", t, storage_name):
         hour = int(q[0] - t)
         storage             = hours[hour]
         storage.hits        += q[1]
@@ -349,23 +362,15 @@ def hourly():
         storage.error       += q[10]
         storage.partial     += q[11]
         storage.forbidden   += q[12]
-    for hour in sorted(hours.keys()):
-        data.append(
-            {
-                "_hour": hour,
-                **asdict(hours[hour])
-            }
-        )
-    return data
+    return hours
 
 
-def daily():
-    data = []
+def daily(storage_name: str):
     t = get_query_day_tohour(30)
     to_t = get_query_day_tohour(-1)
     status = (status.value for status in Status)
     days: defaultdict[int, StatsStorage] = defaultdict(lambda: StatsStorage())
-    for q in queryAllData(f"select hour, hit, bytes, cache_hit, cache_bytes, sync_hit, sync_bytes, {', '.join(status)} from access_storage where hour >= ? and hour <= ?", t, to_t):
+    for q in queryAllData(f"select hour, hit, bytes, cache_hit, cache_bytes, sync_hit, sync_bytes, {', '.join(status)} from access_storage where hour >= ? and hour <= ? and name = ?", t, to_t, storage_name):
         day = (q[0] + get_utc_offset()) // 24
         storage             = days[day]
         storage.hits        += q[1]
@@ -380,14 +385,42 @@ def daily():
         storage.error       += q[10]
         storage.partial     += q[11]
         storage.forbidden   += q[12]
-    for day in sorted(days.keys()):
-        data.append(
-            {
-                "_day": utils.format_date(day * 86400),
-                **asdict(days[day])
-            }
-        )
-    return data
+    return days
+
+
+def get_storage_stats(storage_name: Optional[str] = None):
+    days: defaultdict[int, StatsStorage] = defaultdict(lambda: StatsStorage())
+    hours: defaultdict[int, StatsStorage] = defaultdict(lambda: StatsStorage())
+    fields: tuple = tuple(asdict(StatsStorage()).keys())
+    queries = (
+        (days, daily),
+        (hours, hourly)
+    )
+    storages = [q[0] for q in queryAllData("select distinct name from access_storage")]
+    def process_data(storage_name):
+        for query_data in queries:
+            storage, func = query_data
+            queried_data = func(storage_name)
+            for timestamp in list(queried_data.keys()):
+                for field in fields:
+                    setattr(storage[timestamp], field, getattr(storage[timestamp], field) + getattr(queried_data[timestamp], field))
+    if storage_name is None:
+        for storage_name in storages:
+            process_data(storage_name)
+    else:
+        process_data(storage_name)
+    return {
+        "hourly": [{
+            "_hour": hour,
+            **asdict(hours[hour])
+        } for hour in sorted(hours.keys())],
+        "daily": [{
+            "_day": utils.format_date(day * 86400),
+            **asdict(days[day])
+        } for day in sorted(days.keys())],
+        "storages": storages
+    }
+
 
 
 def geo_pro(day: int):
@@ -399,21 +432,25 @@ def geo_pro(day: int):
     d_useragent: defaultdict[UserAgent, int] = defaultdict(int)
     stats_t = StatsTiming()
     stats_t.start("globals")
+    @cache
+    def process_address(data: bytes):
+        input = utils.DataInputStream(zstd.decompress(data))
+        return {input.readString(): input.readVarInt() for _ in range(input.readVarInt())}
+    @cache
+    def process_ua(data: bytes):
+        input = utils.DataInputStream(zstd.decompress(data))
+        return {UserAgent.get_ua(input.readString()): input.readVarInt() for _ in range(input.readVarInt())}
     for q in queryAllData(f"select hour, addresses, useragents from access_globals where hour >= ?", t):
         hour = (q[0] + get_utc_offset()) if not format_day else (q[0] + get_utc_offset()) // 24
         data_address = q[1]
         data_useragent = q[2]
         if data_address:
-            input = utils.DataInputStream(zstd.decompress(data_address))
-            for _ in range(input.readVarInt()):
-                addr, c = input.readString(), input.readVarInt()
+            for addr, c in process_address(data_address).items():
                 d_address[hour][addr] += c
                 d_ip.add(addr)
         if data_useragent:
-            input = utils.DataInputStream(zstd.decompress(data_useragent))
-            for _ in range(input.readVarInt()):
-                u, c = input.readString(), input.readVarInt()
-                d_useragent[UserAgent.get_ua(u)] += c
+            for u, c in process_ua(data_useragent).items():
+                d_useragent[u] += c
     stats_t.start("location", "globals")
     for addr in map(lambda x: x.items(), d_address.values()):
         for address, count in addr:
