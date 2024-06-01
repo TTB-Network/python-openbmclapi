@@ -1,0 +1,10 @@
+{
+  types: {
+    feat: { title: '🚀 新增功能' },
+    fix: { title: '🐞 漏洞修复' },
+    perf: { title: '🏎 性能' }
+  },
+  titles: {
+    breakingChanges: '🚨 重大更改'
+  }
+}
