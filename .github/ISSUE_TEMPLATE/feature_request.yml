@@ -1,0 +1,36 @@
+name: :sparkles: 功能请求
+description: 为 python-openbmclapi 提出新的功能。
+labels: 改进
+assignees: SilianZ, tianxiu2b2t, unify-z
+body:
+  - type: markdown
+    attributes: 
+      value: |
+        你是一位 python-openbmclapi 的使用者，但是有些功能的缺失使你困扰，你打算提交一个功能请求。
+  
+  - type: checkboxes
+    attributes:
+      label: 在开始之前……
+      description: 请确认你已做好以下准备。
+      options:
+        - label: 我已在 [Issue](https://github.com/TTB-Network/python-openbmclapi/issues) 中搜索过我的建议，确定没有人提出过此建议。
+          required: true
+  - type: textarea
+    attributes:
+      label: 建议描述
+      description: 请描述你的建议。
+      placeholder: 使用 QQ 远程控制 python-openbmclapi 的行为。
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 实现方法
+      description: 你认为可以实现的方法。
+      placeholder: 使用 aiohttp 对接 nonebot。
+  - type: textarea
+    attributes:
+      label: 备注
+      description: 任何其他的内容。
+  - type: checkboxes
+    attributes:
+      - label: 如果可以的话，我可以帮助或自行实现这个功能。
