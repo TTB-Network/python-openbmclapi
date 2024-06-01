@@ -15,21 +15,19 @@ jobs:
           ref: master
       - name: Set env
         run: |
-          echo "SHORT_SHA=${GITHUB_SHA:0:6}" >> $GITHUB_ENV
           echo "RELEASE_VERSION=$(<VERSION)" >> $GITHUB_ENV
-      - name: Set release name
-        run: echo "RELEASE_NAME=Release ${{ env.RELEASE_VERSION }}+${{ env.SHORT_SHA }}" >> $GITHUB_ENV
       - name: Push a new tag
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag "${{ env.RELEASE_VERSION }}"
           git push origin --tags
-      - uses: ncipollo/release-action@v1
+      - uses: actions/setup-node@v3
         with:
-          tag: ${{ env.RELEASE_VERSION }}
-          name: ${{ env.RELEASE_NAME }}
-          generateReleaseNotes: true
+          node-version: 16.x
+      - run: npx changelogithub
+        env:
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
   build:
     runs-on: ubuntu-latest
     steps:
