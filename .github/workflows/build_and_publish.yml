@@ -25,7 +25,8 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: 16.x
-      - run: npx changelogithub
+      - name: Create release
+        run: npx changelogithub-chinese
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
   build:
