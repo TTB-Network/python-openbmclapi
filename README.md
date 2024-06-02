@@ -33,7 +33,9 @@
 
 # 贡献
 
-如果你有能力，你可以向我们的仓库提交 Pull Request。
+如果你有能力，你可以向我们的仓库提交 Pull Request 或 Issue。
+
+在贡献之前，请先阅读我们的[贡献准则](./CONTRIBUTING.md)。
 
 # 鸣谢
 
