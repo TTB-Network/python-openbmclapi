@@ -931,7 +931,6 @@ class Response:
                     if bound:
                         break
         if (self._headers.get("Connection") or "keep-alive").lower() == "closed":
-            print("a")
             client.close()
 
 
