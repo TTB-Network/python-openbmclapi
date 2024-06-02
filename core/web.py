@@ -394,25 +394,28 @@ class WebSocket:
         await self.conn.drain()
         self.keepalive_thread.cancel()
         self.closed = True
-        await self.conn.writer.wait_closed()
+        try:
+            await asyncio.wait_for(self.conn.writer.wait_closed(), TIMEOUT)
+        except:
+            ...
 
     async def _read_frame(self):
         if self.is_closed():
             return None
         try:
-            head1, head2 = struct.unpack("!BB", await self.conn.readexactly(2))
+            head1, head2 = struct.unpack("!BB", await self.conn.readexactly(2, TIMEOUT))
             fin = bool(head1 & 0b10000000)
             mask = bool((head1 & 0x80) >> 7)
             opcode = head1 & 0b00001111
             length = head2 & 0b01111111
             mask_bits = b""
             if length == 126:
-                (length,) = struct.unpack("!H", await self.conn.readexactly(2))
+                (length,) = struct.unpack("!H", await self.conn.readexactly(2, TIMEOUT))
             elif length == 127:
-                (length,) = struct.unpack("!Q", await self.conn.readexactly(2))
+                (length,) = struct.unpack("!Q", await self.conn.readexactly(2, TIMEOUT))
             if mask:
-                mask_bits = await self.conn.readexactly(4)
-            data = await self.conn.readexactly(length)
+                mask_bits = await self.conn.readexactly(4, TIMEOUT)
+            data = await self.conn.readexactly(length, TIMEOUT)
             content = io.BytesIO()
             if (mask and mask_bits is None) or (
                 mask and mask_bits and len(mask_bits) != 4
@@ -928,6 +931,7 @@ class Response:
                     if bound:
                         break
         if (self._headers.get("Connection") or "keep-alive").lower() == "closed":
+            print("a")
             client.close()
 
 

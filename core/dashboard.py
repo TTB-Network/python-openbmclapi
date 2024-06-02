@@ -66,8 +66,6 @@ def parse_json(data: tuple | set | dict | Any):
 
 
 async def process(type: str, data: Any):
-    if type == "uptime":
-        return float(env["STARTUP"] or 0)
     if type == "statistics":
         return statistics.get_storage_stats(data)
     if type == "qps":
@@ -84,7 +82,11 @@ async def process(type: str, data: Any):
         resp = {
             "key": last_status,
             "uptime": float(env["STARTUP"] or 0),
-            "timestamp": data
+            "timestamp": data,
+            "time": {
+                "current": time.time(),
+                "offset_utc": -(time.timezone / 3600)
+            }
         }
         if cur_tqdm is not None and cur_tqdm.object is not None:
             if cur_tqdm.object is None or cur_tqdm.object.disable:
