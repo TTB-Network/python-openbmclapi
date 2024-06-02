@@ -38,7 +38,7 @@
 
 ## 监督
 
-辱骂、骚扰或其他不可接受的行为可通过 [插入联系方式] 向负责监督的社区领袖报告。
+辱骂、骚扰或其他不可接受的行为可通过 [administrator@ttb-network.top](mailto://administrator@ttb-network.top) 向负责监督的社区领袖报告。
 所有投诉都将得到及时和公平的审查和调查。
 
 所有社区领袖都有义务尊重任何事件报告者的隐私和安全。
@@ -79,3 +79,9 @@
 
 有关本行为准则的常见问题的答案，参见 [https://www.contributor-covenant.org/faq][FAQ]。
 其他语言翻译参见 [https://www.contributor-covenant.org/translations][translations]。
+
+[homepage]: https://www.contributor-covenant.org
+[v2.1]: https://www.contributor-covenant.org/version/2/1/code_of_conduct.html
+[Mozilla CoC]: https://github.com/mozilla/diversity
+[FAQ]: https://www.contributor-covenant.org/faq
+[translations]: https://www.contributor-covenant.org/translations
