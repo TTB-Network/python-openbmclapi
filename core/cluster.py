@@ -324,7 +324,7 @@ class FileDownloader:
             return
         with tqdm(
             desc=locale.t("cluster.tqdm.desc.download"),
-            unit="b",
+            unit="B",
             unit_divisor=1024,
             total=sum((file.size for file in miss)),
             unit_scale=True,
