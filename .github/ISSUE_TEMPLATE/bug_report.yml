@@ -37,10 +37,22 @@ body:
       placeholder: |
         Python 版本：3.12.3。
         运行系统：Windows 10。
+        分片大小：30G。
+  - type: dropdown
+    attributes:
+      label: 节点类型
+      options:
+        - 全量
+        - 分片
+      default: 0
   - type: textarea
     attributes:
       label: 运行日志或截图
-      description: “在没有错误日志的情况下诊断任何问题无异于闭眼开车。” —— Apache 文档《Getting Started》
+      description: |
+        “在没有错误日志的情况下诊断任何问题无异于闭眼开车。” —— Apache 文档《Getting Started》
+      placeholder: |
+        你可以上传错误日志文件，亦可以在这里粘贴你的错误日志信息。
+      render: shell
   - type: textarea
     attributes:
       label: 备注
