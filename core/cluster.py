@@ -15,7 +15,7 @@ import time
 import traceback
 import aiofiles
 import aiohttp
-from typing import Any, Optional, Type
+from typing import Any, Coroutine, Optional, Type
 import aiohttp.client_exceptions
 import socketio
 import socketio.exceptions
@@ -140,6 +140,7 @@ class FileDownloader:
         self.queues: asyncio.Queue[BMCLAPIFile] = asyncio.Queue()
         self.failed_files: defaultdict[BMCLAPIFile, int] = defaultdict(int)
         self.last_modified: int = 0
+        self.check_sem: asyncio.Semaphore = asyncio.Semaphore(CHECK_FILE_LIMIT)
 
     async def get_files(self) -> list[BMCLAPIFile]:
         async with aiohttp.ClientSession(
@@ -349,6 +350,7 @@ class FileCheck:
             self.check_type = FileCheckType.SIZE
         elif FILECHECK == "hash":
             self.check_type = FileCheckType.HASH
+        self.check_limit = downloader.check_sem
         self.files = []
         self.pbar: Optional[tqdm] = None
         self.check_files_timer: Optional[int] = None
@@ -557,6 +559,15 @@ class FileCheck:
             and await storage.get_hash(file.hash) == file.hash
         )
 
+    async def _check_missing_files(self, files: list[BMCLAPIFile], storage: Storage, handler: Coroutine[Any, Any, bool]) -> list[BMCLAPIFile]:
+        miss = []
+        for file in files:
+            if not await handler(file, storage):
+                miss.append(file)
+            self.pbar.update(1)
+            await asyncio.sleep(0)
+        return miss
+
     async def check_missing_files(self, storage: Storage):
         if not self.pbar:
             raise
@@ -570,11 +581,8 @@ class FileCheck:
             handler = self._hash
         if handler is None:
             raise KeyError(f"HandlerNotFound: {self.check_type}")
-        for file in self.files:
-            if not await handler(file, storage):
-                miss.append(file)
-            self.pbar.update(1)
-            await asyncio.sleep(0)
+        for files in await asyncio.gather(*[asyncio.create_task(self._check_missing_files(self.files[i:i + CHECK_FILE_STEP], storage, handler)) for i in range(0, len(self.files), CHECK_FILE_STEP)]):
+            miss.extend(files)
         return miss
 
 
