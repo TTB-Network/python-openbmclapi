@@ -597,12 +597,11 @@ class Cluster:
         @app.get("/measure/{size}")
         async def _(config: web.ResponseConfiguration, size: int = 1, s: str = "", e: str = ""):
             if not check_sign(f"/measure/{size}", s, e):
-                return web.Response(status_code=401)
+                yield web.Response(status_code=401)
                 return
             config.length = 1024 * 1024 * size
-            #for _ in range(size):
-            #    yield b'\x00' * 1024 * 1024
-            return web.RedirectResponse("https://node-36-156-121-26.speedtest.cn:51090/download?size=10485760&r=0.0917991197210346")
+            for _ in range(size):
+                yield b'\x00' * 1024 * 1024
         def empty_file(hash: str) -> File:
             return File(
                 hash=hash,
