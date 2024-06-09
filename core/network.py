@@ -106,6 +106,7 @@ ssl_server: Optional[asyncio.Server] = None
 server: Optional[asyncio.Server] = None
 proxy: Proxy = Proxy()
 check_port_key = os.urandom(8)
+stopped: bool = False
 
 async def _handle_ssl(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     return await _handle_process(
@@ -162,6 +163,8 @@ async def _handle_process(client: Client, ssl: bool = False):
 
 async def check_ports():
     global ssl_server, server, client_side_ssl, check_port_key
+    if "EXIT" in env:
+        return
     try:
         ports: list[tuple[asyncio.Server, ssl.SSLContext | None]] = []
         for service in (
@@ -196,6 +199,8 @@ async def check_ports():
                 client.write(check_port_key)
                 await client.drain()
                 key = await client.read(len(check_port_key), 5)
+            except asyncio.CancelledError:
+                return
             except:
                 logger.twarn(
                     "core.warn.port_closed",
@@ -205,15 +210,17 @@ async def check_ports():
                 closed = True
         if closed:
             restart()
-    except:
-        ...
+    except asyncio.CancelledError:
+        return
 
 async def start():
-    global server, ssl_server
+    global server, ssl_server, stopped
     if not CERTIFICATE.empty():
         load_cert(CERTIFICATE.cert, CERTIFICATE.path)
-    while "EXIT" not in env:
+    while not stopped:
         close()
+        if stopped:
+            break
         try:
             server = await asyncio.start_server(_handle, port=PORT)
             if (cert := get_loaded()):
@@ -235,8 +242,8 @@ async def start():
                     await asyncio.gather(server.serve_forever())
         except asyncio.CancelledError:
             close()
-            if "EXIT" in env:
-                return
+            if stopped:
+                break
         except:
             close()
             logger.error(traceback.format_exc())
@@ -254,3 +261,8 @@ def close():
         server.close()
     if ssl_server is not None:
         ssl_server.close()
+
+def exit():
+    global stopped
+    stopped = True
+    close()

@@ -3,7 +3,7 @@ import sys
 import time
 from .env import env as env
 import atexit
-from .logger import logger
+from .logger import logger, socketio_logger
 from .scheduler import init as scheduler_init
 from .scheduler import exit as scheduler_exit
 from .utils import WaitLock
@@ -28,13 +28,13 @@ def init():
         if wait_exit.locked:
             wait_exit.release()
 
-
 async def async_init():
     # first init
     await scheduler_init()
     # load modules
     from .network import init as network_init
-    from .network import close as network_exit
+    from .network import exit as network_exit
+    from .database import init as database_init
     from .cluster import init as cluster_init
     from .cluster import exit as cluster_exit
     from .statistics import init as stats_init
@@ -43,6 +43,7 @@ async def async_init():
     from .system import init as system_init
     import plugins 
 
+    database_init()
     update_init()
     scheduler.delay(network_init)
     stats_init()
@@ -56,12 +57,12 @@ async def async_init():
 
     await wait_exit.wait()
     env["EXIT"] = True
-    network_exit()
     await cluster_exit()
     for plugin in plugins.get_enable_plugins():
         await plugin.disable()
-    scheduler_exit()
+    network_exit()
     stats_exit()
+    scheduler_exit()
 
 
 def exit():

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 import gzip
 import os
 from pathlib import Path
@@ -9,6 +10,8 @@ import zlib
 import pyzstd
 from core.config import Config
 
+class DataBaseType(Enum):
+    SQLITE = "sqlite"
 VERSION = ""
 version_path = Path("VERSION")
 if version_path.exists():
@@ -17,11 +20,15 @@ if version_path.exists():
         f.close()
 else:
     VERSION = "Unknown"
+DATABASETYPE: DataBaseType = DataBaseType.SQLITE
 CACHE_BUFFER_COMPRESSION_MIN_LENGTH: int = 64
 DEBUG: bool = Config.get("advanced.debug")
 ROOT: str = os.getcwd()
 API_VERSION: str = "1.10.9"
 USER_AGENT: str = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
+HEADERS = {
+    "User-Agent": USER_AGENT
+}
 BASE_URL: str = Config.get("advanced.url", "https://openbmclapi.bangbang93.com/")
 BD_URL: str = BASE_URL.replace("openbmclapi", "bd")
 CLUSTER_ID: str = Config.get("cluster.id")
@@ -157,7 +164,7 @@ if Config.get("storages") is not None:
         storage: dict = Config.get(f"storages.{name}")
         STORAGES.append(
             StorageParse(
-                name, storage["type"], storage["path"], storage.get("width", 0), storage
+                name, storage["type"], storage["path"], int(storage.get("width", 0)), storage
             )
         )
 

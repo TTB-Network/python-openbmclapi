@@ -5,6 +5,7 @@ from core.config import Config
 from core.i18n import locale
 
 basic_logger_format = "<green>[{time:YYYY-MM-DD HH:mm:ss}]</green> <level>[{level}] <yellow>[{name}:{function}:{line}]</yellow>: {message}</level>"
+socketio_logger_format = "<green>[{time:YYYY-MM-DD HH:mm:ss}]</green> [SocketIO] <level>[{level}] <yellow>[{name}:{function}:{line}]</yellow>: {message}</level>"
 debug_mode = Config.get("advanced.debug")
 
 
@@ -41,6 +42,9 @@ class LoggingLogger:
             colorize=True,
         )
 
+    def raw_log(self, level, message: str, *values):
+        self.log.log(level, message % values)
+
     def _log_with_args(self, level, *args, **kwargs):
         message = _log(*args) if args else ""
         self.log.log(level, message, **kwargs)
@@ -55,6 +59,9 @@ class LoggingLogger:
         self._log_with_args("DEBUG", *args, **kwargs)
 
     def warn(self, *args, **kwargs):
+        self._log_with_args("WARNING", *args, **kwargs)
+    
+    def warning(self, *args, **kwargs):
         self._log_with_args("WARNING", *args, **kwargs)
 
     def success(self, *args, **kwargs):
@@ -88,5 +95,18 @@ class LoggingLogger:
     def depth(self, depth):
         return LoggingLogger(depth)
 
-
 logger = LoggingLogger()
+
+class SocketIOLogger:
+    def __init__(self):
+        self.log = logger
+    def info(self, msg: str, *values):
+        return self.log.raw_log("DEBUG", msg, *values)
+    def error(self, msg: str, *values):
+        return self.log.raw_log("DEBUG", msg, *values)
+    def warning(self, msg: str, *values):
+        return self.log.raw_log("DEBUG", msg, *values)
+    def debug(self, msg: str, *values):
+        return self.log.raw_log("DEBUG", msg, *values)
+
+socketio_logger = SocketIOLogger()

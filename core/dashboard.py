@@ -118,7 +118,7 @@ async def process(type: str, data: Any):
             "connections": system.get_connections(),
             "cpu": system.get_cpus(),
             "cache": (
-                asdict(get_cache_stats()) if cluster.cluster else StatsCache()
+                asdict(get_cache_stats() if cluster.cluster else StatsCache())
             ),
         }
     if type == "version":
@@ -155,13 +155,7 @@ async def process(type: str, data: Any):
 
 
 def get_cache_stats() -> StatsCache:
-    stat = StatsCache()
-    for storage in cluster.storages.get_storages():
-        t = storage.get_cache_stats()
-        stat.total += t.total
-        stat.bytes += t.bytes
-        stat.data_bytes += t.data_bytes
-    return stat
+    return cluster.cluster.storage_cache_stats()
 
 
 async def set_status_by_tqdm(text: str, pbar: tqdm):

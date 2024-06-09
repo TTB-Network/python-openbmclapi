@@ -1,15 +1,12 @@
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from enum import Enum
-import hashlib
+from core import database
 from pathlib import Path
 from queue import Queue
-import sqlite3
 import time
 import pyzstd as zstd
 from typing import Any, Optional
-
-from tqdm import tqdm
 
 from core import logger, scheduler, unit, utils
 from core import location
@@ -126,7 +123,6 @@ class SummaryBasic:
 last_hour: Optional[int] = None
 datadir: Path = Path("./data")
 datadir.mkdir(exist_ok=True, parents=True)
-db = sqlite3.connect("./data/database.db", check_same_thread=False)
 queues: Queue[tuple[str, tuple]] = Queue()
 storages: dict[str, int] = {}
 lock: utils.WaitLock = utils.WaitLock()
@@ -134,14 +130,14 @@ running: int = 1
 data_storage: defaultdict[int, list[DataStorage]] = defaultdict(list)
 cache_ua: defaultdict[UserAgent, int] = defaultdict(int)
 cache_address: defaultdict[str, int] = defaultdict(int) 
-fetch_globals: bool = False
 g_ua: dict[str, "UserAgent"] = {}
 
 for _ in UserAgent:
     g_ua[_.value] = _
     
 def init():
-    execute("create table if not exists access_storage(hour unsigned bigint not null, name text not null, type text not null)")
+    global cache_address, cache_ua
+    database.execute("create table if not exists access_storage(hour unsigned bigint not null, name text not null, type text not null)")
     for field in (
         "hit",
         "bytes",
@@ -153,8 +149,8 @@ def init():
     ):
         addColumns("access_storage", field, "unsigned bigint not null default 0")
 
-    execute("create table if not exists access_globals(hour unsigned bigint not null, addresses blob not null, useragents bigint not null)")
-    for q in queryAllData(f"select hour, name, type, hit, bytes, cache_hit, cache_bytes, sync_hit, sync_bytes FROM access_storage"):
+    database.execute("create table if not exists access_globals(hour unsigned bigint not null, addresses blob not null, useragents bigint not null)")
+    for q in database.queryAllData(f"select hour, name, type, hit, bytes, cache_hit, cache_bytes, sync_hit, sync_bytes FROM access_storage"):
         qhit = q[3] + q[5]
         qbytes = q[4] + q[6]
         if qhit == q[7] and qbytes == q[8]:
@@ -164,6 +160,18 @@ def init():
         )
         storage.sync_database = True
         data_storage[q[0]].append(storage)
+    hour = get_hour(0)
+    data_address, data_useragent = database.query("select addresses, useragents from access_globals where hour = ?", hour) or [b'', b'']
+    if data_address:
+        input = utils.DataInputStream(zstd.decompress(data_address))
+        for _ in range(input.readVarInt()):
+            addr, c = input.readString(), input.readVarInt()
+            cache_address[addr] += c
+    if data_useragent:
+        input = utils.DataInputStream(zstd.decompress(data_useragent))
+        for _ in range(input.readVarInt()):
+            u, c = input.readString(), input.readVarInt()
+            cache_ua[UserAgent.get_ua(u)] += c
     scheduler.delay(task,)
     scheduler.repeat(lock.release, interval=1)
 
@@ -193,7 +201,7 @@ def get_data_storage():
 
 
 def hit(storage: Storage, file: File, length: int, ip: str, ua: str, status: Status):
-    global storages, last_hour, cache_ua, cache_address, fetch_globals
+    global storages, last_hour, cache_ua, cache_address
     lock.acquire()
     hour = get_hour(0)
     if storage is not None:
@@ -230,18 +238,6 @@ def hit(storage: Storage, file: File, length: int, ip: str, ua: str, status: Sta
         save_globals(hour)
         cache_address.clear()
         cache_ua.clear()
-    if fetch_globals:
-        data_address, data_useragent = query("select addresses, useragents from access_globals where hour = ?", hour) or [b'', b'']
-        if data_address:
-            input = utils.DataInputStream(zstd.decompress(data_address))
-            for _ in range(input.readVarInt()):
-                addr, c = input.readString(), input.readVarInt()
-                cache_address[addr] += c
-        if data_useragent:
-            input = utils.DataInputStream(zstd.decompress(data_useragent))
-            for _ in range(input.readVarInt()):
-                u, c = input.readString(), input.readVarInt()
-                cache_ua[UserAgent.get_ua(u)] += c
     cache_address[ip] += 1
     for ua in UserAgent.parse_ua(ua):
         cache_ua[ua] += 1
@@ -264,7 +260,7 @@ def save_globals(hour: int):
 
 
 
-def get_sync_storages():
+def get_sync_storages() -> list[SyncStorage]:
     data = []    
     for storages in get_data_storage().values():
         for storage in storages:
@@ -311,8 +307,8 @@ async def task():
         save_globals(last_hour or get_hour(0))
         while not queues.empty() and running:
             cmd, params = queues.get()
-            db.execute(cmd, params)
-        db.commit()
+            database.execute(cmd, *params)
+        database.commit()
         lock.acquire()
 
 
@@ -323,8 +319,8 @@ def exit():
     logger.info(f"正在保存 [{unit.format_number(queues.qsize())}] 统计中")
     while not queues.empty():
         cmd, params = queues.get()
-        db.execute(cmd, params)
-    db.commit()
+        database.execute(cmd, *params)
+    database.commit()
     logger.success(f"成功保存统计")
     lock.release()
 
@@ -347,7 +343,7 @@ def hourly(storage_name: str):
     t = get_query_day_tohour(0)
     status = (status.value for status in Status)
     hours: defaultdict[int, StatsStorage] = defaultdict(lambda: StatsStorage())
-    for q in queryAllData(f"select hour, hit, bytes, cache_hit, cache_bytes, sync_hit, sync_bytes, {', '.join(status)} from access_storage where hour >= ? and name = ?", t, storage_name):
+    for q in database.queryAllData(f"select hour, hit, bytes, cache_hit, cache_bytes, sync_hit, sync_bytes, {', '.join(status)} from access_storage where hour >= ? and name = ?", t, storage_name):
         hour = int(q[0] - t)
         storage             = hours[hour]
         storage.hits        += q[1]
@@ -370,7 +366,7 @@ def daily(storage_name: str):
     to_t = get_query_day_tohour(-1)
     status = (status.value for status in Status)
     days: defaultdict[int, StatsStorage] = defaultdict(lambda: StatsStorage())
-    for q in queryAllData(f"select hour, hit, bytes, cache_hit, cache_bytes, sync_hit, sync_bytes, {', '.join(status)} from access_storage where hour >= ? and hour <= ? and name = ?", t, to_t, storage_name):
+    for q in database.queryAllData(f"select hour, hit, bytes, cache_hit, cache_bytes, sync_hit, sync_bytes, {', '.join(status)} from access_storage where hour >= ? and hour <= ? and name = ?", t, to_t, storage_name):
         day = (q[0] + get_utc_offset()) // 24
         storage             = days[day]
         storage.hits        += q[1]
@@ -396,7 +392,7 @@ def get_storage_stats(storage_name: Optional[str] = None):
         (days, daily),
         (hours, hourly)
     )
-    storages = [q[0] for q in queryAllData("select distinct name from access_storage")]
+    storages = [q[0] for q in database.queryAllData("select distinct name from access_storage")]
     def process_data(storage_name):
         for query_data in queries:
             storage, func = query_data
@@ -421,7 +417,15 @@ def get_storage_stats(storage_name: Optional[str] = None):
         "storages": storages
     }
 
-
+@cache
+def process_address(data: bytes):
+    input = utils.DataInputStream(zstd.decompress(data))
+    return {input.readString(): input.readVarInt() for _ in range(input.readVarInt())}
+@cache
+def process_ua(data: bytes):
+    input = utils.DataInputStream(zstd.decompress(data))
+    return {UserAgent.get_ua(input.readString()): input.readVarInt() for _ in range(input.readVarInt())}
+    
 
 def geo_pro(day: int):
     format_day = day == 30
@@ -432,15 +436,7 @@ def geo_pro(day: int):
     d_useragent: defaultdict[UserAgent, int] = defaultdict(int)
     stats_t = StatsTiming()
     stats_t.start("globals")
-    @cache
-    def process_address(data: bytes):
-        input = utils.DataInputStream(zstd.decompress(data))
-        return {input.readString(): input.readVarInt() for _ in range(input.readVarInt())}
-    @cache
-    def process_ua(data: bytes):
-        input = utils.DataInputStream(zstd.decompress(data))
-        return {UserAgent.get_ua(input.readString()): input.readVarInt() for _ in range(input.readVarInt())}
-    for q in queryAllData(f"select hour, addresses, useragents from access_globals where hour >= ?", t):
+    for q in database.queryAllData(f"select hour, addresses, useragents from access_globals where hour >= ?", t):
         hour = (q[0] + get_utc_offset()) if not format_day else (q[0] + get_utc_offset()) // 24
         data_address = q[1]
         data_useragent = q[2]
@@ -482,7 +478,7 @@ def stats_pro(day: int):
     d_hit, d_bytes, d_sync_hit, d_sync_bytes = 0, 0, 0, 0
     stats_t = StatsTiming()
     stats_t.start("storage")
-    for q in queryAllData(f"select sum(hit + cache_hit) as hit, sum(bytes + cache_bytes) as bytes, sync_hit, sync_bytes, {', '.join((f'sum({arr})' for arr in status_arr))} from access_storage where hour >= ?", t):
+    for q in database.queryAllData(f"select sum(hit + cache_hit) as hit, sum(bytes + cache_bytes) as bytes, sync_hit, sync_bytes, {', '.join((f'sum({arr})' for arr in status_arr))} from access_storage where hour >= ?", t):
         d_hit += q[0] or 0
         d_bytes += q[1] or 0
         d_sync_hit += q[2] or 0
@@ -511,7 +507,7 @@ def summary_basic():
         "day": SummaryBasic(),
         "total": total
     }
-    for q in queryAllData(f"select hour, hit, bytes, cache_hit, cache_bytes, sync_hit, sync_bytes, {', '.join(status)} from access_storage order by hour desc"):
+    for q in database.queryAllData(f"select hour, hit, bytes, cache_hit, cache_bytes, sync_hit, sync_bytes, {', '.join(status)} from access_storage order by hour desc"):
         hour =              q[0]
         day  =              (q[0] + get_utc_offset()) // 24
         for i, attr in enumerate((
@@ -553,56 +549,27 @@ def copy_summary_storage(origin: SummaryStorage):
     return SummaryStorage(**asdict(origin))
 
 
-def execute(cmd: str, *params) -> None:
-    global db
-    db.execute(cmd, params)
-    db.commit()
-
-
-def executemany(*cmds: tuple[str, tuple[Any, ...]]) -> None:
-    global db
-    pbar = None
-    if len(cmds) >= 512:
-        pbar = tqdm(desc="SQL", total=len(cmds), unit_scale=True)
-    for cmd in cmds:
-        db.execute(*cmd)
-        if pbar is not None:
-            pbar.update(1)
-    db.commit()
-
-
-def query(cmd: str, *params) -> list[Any]:
-    global db
-    cur = db.execute(cmd, params)
-    return cur.fetchone() or []
-
-
-def queryAllData(cmd: str, *params) -> list[tuple]:
-    global db
-    cur = db.execute(cmd, params)
-    return cur.fetchall() or []
-
 
 def exists(cmd: str, *params) -> bool:
-    return len(query(cmd, *params)) != 0
+    return len(database.query(cmd, *params)) != 0
 
 
 def columns(table):
-    return [q[0] for q in queryAllData(f"SHOW COLUMNS FROM {table}")]
+    return [q[0] for q in database.queryAllData(f"SHOW COLUMNS FROM {table}")]
 
 
 def addColumns(table, params, data, default=None):
     try:
-        execute(f"ALTER TABLE {table} ADD COLUMN {params} {data}")
+        database.execute(f"ALTER TABLE {table} ADD COLUMN {params} {data}")
         if default is not None:
-            execute(f"UPDATE {table} SET {params}={default}")
+            database.execute(f"UPDATE {table} SET {params}={default}")
     except:
         ...
 
 
 def get_unknown_ip():
     unknown = set()
-    for input in (utils.DataInputStream(zstd.decompress(q[0])) for q in queryAllData(f"select addresses from access_globals")):
+    for input in (utils.DataInputStream(zstd.decompress(q[0])) for q in database.queryAllData(f"select addresses from access_globals")):
         for _ in range(input.readVarInt()):
             addr, c = input.readString(), input.readVarInt()
             info = location.query(addr)     

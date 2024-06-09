@@ -1,12 +1,13 @@
 import abc
 import asyncio
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from enum import Enum
 import hashlib
 import io
 from pathlib import Path
 import time
-from typing import Optional
+from typing import Callable, Optional, TypeVar
 import pyzstd as zstd
 import aiofiles
 
@@ -40,7 +41,7 @@ class DownloadReason(Enum):
 class BMCLAPIFile:
     path: str
     hash: str
-    size: int
+    size: Optional[int] = None
     mtime: int = 0
 
     def __hash__(self):
@@ -88,7 +89,7 @@ class File:
             self.data = data
             self.type = FileContentType.PATH
 
-    def get_data(self):
+    def get_data(self) -> io.BytesIO:
         if self.compressed:
             return io.BytesIO(zstd.decompress(self.data.getbuffer()))
         else:
@@ -97,7 +98,7 @@ class File:
         return self.type == FileContentType.URL
     def is_path(self):
         return self.type == FileContentType.PATH
-    def get_path(self) -> Path:
+    def get_path(self) -> Path | str:
         return self.data
 @dataclass
 class StatsCache:
@@ -116,6 +117,13 @@ class Storage(metaclass=abc.ABCMeta):
         self.cache_timer = scheduler.repeat(
             self.clear_cache, delay=CHECK_CACHE, interval=CHECK_CACHE
         )
+    
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(name='{self.name}', type='{self.type}', width='{self.width}', disabled={self.disabled})"
+    
+    def __str__(self) -> str:
+        return f"{self.__class__.__name__}(name='{self.name}', type='{self.type}', width='{self.width}', disabled={self.disabled})"
+
     def get_name(self):
         return self.name
     
@@ -169,7 +177,7 @@ class Storage(metaclass=abc.ABCMeta):
         return stat
 
     @abc.abstractmethod
-    async def get(self, file: str, start: int = 0, end: Optional[int] = None) -> File:
+    async def get(self, file: str) -> File:
         """
         get file metadata.
         return File
@@ -245,6 +253,60 @@ class ResponseRedirects:
     status: int 
     url: str
 
+@dataclass
+class StoragesInfo:
+    total: int = 0
+    file: int = 0
+    webdav: int = 0
+
+@dataclass
+class StorageWidth:
+    storage: Storage
+    width: int = 0
+
+@dataclass
+class StorageData:
+    storage: Storage
+    hash: str
+    exists: bool = False
+
+class WeightedStorage:  
+    def __init__(self):  
+        self.queue: deque[StorageWidth] = deque()  
+    
+    def add(self, storage: StorageWidth):
+        self.queue.appendleft(storage)
+
+    async def get(self, hash: str) -> Optional[StorageData]:
+        async def check(cur: StorageWidth, hash_data: StorageData) -> bool:
+            if (cur.width > cur.storage.width or cur.storage.disabled) and not hash_data.exists:
+                cur.width = 0
+                return False
+            return True
+        cur = self.queue[0]
+        storage_data = StorageData(cur.storage, hash, await cur.storage.exists(hash))
+        if await check(cur, storage_data):
+            cur.width += 1
+            return storage_data
+        else:
+            self.queue.rotate(-1)
+            for _ in range(len(self.queue) - 1):
+                self.queue.rotate(-1)
+                storage = self.queue[0]
+                storage_data = StorageData(storage.storage, hash, await storage.storage.exists(hash))
+                if await check(storage, storage_data):
+                    storage.width += 1
+                    return storage_data
+        return storage_data
+
+@dataclass
+class DownloadStatistics:
+    downloaded: int = 0
+    failed: int = 0
+    size: int = 0
+    total: int = 0
+    total_size: int = 0
+
 def get_hash(org):
     if len(org) == 32:
         return hashlib.md5()
@@ -258,7 +320,7 @@ def get_hash_content(org, content: io.BytesIO):
     else:
         h = hashlib.sha1()
     h.update(content.getbuffer())
-    return org == h.hexdigest()
+    return h.hexdigest()
 
 
 async def get_file_hash(org: str, path: Path):
