@@ -1,6 +1,6 @@
 <div align="center">
 
-![](https://7507.kstore.space/logo-full.svg?password=44d43eb4b2becd5f936b1c8a3c97df9d-1714584375234)
+![](https://python-openbmclapi.ttb-network.top/img/logo.svg)
 
 # OpenBMCLAPI for Python
 
