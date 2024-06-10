@@ -958,7 +958,8 @@ class StorageManager:
                 "Authorization": f"Bearer {self.cluster.token}"
             }
         ) as session:
-            await dashboard.set_status("files.fetching")
+            if not self.checked:
+                await dashboard.set_status("files.fetching")
             async with session.get(
                 "/openbmclapi/files", params={
                     "lastModified": self.lastModified * 1000.0
@@ -1093,6 +1094,7 @@ class StorageManager:
                     await dashboard.set_status_by_tqdm("files.copying", pbar)
                     for storage, failed in zip(copy_storage.keys(), await asyncio.gather(*[asyncio.create_task(self.copy_storage(origin, files_storage, pbar)) for origin, files_storage in copy_storage.items()])):
                         miss_storages[storage] = failed
+        self.checked = True
         return miss_storages
 
     async def copy_storage(self, origin_storage: Storage, files_storage: dict[BMCLAPIFile, Storage], pbar: tqdm):
@@ -1132,7 +1134,7 @@ class StorageManager:
                 ) as resp:
                     if not resp.ok:
                         return None
-                    content.write(resp.read())
+                    content.write(await resp.read())
         content.seek(0)
         if get_hash_content(file.hash, content) != file.hash:
             return None
