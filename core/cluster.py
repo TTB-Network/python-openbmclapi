@@ -481,8 +481,10 @@ class Cluster:
         self.byoc = BYOC
         self.cert_expires: float = 0
         self.retry_timer = None
+        self._retry: int = 0
         self.keepalive_timer = None
         self.enabled = False
+        self.trusted = True
 
     async def __call__(self) -> Any:
         try:
@@ -538,11 +540,21 @@ class Cluster:
     async def cluster_retry(self):
         if self.enabled:
             await self.cluster_disable()
+        if RECONNECT_RETRY != -1 and self._retry >= RECONNECT_RETRY:
+            logger.terror(
+                "cluster.error.cluster.reached_maximum_retry_count",
+                count=RECONNECT_RETRY,
+            )
+            return
+        self._retry += 1
+        logger.tinfo("cluster.info.cluster.retry", t=RECONNECT_DELAY)
         scheduler.cancel(self.retry_timer)
-        self.retry_timer = scheduler.delay(self.cluster_enable, delay=60)
+        self.retry_timer = scheduler.delay(self.cluster_enable, delay=RECONNECT_DELAY)
+    
     async def cluster_cert(self, ):
         if self.byoc:
             return
+        await dashboard.set_status("cluster.got.cert")
         err, ack = await self.socketio_emit_with_ack(
             "request-cert"
         )
@@ -551,28 +563,43 @@ class Cluster:
             return
         certificate.load_text(ack["cert"], ack["key"])
         self.cert_expires = utils.parse_iso_time(ack["expires"])
+        await dashboard.set_status("cluster.get.cert")
+    
     async def cluster_enable(self):
+        if not ENABLE:
+            return
         try:
-            err, ack = await self.socketio_emit_with_ack("enable", {
-                "host": PUBLIC_HOST,
-                "port": PUBLIC_PORT or PORT,
-                "byoc": self.byoc,
-                "version": API_VERSION,
-                "noFastEnable": True,
-                "flavor": {
-                    "runtime": f"python/{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} {VERSION}",
-                    "storage": "+".join((key for key, value in asdict(self.storages.get_storage_info(available=True)).items() if key != "total" and value != 0)),
-                    **asdict(self.storages.get_storage_info(available=True))
-                }
-            }, timeout=600)
+            await dashboard.set_status("cluster.want_enable")
+            if not self.storages.available_storages:
+                err, ack = ({"message": "当前无可用的存储"}, None)
+                logger.twarn("cluster.warn.cluster.no_storage")
+            else:
+                err, ack = await self.socketio_emit_with_ack("enable", {
+                    "host": PUBLIC_HOST,
+                    "port": PUBLIC_PORT or PORT,
+                    "byoc": self.byoc,
+                    "version": API_VERSION,
+                    "noFastEnable": True,
+                    "flavor": {
+                        "runtime": f"python/{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} {VERSION}",
+                        "storage": "+".join((key for key, value in asdict(self.storages.get_storage_info(available=True)).items() if key != "total" and value != 0)),
+                        **asdict(self.storages.get_storage_info(available=True))
+                    }
+                }, timeout=600)
             if err:
-                logger.error(self.cluster_error(err))
+                logger.terror(
+                    "cluster.error.cluster.failed_to_start_service",
+                    e=err["message"],
+                )
                 await self.cluster_retry()
                 return
             if ack:
                 self.enabled = True
                 logger.tinfo("cluster.info.cluster.hosting", id=self.clusterID, port=PUBLIC_PORT or PORT)
                 self.keepalive_timer = scheduler.repeat(self.cluster_keepalive, interval=60)
+                await dashboard.set_status(
+                    "cluster.enabled" + (".trusted" if self.trusted else "")
+                )
         except asyncio.CancelledError:
             return asyncio.CancelledError
         except asyncio.TimeoutError:
@@ -586,6 +613,7 @@ class Cluster:
                 await self.socketio_emit_with_ack("disable")
             else:
                 await self.socketio_emit("disable")
+            self.enabled = False
             return True
         except:
             self.enabled = False
@@ -767,18 +795,17 @@ class Cluster:
         def _():
             return "User-agent: * Disallow: /"
 
-
     def cluster_error(self, err):
         if isinstance(err, dict) and 'message' in err:
             return str(err['message'])
         return str(err)
-    
 
     async def socketio_disconnect(self):
         if not self.sio.connected:
             return
         await self.cluster_disable(True)
         await self.sio.disconnect()
+    
     async def socketio_init(self):
         if self.sio is not None:
             return
@@ -786,7 +813,19 @@ class Cluster:
             logger=socketio_logger,
             engineio_logger=socketio_logger
         )
+        self.sio.on("message", self._message)
+        self.sio.on("exception", self._exception)
         await self.socketio_connect()
+    
+    def _message(self, message):
+        logger.tinfo("cluster.info.cluster.remote_message", message=message)
+        if "信任度过低" in message:
+            self.trusted = False
+
+    def _exception(self, message):
+        logger.terror("cluster.error.cluster.remote_message", message=message)
+        scheduler.delay(self.cluster_retry)
+
     async def socketio_connect(self):
         if self.sio.connected:
             return
@@ -797,6 +836,7 @@ class Cluster:
             transports=["websocket"],
         )
         await self.cluster_cert()
+    
     async def socketio_message(self, channel, data: list[Any], callback=None):
         if len(data) == 1:
             data.append(None)
@@ -809,6 +849,7 @@ class Cluster:
             await callback(err, ack)
         except:
             logger.error(traceback.format_exc())
+    
     async def socketio_emit(self, channel, data=None, callback=None):
         async def _():
             try:
@@ -870,6 +911,7 @@ class StorageManager:
         self.errors: defaultdict[BMCLAPIFile, int] = defaultdict(int)
         self.sem: asyncio.Semaphore = None
         self.check_timer = None
+        self.checked = False
         self.storage_cur = 0
         if FILECHECK == "hash":
             self.check_type_handler = self._hash
@@ -916,6 +958,7 @@ class StorageManager:
                 "Authorization": f"Bearer {self.cluster.token}"
             }
         ) as session:
+            await dashboard.set_status("files.fetching")
             async with session.get(
                 "/openbmclapi/files", params={
                     "lastModified": self.lastModified * 1000.0
@@ -1011,6 +1054,8 @@ class StorageManager:
 
     async def check(self, files: set[BMCLAPIFile]) -> dict[Storage, set[BMCLAPIFile]]:
         miss_storages: dict[Storage, set[BMCLAPIFile]] = {}
+        if not self.checked:
+            await dashboard.set_status("files.checking")
         storages = self.available_storages
         with tqdm(
             desc=locale.t("cluster.tqdm.desc.check_files"),
@@ -1018,6 +1063,7 @@ class StorageManager:
             unit=locale.t("cluster.tqdm.unit.file"),
             unit_scale=True,
         ) as pbar:
+            await dashboard.set_status_by_tqdm("files.checking", pbar)
             try:
                 for storage, storage_result in zip(storages, await asyncio.gather(*[asyncio.create_task(self._check_by_storage(files, storage, pbar)) for storage in storages])):
                     miss_storages[storage] = storage_result
@@ -1044,6 +1090,7 @@ class StorageManager:
                     unit_divisor=1024,
                     unit_scale=True,
                 ) as pbar:
+                    await dashboard.set_status_by_tqdm("files.copying", pbar)
                     for storage, failed in zip(copy_storage.keys(), await asyncio.gather(*[asyncio.create_task(self.copy_storage(origin, files_storage, pbar)) for origin, files_storage in copy_storage.items()])):
                         miss_storages[storage] = failed
         return miss_storages
@@ -1154,6 +1201,7 @@ class StorageManager:
             total=sum((file.size for file in files)),
             unit_scale=True,
         ) as pbar:
+            await dashboard.set_status_by_tqdm("files.downloading", pbar)
             self.update_tqdm(pbar)
             for _ in range(0, max(1, MAX_DOWNLOAD), step):
                 session = await self.get_session()

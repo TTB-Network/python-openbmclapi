@@ -102,6 +102,7 @@ async def process(type: str, data: Any):
                             "speed": cur_tqdm.speed,
                             "unit": cur_tqdm.object.unit,
                             "desc": cur_tqdm.desc,
+                            "postfix": cur_tqdm.object.postfix,
                             "start": utils.format_stime(time.time() - cur_tqdm.object.start_t),
                             "end": utils.format_stime(((cur_tqdm.object.total - cur_tqdm.object.n) / cur_tqdm.speed)) if cur_tqdm.speed != 0 else utils.format_stime(None)
                         }
