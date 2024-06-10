@@ -556,6 +556,7 @@ class Cluster:
             err, ack = await self.socketio_emit_with_ack("enable", {
                 "host": PUBLIC_HOST,
                 "port": PUBLIC_PORT or PORT,
+                "byoc": self.byoc,
                 "version": API_VERSION,
                 "noFastEnable": True,
                 "flavor": {
