@@ -9,6 +9,7 @@
 ![GitHub License](https://img.shields.io/github/license/TTB-Network/python-openbmclapi)
 ![GitHub Release](https://img.shields.io/github/v/release/TTB-Network/python-openbmclapi)
 ![GitHub Tag](https://img.shields.io/github/v/tag/TTB-Network/python-openbmclapi)
+[![Crowdin](https://badges.crowdin.net/python-openbmclapi-site/localized.svg)](https://crowdin.com/project/python-openbmclapi-site)
 ![GitHub Repo stars](https://img.shields.io/github/stars/TTB-Network/python-openbmclapi)
 [![CodeQL](https://github.com/TTB-Network/python-openbmclapi/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/TTB-Network/python-openbmclapi/actions/workflows/github-code-scanning/codeql)
 [![Create tagged release](https://github.com/TTB-Network/python-openbmclapi/actions/workflows/build_and_publish.yml/badge.svg)](https://github.com/TTB-Network/python-openbmclapi/actions/workflows/build_and_publish.yml)
@@ -34,6 +35,8 @@
 # 贡献
 
 如果你有能力，你可以向我们的仓库提交 Pull Request 或 Issue。
+
+如果你想帮助我们进行多语言翻译，请前往 [Crowdin](https://zh.crowdin.com/project/python-openbmclapi-site)。
 
 在贡献之前，请先阅读我们的[贡献准则](./CONTRIBUTING.md)。
 
