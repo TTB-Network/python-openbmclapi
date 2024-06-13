@@ -36,7 +36,7 @@
 
 如果你有能力，你可以向我们的仓库提交 Pull Request 或 Issue。
 
-如果你想帮助我们进行多语言翻译，请前往 [Crowdin](https://zh.crowdin.com/project/python-openbmclapi-site)。
+如果你想帮助我们进行多语言翻译，请前往 [Crowdin](https://translate.bugungu.top)。
 
 在贡献之前，请先阅读我们的[贡献准则](./CONTRIBUTING.md)。
 
