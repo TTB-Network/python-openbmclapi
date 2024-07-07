@@ -1,6 +1,6 @@
 <div align="center">
 
-![](https://python-openbmclapi.ttb-network.top/img/logo.svg)
+![](https://socialify.git.ci/TTB-Network/python-openbmclapi/image?description=1\&font=Inter\&language=1\&logo=https%3A%2F%2Fpython-openbmclapi.ttb-network.top%2Fimg%2Flogo.svg\&name=1\&owner=1\&pattern=Plus\&theme=Auto)
 
 # OpenBMCLAPI for Python
 
