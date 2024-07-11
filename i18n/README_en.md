@@ -8,6 +8,8 @@
 
 # OpenBMCLAPI for Python
 
+简体中文 | [English](/i18n/README_en.md)
+
 ![GitHub Issues or Pull Requests](https://img.shields.io/github/issues-pr/TTB-Network/python-openbmclapi)
 ![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/TTB-Network/python-openbmclapi)
 ![GitHub License](https://img.shields.io/github/license/TTB-Network/python-openbmclapi)
@@ -25,7 +27,7 @@
 
 🎨 **Cross system** and **cross framework**.This is thanks to the powerful language features of Python.
 
-✨ **Docker** support.通过 Docker 更加**快捷地**部署 python-openbmclapi ~~（更支持一键跑路）~~。
+✨ **Docker** support.With the help of Docker, you can deploy python-openbmclapi in a **short time**.
 
 🎉 **\* New features!\*** WebDAV support.Through WebDAV (Web-based Distorting and Versioning), users can edit and manage files stored on web servers in collaboration with them.
 
