@@ -8,6 +8,8 @@
 
 # OpenBMCLAPI for Python
 
+简体中文 | [English](/i18n/README_en.md)
+
 ![GitHub Issues or Pull Requests](https://img.shields.io/github/issues-pr/TTB-Network/python-openbmclapi)
 ![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/TTB-Network/python-openbmclapi)
 ![GitHub License](https://img.shields.io/github/license/TTB-Network/python-openbmclapi)
@@ -30,8 +32,6 @@
 🎉 __*新增功能！*__ WebDAV 支持。通过基于 Web 的分布式编写和版本控制（英语：Web-based Distributed Authoring and Versioning，缩写：WebDAV），用户可以协同编辑和管理存储在万维网服务器文件。
 
 </div>
-
-简体中文 | [English](./i18n/README_en.md)
 
 # 简介
 
