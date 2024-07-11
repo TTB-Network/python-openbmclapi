@@ -31,6 +31,8 @@
 
 </div>
 
+简体中文 | [English](./i18n/README_en.md)
+
 # 简介
 
 本项目是 [OpenBMCLAPI](https://github.com/bangbang93/openbmclapi) 的 Python 版本，OpenBMCLAPI 是通过分布式集群帮助 [BMCLAPI](https://bmclapidoc.bangbang93.com/) 进行文件分发、加速中国大陆 Minecraft 下载的公益项目。
