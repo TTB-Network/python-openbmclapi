@@ -1,6 +1,6 @@
 advanced:
   auto_update: false
-  copy_from_other_storage: true
+  copy_from_another_storage: true
   debug: false
   download_threads: 64
   file_check_mode: size
@@ -20,6 +20,8 @@ cache:
   time: 1800
 cluster:
   byoc: false
+  download_access_logs: true
+  download_retry_delay: 60
   enable: true
   id: ''
   public_host: ''

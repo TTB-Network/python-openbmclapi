@@ -21,33 +21,33 @@
 [![CodeQL](https://github.com/TTB-Network/python-openbmclapi/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/TTB-Network/python-openbmclapi/actions/workflows/github-code-scanning/codeql)
 [![Create tagged release](https://github.com/TTB-Network/python-openbmclapi/actions/workflows/build_and_publish.yml/badge.svg)](https://github.com/TTB-Network/python-openbmclapi/actions/workflows/build_and_publish.yml)
 
-[文档](https://python-openbmclapi.ttb-network.top/) | [API](https://python-openbmclapi.ttb-network.top/docs/api) | [赞助](https://afdian.net/a/atianxiua)
+[Docs](https://python-openbmclapi.ttb-network.top/) | [API](https://python-openbmclapi.ttb-network.top/docs/api) | [Sponsorship](https://afdian.net/a/atianxiua)
 
-✨ 基于 [OpenBMCLAPI](https://github.com/bangbang93/openbmclapi) 的 Python 实现。
+✨ Python implementation based on [OpenBMCLAPI](https://github.com/bangbang93/openbmclapi).
 
-🎨 **跨系统**、**跨架构**。这得益于 Python 强大的语言功能。
+🎨 **Cross system** and **cross framework**.This is thanks to the powerful language features of Python.
 
-✨ **Docker** 支持。通过 Docker 更加**快捷地**部署 python-openbmclapi ~~（更支持一键跑路）~~。
+✨ **Docker** support.With the help of Docker, you can deploy python-openbmclapi in a **short time**.
 
-🎉 __*新增功能！*__ WebDAV 支持。通过基于 Web 的分布式编写和版本控制（英语：Web-based Distributed Authoring and Versioning，缩写：WebDAV），用户可以协同编辑和管理存储在万维网服务器文件。
+🎉 **\* New features!\*** WebDAV support.Through WebDAV (Web-based Distorting and Versioning), users can edit and manage files stored on web servers in collaboration with them.
 
 </div>
 
-# 简介
+# Introduction
 
-本项目是 [OpenBMCLAPI](https://github.com/bangbang93/openbmclapi) 的 Python 版本，OpenBMCLAPI 是通过分布式集群帮助 [BMCLAPI](https://bmclapidoc.bangbang93.com/) 进行文件分发、加速中国大陆 Minecraft 下载的公益项目。
+This project is a Python version of [OpenBMCLAPI](https://github.com/bangbang93/openbmclapi). OpenBMCLAPI is a file distribution cluster to help [BMCLAPI](https://bmclapidoc.bangbang93.com/) speed up the file download of Minecraft in the Chinese mainland.
 
-如果你想加入 OpenBMCLAPI，可以寻找 [bangbang93](https://github.com/bangbang93) 获取 `CLUSTER_ID` 和 `CLUSTER_SECRET`。
+If you want to join OpenBMCLAPI, you can ask [bangbang93](https://github.com/bangbang93) for an `CLUSTER_ID` and an `CLUSTER_SECRET`.
 
-# 贡献
+# Contributing
 
-如果你有能力，你可以向我们的仓库提交 Pull Request 或 Issue。
+If you have the ability, you can submit a Pull Request or Issue to our repository.
 
-如果你想帮助我们进行多语言翻译，请前往 [Crowdin](https://translate.bugungu.top)。
+If you want to help us with multilingual translations, go to [Crowdin](https://translate.bugungu.top).
 
-在贡献之前，请先阅读我们的[贡献准则](./CONTRIBUTING.md)。
+Please read our [Contributing Rules](./CONTRIBUTING_en.md) before contributing.
 
-# 鸣谢
+# Thanks
 
 [LiterMC/go-openbmclapi](https://github.com/LiterMC/go-openbmclapi)
 
