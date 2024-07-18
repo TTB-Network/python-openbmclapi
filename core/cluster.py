@@ -38,7 +38,7 @@ class Token:
     async def fetch(self):
         async with aiohttp.ClientSession(
             BASE_URL,
-            headers=HEADERS
+            headers=HEADERS,
         ) as session:
             logger.tinfo("cluster.info.token.fetching")
             async with session.get(
@@ -60,7 +60,11 @@ class Token:
                 }
             ) as resp:
                 resp.raise_for_status()
-                json = await resp.json()
+                try:
+                    json = await resp.json()
+                except:
+                    print(traceback.format_exc())
+                    raise
                 self.token = json['token']
                 self.ttl = json['ttl'] / 1000.0
                 self.fetch_time = time.monotonic()
@@ -1165,8 +1169,8 @@ class StorageManager:
         miss = set()
         while not queue.empty():
             file = await queue.get()
-            if not await self.check_type_handler(file, storage):
-                miss.add(file)
+            #if not await self.check_type_handler(file, storage):
+            miss.add(file)
             pbar.update(1)
         return miss
           
@@ -1311,11 +1315,14 @@ class StorageManager:
             pbar.update(-length)
             self.stats.failed += 1
             self.update_tqdm(pbar)
+        if resp is None:
+            return
+        content = content or io.BytesIO()
         responses: list[aiohttp.ClientResponse] = []
         if resp is not None:
-            responses.append(resp)
             for resp in resp.history:
                 responses.append(resp)
+            responses.append(resp)
         msg = []
         history = list((ResponseRedirects(resp.status, str(resp.real_url)) for resp in responses))
         source = "主控" if len(history) == 1 else "节点"
@@ -1327,9 +1334,29 @@ class StorageManager:
             body = content.getvalue().decode("utf-8", errors="ignore")
         logger.terror("cluster.error.download.failed", hash=file.hash, size=unit.format_bytes(file.size or -1), 
                       source=source, host=responses[-1].host, status=responses[-1].status, history=history, reason=locale.t(f"cluster.error.download.failed.{reason.value}"), body=body)
+        if len(responses) >= 2:
+            self.task_report([str(resp.real_url) for resp in responses])
         if not resp.closed:
             resp.close()
         raise PutQueueIgnoreError
+
+    def task_report(self, redirects: list[str]):
+        scheduler.delay(self.report, (redirects,))
+
+    async def report(self, redirects: list[str]):
+        try:
+            async with await self.get_session() as session:
+                async with session.post(
+                    "/openbmclapi/report", json={
+                        "urls": redirects,
+                        "error": "Network error",
+                    }
+                ) as resp:
+                    ...
+        except:
+            ...
+            
+
 
 class TotalStorageManager:
     def __init__(self) -> None:

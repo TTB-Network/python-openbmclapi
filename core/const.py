@@ -24,7 +24,7 @@ DATABASETYPE: DataBaseType = DataBaseType.SQLITE
 CACHE_BUFFER_COMPRESSION_MIN_LENGTH: int = 64
 DEBUG: bool = Config.get("advanced.debug")
 ROOT: str = os.getcwd()
-API_VERSION: str = "1.10.9"
+API_VERSION: str = "1.11.0"
 USER_AGENT: str = f"openbmclapi-cluster/{API_VERSION} python-openbmclapi/{VERSION}"
 HEADERS = {
     "User-Agent": USER_AGENT
