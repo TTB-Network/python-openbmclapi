@@ -1,4 +1,19 @@
 #!/bin/bash
+# A script to install python-openbmclapi (modified from go-openbmclapi)
+# Copyright (C) 2024 The co-author of go-openbmclapi
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published
+# by the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -19,13 +34,6 @@ if ! PY_VERSION=$(python -V 2>&1|awk '{print $2}') && $(python -V 2>&1|awk '{pri
     exit 1
 fi
 PY_VERSION=$(python -V 2>&1|awk '{print $2}'|awk -F '.' '{print $1}').$(python -V 2>&1|awk '{print $2}'|awk -F '.' '{print $2}')
-# different=$(echo 2>&1 | awk "{print $PY_VERSION - $PY_MIRCO}")
-# compare=$(expr "$different" \> 0)
-# #printf $compare
-# if  [[ $compare -eq 0 ]] ; then
-#     echo -e "\e[31mERROR: Unsupported Python version; need >= 3.10\e[0m"
-#     exit 1
-# fi
 
 if ! systemctl --version >/dev/null 2>&1 ; then
 	echo -e "\e[31mERROR: Failed to test systemd\e[0m"
