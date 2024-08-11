@@ -13,19 +13,11 @@ RAW_PREFIX="${MIRROR_PREFIX}https://raw.githubusercontent.com"
 RAW_REPO="$RAW_PREFIX/$REPO"
 BASE_PATH=/opt/python-openbmclapi
 USERNAME=openbmclapi
-PY_MIRCO=3.10
 if ! PY_VERSION=$(python -V 2>&1|awk '{print $2}') && $(python -V 2>&1|awk '{print $2}'|awk -F '.' '{print $1}') -lt 3 ; then
     echo -e "\e[31mERROR: Failed to detect Python version.\e[0m"
     exit 1
 fi
 PY_VERSION=$(python -V 2>&1|awk '{print $2}'|awk -F '.' '{print $1}').$(python -V 2>&1|awk '{print $2}'|awk -F '.' '{print $2}')
-# different=$(echo 2>&1 | awk "{print $PY_VERSION - $PY_MIRCO}")
-# compare=$(expr "$different" \> 0)
-# #printf $compare
-# if  [[ $compare -eq 0 ]] ; then
-#     echo -e "\e[31mERROR: Unsupported Python version; need >= 3.10\e[0m"
-#     exit 1
-# fi
 
 if ! systemctl --version >/dev/null 2>&1 ; then
 	echo -e "\e[31mERROR: Failed to test systemd\e[0m"

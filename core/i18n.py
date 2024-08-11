@@ -1,12 +1,11 @@
 from pathlib import Path
 import json
 from string import Template
-from core.const import *
-
+from core.config import Config
 
 class Locale:
     def __init__(self, lang: str):
-        self.path = Path(f"./i18n/{lang}.json")
+        self.path = Path(f'./i18n/{lang}.json')
         self.data = {}
         self.load()
 
@@ -17,7 +16,7 @@ class Locale:
         return key in self.data
 
     def load(self):
-        with open(self.path, "r", encoding="utf-8") as f:
+        with open(self.path, 'r', encoding='utf-8') as f:
             d = f.read()
             self.data = json.loads(d)
             f.close()
@@ -27,7 +26,7 @@ class Locale:
         if n != None:
             return n
         if failed_prompt:
-            return str(key) + self.t("i18n.prompt.failed")
+            return str(key) + self.t('i18n.prompt.failed')
         return key
 
     def t(self, key: str, failed_prompt=True, *args, **kwargs):
@@ -35,4 +34,4 @@ class Locale:
         return Template(localized).safe_substitute(*args, **kwargs)
 
 
-locale: Locale = Locale(LANG)
+locale: Locale = Locale(Config.get('advanced.lang'))

@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "python-openbmclapi"
+version = "2.0.0"
+description = "The Python version of OpenBMCLAPI."
+authors = ["SilianZ <silian_zheng@outlook.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+loguru = "^0.7.2"
+toml = "^0.10.2"
+pyyaml = "^6.0.1"
+aiohttp = "^3.10.1"
+apscheduler = "^3.10.4"
+avro-python3 = "^1.10.2"
+zstandard = "^0.23.0"
+aiofiles = "^24.1.0"
+tqdm = "^4.66.5"
+humanize = "^4.10.0"
+
+
+[[tool.poetry.source]]
+name = "mirrors"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple/"
+priority = "primary"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -4,30 +4,15 @@ import sys
 from core.config import Config
 from core.i18n import locale
 
-basic_logger_format = "<green>[{time:YYYY-MM-DD HH:mm:ss}]</green> <level>[{level}] <yellow>[{name}:{function}:{line}]</yellow>: {message}</level>"
-socketio_logger_format = "<green>[{time:YYYY-MM-DD HH:mm:ss}]</green> [SocketIO] <level>[{level}] <yellow>[{name}:{function}:{line}]</yellow>: {message}</level>"
+basic_logger_format = "<green>[{time:YYYY-MM-DD HH:mm:ss}]</green><level>[{level}]<yellow>[{name}:{function}:{line}]</yellow>: {message}</level>"
 debug_mode = Config.get("advanced.debug")
 
 
-class LoggingMessage:
-    def __init__(self) -> None:
-        self.data = []
-
-
-def _log(*values):
-    data = []
-    for v in values:
-        try:
-            data.append(str(v))
-        except:
-            data.append(repr(v))
-    return " ".join(data)
-
-
 class LoggingLogger:
-    def __init__(self, depth: int = 0):
-        self.log = Logger.opt(depth=2 + depth)
+    def __init__(self):
+        self.log = Logger
         self.log.remove()
+        self.log.add(sys.stderr, format=basic_logger_format, level="DEBUG" if debug_mode else "INFO", colorize=True)
         self.cur_handler = None
         self.log.add(
             Path("./logs/{time:YYYY-MM-DD}.log"),
@@ -35,78 +20,25 @@ class LoggingLogger:
             retention="10 days",
             encoding="utf-8",
         )
-        self.log.add(
-            sys.stderr,
-            format=basic_logger_format,
-            level="DEBUG" if debug_mode else "INFO",
-            colorize=True,
-        )
+        self.info = self.log.info
+        self.debug = self.log.debug
+        self.warning = self.log.warning
+        self.error = self.log.error
+        self.success = self.log.success
 
-    def raw_log(self, level, message: str, *values):
-        self.log.log(level, message % values)
+    def tinfo(self, key: str, *args, **kwargs):
+        self.info(locale.t(key=key, *args, **kwargs))
 
-    def _log_with_args(self, level, *args, **kwargs):
-        message = _log(*args) if args else ""
-        self.log.log(level, message, **kwargs)
-
-    def info(self, *args, **kwargs):
-        self._log_with_args("INFO", *args, **kwargs)
-
-    def error(self, *args, **kwargs):
-        self._log_with_args("ERROR", *args, **kwargs)
-
-    def debug(self, *args, **kwargs):
-        self._log_with_args("DEBUG", *args, **kwargs)
-
-    def warn(self, *args, **kwargs):
-        self._log_with_args("WARNING", *args, **kwargs)
+    def tdebug(self, key: str, *args, **kwargs):
+        self.debug(locale.t(key=key, *args, **kwargs))
     
-    def warning(self, *args, **kwargs):
-        self._log_with_args("WARNING", *args, **kwargs)
+    def twarning(self, key: str, *args, **kwargs):
+        self.warning(locale.t(key=key, *args, **kwargs))
 
-    def success(self, *args, **kwargs):
-        self._log_with_args("SUCCESS", *args, **kwargs)
+    def terror(self, key: str, *args, **kwargs):
+        self.error(locale.t(key=key, *args, **kwargs))
 
-    def tinfo(self, key: str, failed_prompt=True, *args, **kwargs):
-        self._log_with_args(
-            "INFO", locale.t(key=key, failed_prompt=failed_prompt, *args, **kwargs)
-        )
-
-    def terror(self, key: str, failed_prompt=True, *args, **kwargs):
-        self._log_with_args(
-            "ERROR", locale.t(key=key, failed_prompt=failed_prompt, *args, **kwargs)
-        )
-
-    def tdebug(self, key: str, failed_prompt=True, *args, **kwargs):
-        self._log_with_args(
-            "DEBUG", locale.t(key=key, failed_prompt=failed_prompt, *args, **kwargs)
-        )
-
-    def twarn(self, key: str, failed_prompt=True, *args, **kwargs):
-        self._log_with_args(
-            "WARNING", locale.t(key=key, failed_prompt=failed_prompt, *args, **kwargs)
-        )
-
-    def tsuccess(self, key: str, failed_prompt=True, *args, **kwargs):
-        self._log_with_args(
-            "SUCCESS", locale.t(key=key, failed_prompt=failed_prompt, *args, **kwargs)
-        )
-
-    def depth(self, depth):
-        return LoggingLogger(depth)
+    def tsuccess(self, key: str, *args, **kwargs):
+        self.success(locale.t(key=key, *args, **kwargs))
 
 logger = LoggingLogger()
-
-class SocketIOLogger:
-    def __init__(self):
-        self.log = logger
-    def info(self, msg: str, *values):
-        return self.log.raw_log("DEBUG", msg, *values)
-    def error(self, msg: str, *values):
-        return self.log.raw_log("DEBUG", msg, *values)
-    def warning(self, msg: str, *values):
-        return self.log.raw_log("DEBUG", msg, *values)
-    def debug(self, msg: str, *values):
-        return self.log.raw_log("DEBUG", msg, *values)
-
-socketio_logger = SocketIOLogger()
