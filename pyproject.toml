@@ -18,6 +18,7 @@ zstandard = "^0.23.0"
 aiofiles = "^24.1.0"
 tqdm = "^4.66.5"
 humanize = "^4.10.0"
+python-socketio = "^5.11.3"
 
 
 [[tool.poetry.source]]

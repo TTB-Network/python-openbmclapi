@@ -44,6 +44,7 @@ class LocalStorage(Storage):
                     logger.terror(
                         "storage.error.write_file.size_mismatch", file=file.hash
                     )
+                    return False
             except Exception as e:
                 logger.terror(
                     "storage.error.write_file.retry", file=file.hash, e=e, retry=delay

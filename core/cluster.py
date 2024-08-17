@@ -102,10 +102,10 @@ class Cluster:
                 for _ in range(self.read_long(decompressed_data)):
                     self.filelist.files.append(
                         FileInfo(
-                            self.read_string(decompressed_data),
-                            self.read_string(decompressed_data),
-                            self.read_long(decompressed_data),
-                            self.read_long(decompressed_data),
+                            self.readString(decompressed_data),
+                            self.readString(decompressed_data),
+                            self.readLong(decompressed_data),
+                            self.readLong(decompressed_data),
                         )
                     )
                 size = sum(file.size for file in self.filelist.files)
@@ -127,7 +127,8 @@ class Cluster:
                 self.configuration = AgentConfiguration(
                     **(await response.json())["sync"]
                 )
-                self.semaphore = asyncio.Semaphore(self.configuration.concurrency)
+                # self.semaphore = asyncio.Semaphore(self.configuration.concurrency)
+                self.semaphore = asyncio.Semaphore(64)
         logger.tdebug("configuration.debug.get", sync=self.configuration)
 
     async def getMissingFiles(self) -> FileList:
@@ -180,7 +181,6 @@ class Cluster:
                 self.base_url,
                 headers={
                     "User-Agent": self.user_agent,
-                    "Authorization": f"Bearer {self.token.token}",
                 },
             ) as session:
                 self.failed_filelist = FileList(files=[])
@@ -208,26 +208,27 @@ class Cluster:
 
             for _ in range(retry):
                 try:
-                    response = await session.get(file.path)
-                    content = await response.read()
-                    results = await asyncio.gather(
-                        *(
-                            storage.writeFile(file, io.BytesIO(content), delay, retry)
-                            for storage in self.storages
+                    async with session.get(file.path) as response:
+                        content = await response.read()
+                        results = await asyncio.gather(
+                            *(
+                                storage.writeFile(file, io.BytesIO(content), delay, retry)
+                                for storage in self.storages
+                            )
                         )
-                    )
-                    if all(results):
-                        pbar.update(len(content))
-                        return
+                        if all(results):
+                            pbar.update(len(content))
+                            return
                 except Exception as e:
+                    logger.debug(_)
                     logger.terror(
                         "cluster.error.download_file.retry",
                         file=file.hash,
                         e=e,
-                        retry=delay,
+                        retry=delay
                     )
                 await asyncio.sleep(delay)
-            logger.terror("cluster.error.download_file.failed")
+            logger.terror("cluster.error.download_file.failed", file=file.hash)
             self.failed_filelist.files.append(file)
 
     async def init(self) -> None:
@@ -237,7 +238,7 @@ class Cluster:
         results = await asyncio.gather(*(storage.check() for storage in self.storages))
         return all(results)
 
-    def read_long(self, stream: io.BytesIO):
+    def readLong(self, stream: io.BytesIO):
         b = ord(stream.read(1))
         n = b & 0x7F
         shift = 7
@@ -247,5 +248,5 @@ class Cluster:
             shift += 7
         return (n >> 1) ^ -(n & 1)
 
-    def read_string(self, stream: io.BytesIO):
+    def readString(self, stream: io.BytesIO):
         return stream.read(self.read_long(stream)).decode()
