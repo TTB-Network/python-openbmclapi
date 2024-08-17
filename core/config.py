@@ -4,15 +4,15 @@ import yaml
 import os
 
 defaults = {
-    'advanced.api_version': '1.11.0',
-    'advanced.lang': 'zh_cn',
-    'advanced.debug': False,
-    'advanced.retry': 5,
-    'advanced.delay': 15,
-    'cluster.base_url': 'https://openbmclapi.bangbang93.com',
-    'cluster.id': '',
-    'cluster.secret': '',
-    'storages': [{'type': 'local', 'path': './cache'}]
+    "advanced.api_version": "1.11.0",
+    "advanced.lang": "zh_cn",
+    "advanced.debug": False,
+    "advanced.retry": 5,
+    "advanced.delay": 15,
+    "cluster.base_url": "https://openbmclapi.bangbang93.com",
+    "cluster.id": "",
+    "cluster.secret": "",
+    "storages": [{"type": "local", "path": "./cache"}],
 }
 
 

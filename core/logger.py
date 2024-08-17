@@ -12,7 +12,12 @@ class LoggingLogger:
     def __init__(self):
         self.log = Logger.opt(depth=1)
         self.log.remove()
-        self.log.add(sys.stderr, format=basic_logger_format, level="DEBUG" if debug_mode else "INFO", colorize=True)
+        self.log.add(
+            sys.stderr,
+            format=basic_logger_format,
+            level="DEBUG" if debug_mode else "INFO",
+            colorize=True,
+        )
         self.cur_handler = None
         self.log.add(
             Path("./logs/{time:YYYY-MM-DD}.log"),
@@ -31,7 +36,7 @@ class LoggingLogger:
 
     def tdebug(self, key: str, *args, **kwargs):
         self.debug(locale.t(key=key, *args, **kwargs))
-    
+
     def twarning(self, key: str, *args, **kwargs):
         self.warning(locale.t(key=key, *args, **kwargs))
 
@@ -40,5 +45,6 @@ class LoggingLogger:
 
     def tsuccess(self, key: str, *args, **kwargs):
         self.success(locale.t(key=key, *args, **kwargs))
+
 
 logger = LoggingLogger()

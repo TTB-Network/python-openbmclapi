@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 import io
 import tqdm
 
+
 @dataclass
 class FileInfo:
     path: str
@@ -11,14 +12,17 @@ class FileInfo:
     size: int
     mtime: int
 
+
 @dataclass
 class FileList:
     files: List[FileInfo]
+
 
 @dataclass
 class AgentConfiguration:
     source: str
     concurrency: int
+
 
 class Storage(ABC):
     @abstractmethod
@@ -30,7 +34,9 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    async def writeFile(self, path: str, content: io.BytesIO, delay: int, retry: int) -> int:
+    async def writeFile(
+        self, path: str, content: io.BytesIO, delay: int, retry: int
+    ) -> int:
         pass
 
     @abstractmethod
