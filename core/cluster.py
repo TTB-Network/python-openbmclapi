@@ -12,6 +12,7 @@ import aiohttp
 import asyncio
 import hmac
 import hashlib
+import socketio
 import humanize
 import io
 
@@ -230,6 +231,10 @@ class Cluster:
                 await asyncio.sleep(delay)
             logger.terror("cluster.error.download_file.failed", file=file.hash)
             self.failed_filelist.files.append(file)
+
+    async def setupExpress(self, https: bool) -> None:
+        # todo
+        pass
 
     async def init(self) -> None:
         await asyncio.gather(*(storage.init() for storage in self.storages))
