@@ -1,5 +1,5 @@
-class ClusterIdNotSet(Exception):
+class ClusterIdNotSetError(Exception):
     pass
 
-class ClusterSecretNotSet(Exception):
+class ClusterSecretNotSetError(Exception):
     pass

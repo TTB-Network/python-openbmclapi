@@ -10,7 +10,7 @@ debug_mode = Config.get("advanced.debug")
 
 class LoggingLogger:
     def __init__(self):
-        self.log = Logger
+        self.log = Logger.opt(depth=1)
         self.log.remove()
         self.log.add(sys.stderr, format=basic_logger_format, level="DEBUG" if debug_mode else "INFO", colorize=True)
         self.cur_handler = None

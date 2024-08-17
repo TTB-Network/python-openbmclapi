@@ -2,20 +2,25 @@ from dataclasses import dataclass
 from typing import List
 from abc import ABC, abstractmethod
 import io
+import tqdm
 
 @dataclass
 class FileInfo:
     path: str
     hash: str
-    size: float
-    mtime: float
+    size: int
+    mtime: int
 
 @dataclass
 class FileList:
     files: List[FileInfo]
 
-class Storage(ABC):
+@dataclass
+class AgentConfiguration:
+    source: str
+    concurrency: int
 
+class Storage(ABC):
     @abstractmethod
     async def init(self) -> None:
         pass
@@ -25,9 +30,9 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    async def writeFile(self, path: str, content: io.BytesIO) -> int:
+    async def writeFile(self, path: str, content: io.BytesIO, delay: int, retry: int) -> int:
         pass
 
     @abstractmethod
-    async def getMissingFiles(files: FileList) -> FileList:
+    async def getMissingFiles(files: FileList, pbar: tqdm) -> FileList:
         pass

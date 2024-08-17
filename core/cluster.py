@@ -1,9 +1,11 @@
 from core.config import Config
 from core.logger import logger
 from core.scheduler import *
-from core.exceptions import ClusterIdNotSet, ClusterSecretNotSet
+from core.exceptions import ClusterIdNotSetError, ClusterSecretNotSetError
 from core.storages import getStorages
-from core.utils import FileInfo, FileList
+from core.types import FileInfo, FileList, AgentConfiguration
+from core.i18n import locale
+from tqdm import tqdm
 import toml
 import zstandard as zstd
 import aiohttp
@@ -26,7 +28,7 @@ class Token:
         self.ttl = 0 # hours
         self.scheduler = None
         if not self.id or not self.secret:
-            raise ClusterIdNotSet if not self.id else ClusterSecretNotSet
+            raise ClusterIdNotSetError if not self.id else ClusterSecretNotSetError
     
     async def fetchToken(self):
         logger.tinfo('token.info.fetching')
@@ -54,16 +56,19 @@ class Cluster:
         self.token = Token()
         self.filelist = FileList(files=[])
         self.storages = getStorages()
+        self.configuration = None
+        self.semaphore = None
+        self.failed_filelist = FileList(files=[])
 
     async def fetchFileList(self) -> None:
-        logger.tinfo('cluster.filelist.info.fetching')
+        logger.tinfo('cluster.info.filelist.fetching')
         async with aiohttp.ClientSession(self.base_url, headers={
             'User-Agent': self.user_agent,
             'Authorization': f'Bearer {self.token.token}',
         }) as session:
             async with session.get('/openbmclapi/files', params={"lastModified": self.last_modified}) as response:
                 response.raise_for_status()
-                logger.tsuccess('cluster.filelist.success.fetched')
+                logger.tsuccess('cluster.success.filelist.fetched')
                 decompressor = zstd.ZstdDecompressor().stream_reader(io.BytesIO(await response.read()))
                 decompressed_data = io.BytesIO(decompressor.read())
                 for _ in range(self.read_long(decompressed_data)):
@@ -74,12 +79,101 @@ class Cluster:
                         self.read_long(decompressed_data)
                     ))
                 size = sum(file.size for file in self.filelist.files)
-                logger.tsuccess('cluster.filelist.success.parsed', count=humanize.intcomma(len(self.filelist.files)), size=humanize.naturalsize(size))
+                logger.tsuccess('cluster.success.filelist.parsed', count=humanize.intcomma(len(self.filelist.files)), size=humanize.naturalsize(size, binary=True))
 
+    async def getConfiguration(self) -> None:
+        async with aiohttp.ClientSession(self.base_url, headers={
+            'User-Agent': self.user_agent,
+            'Authorization': f'Bearer {self.token.token}',
+        }) as session:
+            async with session.get('/openbmclapi/configuration') as response:
+                self.configuration = AgentConfiguration(**(await response.json())['sync'])
+                self.semaphore = asyncio.Semaphore(self.configuration.concurrency)
+        logger.tdebug('configuration.debug.get', sync=self.configuration)
+
+    async def getMissingFiles(self) -> FileList:
+        with tqdm(
+            desc=locale.t('cluster.tqdm.desc.get_missing'),
+            total=len(self.filelist.files) * len(self.storages),
+            unit=locale.t('cluster.tqdm.unit.files'),
+            unit_scale=True
+        ) as pbar:
+            try:
+                files = set()
+                missing_files = [
+                    file
+                    for storage in self.storages
+                    for file in (await storage.getMissingFiles(self.filelist, pbar)).files
+                    if file.hash not in files and not files.add(file.hash)
+                ]
+                missing_filelist = FileList(files=missing_files)
+                missing_files_count = len(missing_filelist.files)
+                missing_files_size = sum(file.size for file in missing_filelist.files)
+                logger.tsuccess('storage.success.get_missing', count=humanize.intcomma(missing_files_count), size=humanize.naturalsize(missing_files_size, binary=True))
+                return missing_filelist
+            except Exception as e:
+                logger.terror('storage.error.get_missing', e=e)
+                return None
+
+    async def syncFiles(self, missing_filelist: FileList, retry: int, delay: int) -> None:
+        if missing_filelist.files == []:
+            logger.tinfo('cluster.info.sync_files.skipped')
+            return
+        with tqdm(
+            desc=locale.t('cluster.tqdm.desc.sync_files'),
+            total=sum(file.size for file in missing_filelist.files),
+            unit='iB',
+            unit_scale=True,
+            unit_divisor=1024
+        ) as pbar:
+            delay = Config.get('advanced.delay')
+            retry = Config.get('advanced.retry')
+            async with aiohttp.ClientSession(self.base_url, headers={
+                'User-Agent': self.user_agent,
+                'Authorization': f'Bearer {self.token.token}',
+            }) as session:
+                self.failed_filelist = FileList(files=[])
+                tasks = []
+                for file in missing_filelist.files:
+                    tasks.append(asyncio.create_task(self.downloadFile(file, session, pbar)))
+                await asyncio.gather(*tasks)
+            if self.failed_filelist.files == None:
+                logger.tsuccess('cluster.success.sync_files.downloaded')
+                return
+            else:
+                if retry == 1:
+                    logger.terror('cluster.error.sync_files.failed')
+                    return
+                else:
+                    logger.terror('cluster.error.sync_files.retry', retry=delay)
+            await asyncio.sleep(delay)
+            await self.syncFiles(self.failed_filelist, retry - 1, delay)
+
+
+    async def downloadFile(self, file: FileInfo, session: aiohttp.ClientSession, pbar: tqdm) -> None:
+        async with self.semaphore:
+            delay = Config.get('advanced.delay')
+            retry = Config.get('advanced.retry')
+            for _ in range(retry):
+                try:
+                    response = await session.get(file.path)
+                    content = await response.read()
+                    results = [await storage.writeFile(file, io.BytesIO(content), delay, retry) for storage in self.storages]
+                    if all(results):
+                        pbar.update(len(content))
+                        return
+                except Exception as e:
+                    if _ == retry - 1:
+                        logger.terror('cluster.error.download_file.failed')
+                    else:
+                        logger.terror('cluster.error.download_file.retry', file=file.hash, e=e, retry=delay)
+                await asyncio.sleep(delay)
+        self.failed_filelist.files.append(file)
+            
     async def init(self) -> None:
         await asyncio.gather(*(storage.init() for storage in self.storages))
     
-    async def check(self) -> bool:
+    async def checkStorages(self) -> bool:
         results = await asyncio.gather(*(storage.check() for storage in self.storages))
         return all(results)
 
@@ -94,4 +188,4 @@ class Cluster:
         return (n >> 1) ^ -(n & 1)
 
     def read_string(self, stream: io.BytesIO):
-        return stream.read(self.read_long(stream)).decode("utf-8")
+        return stream.read(self.read_long(stream)).decode()

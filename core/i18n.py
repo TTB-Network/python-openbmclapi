@@ -34,4 +34,4 @@ class Locale:
         return Template(localized).safe_substitute(*args, **kwargs)
 
 
-locale: Locale = Locale(Config.get('advanced.lang'))
+locale = Locale(Config.get('advanced.lang'))
