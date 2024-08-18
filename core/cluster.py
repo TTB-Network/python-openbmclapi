@@ -3,8 +3,10 @@ from core.logger import logger
 from core.scheduler import *
 from core.exceptions import ClusterIdNotSetError, ClusterSecretNotSetError
 from core.storages import getStorages
-from core.types import FileInfo, FileList, AgentConfiguration
+from core.classes import FileInfo, FileList, AgentConfiguration
+from core.router import Router
 from core.i18n import locale
+from aiohttp import web
 from tqdm import tqdm
 import toml
 import zstandard as zstd
@@ -233,8 +235,10 @@ class Cluster:
             self.failed_filelist.files.append(file)
 
     async def setupExpress(self, https: bool) -> None:
-        # todo
-        pass
+        logger.tinfo("cluster.info.router.creating")
+        app = web.Application
+        Router(https, app)
+        
 
     async def init(self) -> None:
         await asyncio.gather(*(storage.init() for storage in self.storages))

@@ -1,7 +1,8 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, Dict, Any
 from abc import ABC, abstractmethod
 import io
+from aiohttp import web
 import tqdm
 
 
@@ -41,4 +42,8 @@ class Storage(ABC):
 
     @abstractmethod
     async def getMissingFiles(files: FileList, pbar: tqdm) -> FileList:
+        pass
+
+    @abstractmethod
+    async def express(hash: str, request: web.Request, response: web.StreamResponse) -> Dict[str, Any]:
         pass

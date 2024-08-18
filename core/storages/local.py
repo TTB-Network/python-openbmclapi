@@ -1,6 +1,8 @@
-from core.types import Storage, FileInfo, FileList
+from core.classes import Storage, FileInfo, FileList
 from core.logger import logger
 from core.i18n import locale
+from aiohttp import web
+from typing import Any, Dict
 from tqdm import tqdm
 import os
 import io
@@ -75,3 +77,24 @@ class LocalStorage(Storage):
             file for file, is_missing in zip(files.files, results) if is_missing
         ]
         return FileList(files=missing_files)
+    
+    async def express(self, hash: str, request: web.Request, response: web.StreamResponse) -> Dict[str, Any]:
+        path = os.path.join(self.path, hash[:2], hash)
+        if not os.path.exists(path):
+            response.set_status(404, 'File not found')
+            return {'bytes': 0, 'hits': 0}
+        file_size = os.path.getsize(path)
+        response.content_length = file_size
+        response.content_type = 'application/octet-stream'
+        response.headers['Cache-Control'] = 'max-age=2592000'
+        response.prepare(request)
+
+        try:
+            transport = request.transport
+            socket = transport.get_extra_info('socket')
+            with open(path, 'rb') as f:
+                await asyncio.get_event_loop().sendfile(socket, f, 0, file_size)
+            return {'bytes': file_size, 'hits': 1}
+
+        except Exception:
+            return {'bytes': 0, 'hits': 0}

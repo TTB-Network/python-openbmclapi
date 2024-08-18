@@ -20,6 +20,7 @@
     "cluster.success.sync_files.downloaded": "成功下载所有文件！",
     "cluster.error.sync_files.retry": "无法下载所有文件，将在 ${retry}s 后重试。",
     "cluster.error.sync_files.failed": "无法下载所有文件，已达到最高重试次数。",
+    "cluster.info.router.creating": "正在创建路由……",
     "cluster.tqdm.desc.get_missing": "获取缺失文件中",
     "cluster.tqdm.desc.sync_files": "同步文件中",
     "cluster.tqdm.unit.files": " 个文件",

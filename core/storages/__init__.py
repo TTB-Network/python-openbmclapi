@@ -1,4 +1,4 @@
-from core.types import Storage
+from core.classes import Storage
 from core.storages.local import LocalStorage
 from core.config import Config
 from typing import List
