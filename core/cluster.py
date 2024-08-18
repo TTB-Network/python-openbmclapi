@@ -102,7 +102,7 @@ class Cluster:
                     io.BytesIO(await response.read())
                 )
                 decompressed_data = io.BytesIO(decompressor.read())
-                for _ in range(self.read_long(decompressed_data)):
+                for _ in range(self.readLong(decompressed_data)):
                     self.filelist.files.append(
                         FileInfo(
                             self.readString(decompressed_data),
@@ -130,8 +130,7 @@ class Cluster:
                 self.configuration = AgentConfiguration(
                     **(await response.json())["sync"]
                 )
-                # self.semaphore = asyncio.Semaphore(self.configuration.concurrency)
-                self.semaphore = asyncio.Semaphore(64)
+                self.semaphore = asyncio.Semaphore(self.configuration.concurrency)
         logger.tdebug("configuration.debug.get", sync=self.configuration)
 
     async def getMissingFiles(self) -> FileList:
@@ -223,7 +222,6 @@ class Cluster:
                             pbar.update(len(content))
                             return
                 except Exception as e:
-                    logger.debug(_)
                     logger.terror(
                         "cluster.error.download_file.retry",
                         file=file.hash,
@@ -237,8 +235,9 @@ class Cluster:
     async def setupExpress(self, https: bool) -> None:
         logger.tinfo("cluster.info.router.creating")
         app = web.Application
-        Router(https, app)
-        
+        router = Router(https, app)
+        router.init()
+
 
     async def init(self) -> None:
         await asyncio.gather(*(storage.init() for storage in self.storages))
@@ -258,4 +257,4 @@ class Cluster:
         return (n >> 1) ^ -(n & 1)
 
     def readString(self, stream: io.BytesIO):
-        return stream.read(self.read_long(stream)).decode()
+        return stream.read(self.readLong(stream)).decode()

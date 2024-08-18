@@ -39,7 +39,7 @@ class LocalStorage(Storage):
             try:
                 async with aiofiles.open(file_path, "wb") as f:
                     await f.write(content.getbuffer())
-
+                await asyncio.sleep(0.1)
                 if os.path.getsize(file_path) == file.size:
                     return True
                 else:
