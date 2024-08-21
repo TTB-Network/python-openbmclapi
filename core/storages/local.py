@@ -17,8 +17,7 @@ class LocalStorage(Storage):
         self.checked = False
 
     async def init(self) -> None:
-        if not os.path.exists(self.path):
-            os.makedirs(self.path)
+        os.makedirs(self.path, exist_ok=True)
 
     async def check(self) -> None:
         logger.tinfo("storage.info.check")
@@ -77,24 +76,21 @@ class LocalStorage(Storage):
             file for file, is_missing in zip(files.files, results) if is_missing
         ]
         return FileList(files=missing_files)
-    
-    async def express(self, hash: str, request: web.Request, response: web.StreamResponse) -> Dict[str, Any]:
+
+    async def express(
+        self, hash: str, request: web.Request, response
+    ) -> Dict[str, Any]:
         path = os.path.join(self.path, hash[:2], hash)
         if not os.path.exists(path):
-            response.set_status(404, 'File not found')
-            return {'bytes': 0, 'hits': 0}
-        file_size = os.path.getsize(path)
-        response.content_length = file_size
-        response.content_type = 'application/octet-stream'
-        response.headers['Cache-Control'] = 'max-age=2592000'
-        response.prepare(request)
-
+            response = web.Response()
+            response.set_status(404, "File not found")
+            return {"bytes": 0, "hits": 0}
         try:
-            transport = request.transport
-            socket = transport.get_extra_info('socket')
-            with open(path, 'rb') as f:
-                await asyncio.get_event_loop().sendfile(socket, f, 0, file_size)
-            return {'bytes': file_size, 'hits': 1}
-
-        except Exception:
-            return {'bytes': 0, 'hits': 0}
+            file_size = (os.path.getsize(path),)
+            response = web.FileResponse(path, status=200)
+            response.headers["x-bmclapi-hash"] = hash
+            await response.prepare(request)
+            return {"bytes": file_size, "hits": 1}
+        except Exception as e:
+            logger.debug(e)
+            return {"bytes": 0, "hits": 0}

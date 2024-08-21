@@ -1,6 +1,6 @@
 .vscode/
-config/config.properties
 **/__pycache__
 logs
 config/config.yml
 cache
+cert

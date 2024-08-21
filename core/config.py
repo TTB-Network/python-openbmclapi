@@ -12,7 +12,12 @@ defaults = {
     "cluster.base_url": "https://openbmclapi.bangbang93.com",
     "cluster.id": "",
     "cluster.secret": "",
+    "cluster.byoc": False,
+    "cluster.public_port": 8080,
+    "cluster.port": 8800,
     "storages": [{"type": "local", "path": "./cache"}],
+    "advanced.paths.cert": "./cert/cert.pem",
+    "advanced.paths.key": "./cert/key.pem",
 }
 
 

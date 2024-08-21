@@ -5,6 +5,7 @@ from core.exceptions import ClusterIdNotSetError, ClusterSecretNotSetError
 from core.storages import getStorages
 from core.classes import FileInfo, FileList, AgentConfiguration
 from core.router import Router
+from core.client import WebSocketClient
 from core.i18n import locale
 from aiohttp import web
 from tqdm import tqdm
@@ -14,7 +15,7 @@ import aiohttp
 import asyncio
 import hmac
 import hashlib
-import socketio
+import ssl
 import humanize
 import io
 
@@ -82,6 +83,9 @@ class Cluster:
         self.storages = getStorages()
         self.configuration = None
         self.semaphore = None
+        self.socket = None
+        self.router = None
+        self.server = None
         self.failed_filelist = FileList(files=[])
 
     async def fetchFileList(self) -> None:
@@ -214,7 +218,9 @@ class Cluster:
                         content = await response.read()
                         results = await asyncio.gather(
                             *(
-                                storage.writeFile(file, io.BytesIO(content), delay, retry)
+                                storage.writeFile(
+                                    file, io.BytesIO(content), delay, retry
+                                )
                                 for storage in self.storages
                             )
                         )
@@ -226,18 +232,37 @@ class Cluster:
                         "cluster.error.download_file.retry",
                         file=file.hash,
                         e=e,
-                        retry=delay
+                        retry=delay,
                     )
                 await asyncio.sleep(delay)
             logger.terror("cluster.error.download_file.failed", file=file.hash)
             self.failed_filelist.files.append(file)
 
-    async def setupExpress(self, https: bool) -> None:
+    async def setupExpress(self, https: bool, port: int) -> None:
         logger.tinfo("cluster.info.router.creating")
-        app = web.Application
-        router = Router(https, app)
-        router.init()
+        app = web.Application()
+        try:
+            self.router = Router(app, self.storages)
+            self.router.init()
+            ssl_context = None
+            # if https:
+            #     ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+            #     ssl_context.load_cert_chain(
+            #         certfile=Config.get("advanced.paths.cert"),
+            #         keyfile=Config.get("advanced.paths.key")
+            #     )
+            self.server = web.AppRunner(app)
+            logger.tsuccess("cluster.success.router.created")
+            await self.server.setup()
+            site = web.TCPSite(self.server, "0.0.0.0", port, ssl_context=ssl_context)
+            await site.start()
+            logger.tsuccess("cluster.success.site.start")
+        except Exception as e:
+            logger.terror("cluster.error.router.exception", e=e)
 
+    async def connect(self) -> None:
+        self.socket = WebSocketClient(self.token.token)
+        await self.socket.connect()
 
     async def init(self) -> None:
         await asyncio.gather(*(storage.init() for storage in self.storages))
