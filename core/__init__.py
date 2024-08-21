@@ -18,7 +18,7 @@ async def init():
     protocol = "http" if Config.get("cluster.byoc") else "https"
     if protocol == "https":
         await cluster.socket.requestCertificate()
-    await cluster.setupExpress(protocol == "https", port=Config.get('cluster.port'))
+    await cluster.setupExpress(protocol == "https", port=Config.get("cluster.port"))
     try:
         while True:
             await asyncio.sleep(1000)
