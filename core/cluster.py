@@ -245,12 +245,12 @@ class Cluster:
             self.router = Router(app, self.storages)
             self.router.init()
             ssl_context = None
-            # if https:
-            #     ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
-            #     ssl_context.load_cert_chain(
-            #         certfile=Config.get("advanced.paths.cert"),
-            #         keyfile=Config.get("advanced.paths.key")
-            #     )
+            if https:
+                ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+                ssl_context.load_cert_chain(
+                    certfile=Config.get("advanced.paths.cert"),
+                    keyfile=Config.get("advanced.paths.key")
+                )
             self.server = web.AppRunner(app)
             logger.tsuccess("cluster.success.router.created")
             await self.server.setup()
