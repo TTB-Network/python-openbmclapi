@@ -256,7 +256,9 @@ class Cluster:
                 )
             self.server = web.AppRunner(self.application)
             await self.server.setup()
-            self.site = web.TCPSite(self.server, "0.0.0.0", port, ssl_context=ssl_context)
+            self.site = web.TCPSite(
+                self.server, "0.0.0.0", port, ssl_context=ssl_context
+            )
             await self.site.start()
             logger.tsuccess("cluster.success.listen", port=port)
         except Exception as e:
@@ -286,17 +288,27 @@ class Cluster:
                     "noFastEnable": True,
                     "flavor": {
                         "runtime": f"python/{sys.version.split()[0]} python-openbmclapi/{VERSION}",
-                        "storage": '+'.join(['file' for storage in self.storages if isinstance(storage, LocalStorage)])
+                        "storage": "+".join(
+                            [
+                                "file"
+                                for storage in self.storages
+                                if isinstance(storage, LocalStorage)
+                            ]
+                        ),
                     },
                 },
-                callback=callback
+                callback=callback,
             )
 
             response = await future
-            error, ack = (response + [None, None])[:2] if isinstance(response, list) else (None, None)
+            error, ack = (
+                (response + [None, None])[:2]
+                if isinstance(response, list)
+                else (None, None)
+            )
 
-            if error and isinstance(error, dict) and 'message' in error:
-                logger.terror("cluster.error.enable.error", e=error['message'])
+            if error and isinstance(error, dict) and "message" in error:
+                logger.terror("cluster.error.enable.error", e=error["message"])
 
             if ack is not True:
                 logger.terror("cluster.error.enable.failed")
@@ -317,22 +329,24 @@ class Cluster:
             future.set_result(data)
 
         try:
-            await self.socket.socket.emit(
-                "disable",
-                callback=callback
-            )
+            await self.socket.socket.emit("disable", callback=callback)
 
             response = await future
-            error, ack = (response + [None, None])[:2] if isinstance(response, list) else (None, None)
+            error, ack = (
+                (response + [None, None])[:2]
+                if isinstance(response, list)
+                else (None, None)
+            )
 
-            if error and isinstance(error, dict) and 'message' in error:
-                logger.terror("cluster.error.disable.error", e=error['message'])
+            if error and isinstance(error, dict) and "message" in error:
+                logger.terror("cluster.error.disable.error", e=error["message"])
 
             if ack is not True:
                 logger.terror("cluster.error.disable.failed")
 
         except Exception as e:
-            logger.terror("cluster.error.enable.exception", e=e)    
+            logger.terror("cluster.error.enable.exception", e=e)
+
     async def connect(self) -> None:
         self.socket = WebSocketClient(self.token.token)
         await self.socket.connect()

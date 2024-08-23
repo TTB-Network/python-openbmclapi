@@ -5,6 +5,7 @@ import signal
 
 cluster = Cluster()
 
+
 async def main():
     await cluster.token.fetchToken()
     await cluster.getConfiguration()
@@ -24,6 +25,7 @@ async def main():
     await cluster.enable()
     while True:
         await asyncio.sleep(3600)
+
 
 def init():
     asyncio.run(main())
