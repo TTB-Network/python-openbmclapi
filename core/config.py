@@ -12,7 +12,7 @@ defaults = {
     "cluster.base_url": "https://openbmclapi.bangbang93.com",
     "cluster.id": "",
     "cluster.secret": "",
-    "cluster.host": None,
+    "cluster.host": "",
     "cluster.byoc": False,
     "cluster.public_port": 8080,
     "cluster.port": 8800,
@@ -69,5 +69,6 @@ class CFG:
                 dict_obj[key] = {}
             dict_obj = dict_obj[key]
         dict_obj[keys[-1]] = value
+
 
 Config: CFG = CFG("./config/config.yml")

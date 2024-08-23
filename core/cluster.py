@@ -2,7 +2,7 @@ from core.config import Config
 from core.logger import logger
 from core.scheduler import *
 from core.exceptions import ClusterIdNotSetError, ClusterSecretNotSetError
-from core.storages import getStorages
+from core.storages import getStorages, LocalStorage
 from core.classes import FileInfo, FileList, AgentConfiguration
 from core.router import Router
 from core.client import WebSocketClient
@@ -50,8 +50,9 @@ class Token:
             ) as response:
                 response.raise_for_status()
                 challenge = (await response.json())["challenge"]
+
             signature = hmac.new(
-                self.secret.encode(), challenge.encode(), digestmod=hashlib.sha256
+                self.secret.encode(), challenge.encode(), hashlib.sha256
             )
             async with session.post(
                 "/openbmclapi-agent/token",
@@ -66,7 +67,7 @@ class Token:
                 self.token = res["token"]
                 self.ttl = res["ttl"] / 3600000
                 logger.tsuccess("token.success.fetched", ttl=int(self.ttl))
-                if self.scheduler == None:
+                if not self.scheduler:
                     self.scheduler = Scheduler.add_job(
                         self.fetchToken, IntervalTrigger(hours=self.ttl)
                     )
@@ -91,6 +92,7 @@ class Cluster:
         self.server = None
         self.failed_filelist = FileList(files=[])
         self.enabled = False
+        self.site = None
 
     async def fetchFileList(self) -> None:
         logger.tinfo("cluster.info.filelist.fetching")
@@ -110,15 +112,15 @@ class Cluster:
                     io.BytesIO(await response.read())
                 )
                 decompressed_data = io.BytesIO(decompressor.read())
-                for _ in range(self.readLong(decompressed_data)):
-                    self.filelist.files.append(
-                        FileInfo(
-                            self.readString(decompressed_data),
-                            self.readString(decompressed_data),
-                            self.readLong(decompressed_data),
-                            self.readLong(decompressed_data),
-                        )
+                self.filelist.files = [
+                    FileInfo(
+                        self.readString(decompressed_data),
+                        self.readString(decompressed_data),
+                        self.readLong(decompressed_data),
+                        self.readLong(decompressed_data),
                     )
+                    for _ in range(self.readLong(decompressed_data))
+                ]
                 size = sum(file.size for file in self.filelist.files)
                 logger.tsuccess(
                     "cluster.success.filelist.parsed",
@@ -135,9 +137,8 @@ class Cluster:
             },
         ) as session:
             async with session.get("/openbmclapi/configuration") as response:
-                self.configuration = AgentConfiguration(
-                    **(await response.json())["sync"]
-                )
+                config_data = (await response.json())["sync"]
+                self.configuration = AgentConfiguration(**config_data)
                 self.semaphore = asyncio.Semaphore(self.configuration.concurrency)
         logger.tdebug("configuration.debug.get", sync=self.configuration)
 
@@ -148,28 +149,22 @@ class Cluster:
             unit=locale.t("cluster.tqdm.unit.files"),
             unit_scale=True,
         ) as pbar:
-            try:
-                files = set()
-                missing_files = [
-                    file
-                    for storage in self.storages
-                    for file in (
-                        await storage.getMissingFiles(self.filelist, pbar)
-                    ).files
-                    if file.hash not in files and not files.add(file.hash)
-                ]
-                missing_filelist = FileList(files=missing_files)
-                missing_files_count = len(missing_filelist.files)
-                missing_files_size = sum(file.size for file in missing_filelist.files)
-                logger.tsuccess(
-                    "storage.success.get_missing",
-                    count=humanize.intcomma(missing_files_count),
-                    size=humanize.naturalsize(missing_files_size, binary=True),
-                )
-                return missing_filelist
-            except Exception as e:
-                logger.terror("storage.error.get_missing", e=e)
-                return None
+            files = set()
+            missing_files = [
+                file
+                for storage in self.storages
+                for file in (await storage.getMissingFiles(self.filelist, pbar)).files
+                if file.hash not in files and not files.add(file.hash)
+            ]
+            missing_filelist = FileList(files=missing_files)
+            missing_files_count = len(missing_filelist.files)
+            missing_files_size = sum(file.size for file in missing_filelist.files)
+            logger.tsuccess(
+                "storage.success.get_missing",
+                count=humanize.intcomma(missing_files_count),
+                size=humanize.naturalsize(missing_files_size, binary=True),
+            )
+            return missing_filelist
 
     async def syncFiles(
         self, missing_filelist: FileList, retry: int, delay: int
@@ -189,9 +184,7 @@ class Cluster:
         ) as pbar:
             async with aiohttp.ClientSession(
                 self.base_url,
-                headers={
-                    "User-Agent": self.user_agent,
-                },
+                headers={"User-Agent": self.user_agent},
             ) as session:
                 self.failed_filelist = FileList(files=[])
                 tasks = [
@@ -244,12 +237,11 @@ class Cluster:
 
     async def setupRouter(self) -> None:
         logger.tinfo("cluster.info.router.creating")
-        self.application = web.Application()
         try:
+            self.application = web.Application()
             self.router = Router(self.application, self.storages)
             self.router.init()
             logger.tsuccess("cluster.success.router.created")
-            
         except Exception as e:
             logger.terror("cluster.error.router.exception", e=e)
 
@@ -264,12 +256,11 @@ class Cluster:
                 )
             self.server = web.AppRunner(self.application)
             await self.server.setup()
-            site = web.TCPSite(self.server, "0.0.0.0", port)
-            await site.start()
+            self.site = web.TCPSite(self.server, "0.0.0.0", port, ssl_context=ssl_context)
+            await self.site.start()
             logger.tsuccess("cluster.success.listen", port=port)
-
         except Exception as e:
-            logger.terror('cluster.error.listen')
+            logger.terror("cluster.error.listen", e=e)
 
     async def enable(self) -> None:
         if self.enabled:
@@ -278,8 +269,7 @@ class Cluster:
         future = asyncio.Future()
 
         async def callback(data: List[Any]):
-            error, ack = data
-            future.set_result((error, ack))
+            future.set_result(data)
 
         if not self.socket:
             logger.terror("cluster.error.disconnected")
@@ -295,24 +285,54 @@ class Cluster:
                     "byoc": Config.get("cluster.byoc"),
                     "noFastEnable": True,
                     "flavor": {
-                        "runtime": f"python/{sys.version.split()[0]} python-openbmclapi/{VERSION}"
+                        "runtime": f"python/{sys.version.split()[0]} python-openbmclapi/{VERSION}",
+                        "storage": '+'.join(['file' for storage in self.storages if isinstance(storage, LocalStorage)])
                     },
                 },
-                callback=callback,
+                callback=callback
             )
 
-            error, ack = await future
+            response = await future
+            error, ack = (response + [None, None])[:2] if isinstance(response, list) else (None, None)
 
-            if error:
-                if isinstance(error, dict) and 'message' in error:
-                    logger.terror('cluster.error.enable.error', e=error['message'])
+            if error and isinstance(error, dict) and 'message' in error:
+                logger.terror("cluster.error.enable.error", e=error['message'])
 
             if ack is not True:
-                logger.terror('cluster.error.enable.failed')
+                logger.terror("cluster.error.enable.failed")
+                return
+
+            self.enabled = True
 
         except Exception as e:
-            logger.terror('cluster.error.enable.exception', e=e)
+            logger.terror("cluster.error.enable.exception", e=e)
 
+    async def disable(self) -> None:
+        if not self.socket:
+            return
+        logger.tinfo("cluster.info.disabling")
+        future = asyncio.Future()
+
+        async def callback(data: List[Any]):
+            future.set_result(data)
+
+        try:
+            await self.socket.socket.emit(
+                "disable",
+                callback=callback
+            )
+
+            response = await future
+            error, ack = (response + [None, None])[:2] if isinstance(response, list) else (None, None)
+
+            if error and isinstance(error, dict) and 'message' in error:
+                logger.terror("cluster.error.disable.error", e=error['message'])
+
+            if ack is not True:
+                logger.terror("cluster.error.disable.failed")
+
+        except Exception as e:
+            logger.terror("cluster.error.enable.exception", e=e)    
     async def connect(self) -> None:
         self.socket = WebSocketClient(self.token.token)
         await self.socket.connect()
@@ -325,14 +345,14 @@ class Cluster:
         return all(results)
 
     def readLong(self, stream: io.BytesIO):
-        b = ord(stream.read(1))
-        n = b & 0x7F
-        shift = 7
-        while (b & 0x80) != 0:
-            b = ord(stream.read(1))
-            n |= (b & 0x7F) << shift
+        result, shift = 0, 0
+        while True:
+            byte = ord(stream.read(1))
+            result |= (byte & 0x7F) << shift
+            if not (byte & 0x80):
+                break
             shift += 7
-        return (n >> 1) ^ -(n & 1)
+        return (result >> 1) ^ -(result & 1)
 
     def readString(self, stream: io.BytesIO):
         return stream.read(self.readLong(stream)).decode()

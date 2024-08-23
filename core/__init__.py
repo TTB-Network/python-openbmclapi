@@ -1,10 +1,11 @@
 from core.cluster import Cluster
 from core.config import Config
 import asyncio
+import signal
 
+cluster = Cluster()
 
-async def init():
-    cluster = Cluster()
+async def main():
     await cluster.token.fetchToken()
     await cluster.getConfiguration()
     await cluster.fetchFileList()
@@ -18,10 +19,11 @@ async def init():
     protocol = "http" if Config.get("cluster.byoc") else "https"
     if protocol == "https":
         await cluster.socket.requestCertificate()
-    await cluster.setupRouter(protocol == "https", port=Config.get("cluster.port"))
+    await cluster.setupRouter()
+    await cluster.listen(protocol == "https", Config.get("cluster.port"))
     await cluster.enable()
-    try:
-        while True:
-            await asyncio.sleep(1000)
-    except KeyboardInterrupt:
-        raise KeyboardInterrupt
+    while True:
+        await asyncio.sleep(3600)
+
+def init():
+    asyncio.run(main())

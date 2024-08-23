@@ -45,7 +45,7 @@ class WebSocketClient:
 
         @self.socket.on("reconnect_error")
         async def _(error: str) -> None:
-            logger.terror("client.error.reconnect", error=error)
+            logger.terror("client.error.reconnect", e=error)
 
         @self.socket.on("reconnect_failed")
         async def _() -> None:
