@@ -10,7 +10,6 @@ import os
 class WebSocketClient:
     def __init__(self, token: str) -> None:
         self.socket = None
-        self.connected = None
         self.base_url = Config.get("cluster.base_url")
         self.cert_path = Config.get("advanced.paths.cert")
         self.key_path = Config.get("advanced.paths.key")
@@ -19,7 +18,7 @@ class WebSocketClient:
         os.makedirs(os.path.dirname(self.key_path), exist_ok=True)
 
     async def connect(self) -> None:
-        if self.socket and self.connected:
+        if self.socket and self.socket.connected:
             return
 
         self.socket = socketio.AsyncClient()
@@ -27,6 +26,10 @@ class WebSocketClient:
         @self.socket.on("connect")
         async def _() -> None:
             logger.tsuccess("client.success.connected")
+
+        @self.socket.on("disconnect")
+        async def _(reason: str) -> None:
+            logger.twarning("client.warn.disconnected", reason=reason)
 
         @self.socket.on("message")
         async def _(message: str) -> None:

@@ -12,6 +12,7 @@ defaults = {
     "cluster.base_url": "https://openbmclapi.bangbang93.com",
     "cluster.id": "",
     "cluster.secret": "",
+    "cluster.host": None,
     "cluster.byoc": False,
     "cluster.public_port": 8080,
     "cluster.port": 8800,
@@ -50,6 +51,7 @@ class CFG:
         self.save()
 
     def save(self):
+        self.file.parent.mkdir(parents=True, exist_ok=True)
         with open(self.file, "w", encoding="utf-8") as f:
             yaml.dump(data=self.cfg, stream=f, allow_unicode=True)
 
@@ -68,8 +70,4 @@ class CFG:
             dict_obj = dict_obj[key]
         dict_obj[keys[-1]] = value
 
-
-if not os.path.exists("./config"):
-    print("The config dir is not exists.")
-    os.mkdir("./config")
 Config: CFG = CFG("./config/config.yml")

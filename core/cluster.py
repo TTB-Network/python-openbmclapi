@@ -7,6 +7,7 @@ from core.classes import FileInfo, FileList, AgentConfiguration
 from core.router import Router
 from core.client import WebSocketClient
 from core.i18n import locale
+from typing import List, Any
 from aiohttp import web
 from tqdm import tqdm
 import toml
@@ -16,6 +17,7 @@ import asyncio
 import hmac
 import hashlib
 import ssl
+import sys
 import humanize
 import io
 
@@ -34,6 +36,7 @@ class Token:
         self.secret = Config.get("cluster.secret")
         self.ttl = 0  # hours
         self.scheduler = None
+        self.application = None
         if not self.id or not self.secret:
             raise ClusterIdNotSetError if not self.id else ClusterSecretNotSetError
 
@@ -87,6 +90,7 @@ class Cluster:
         self.router = None
         self.server = None
         self.failed_filelist = FileList(files=[])
+        self.enabled = False
 
     async def fetchFileList(self) -> None:
         logger.tinfo("cluster.info.filelist.fetching")
@@ -238,27 +242,76 @@ class Cluster:
             logger.terror("cluster.error.download_file.failed", file=file.hash)
             self.failed_filelist.files.append(file)
 
-    async def setupExpress(self, https: bool, port: int) -> None:
+    async def setupRouter(self) -> None:
         logger.tinfo("cluster.info.router.creating")
-        app = web.Application()
+        self.application = web.Application()
         try:
-            self.router = Router(app, self.storages)
+            self.router = Router(self.application, self.storages)
             self.router.init()
+            logger.tsuccess("cluster.success.router.created")
+            
+        except Exception as e:
+            logger.terror("cluster.error.router.exception", e=e)
+
+    async def listen(self, https: bool, port: int) -> None:
+        try:
             ssl_context = None
             if https:
                 ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
                 ssl_context.load_cert_chain(
                     certfile=Config.get("advanced.paths.cert"),
-                    keyfile=Config.get("advanced.paths.key")
+                    keyfile=Config.get("advanced.paths.key"),
                 )
-            self.server = web.AppRunner(app)
-            logger.tsuccess("cluster.success.router.created")
+            self.server = web.AppRunner(self.application)
             await self.server.setup()
-            site = web.TCPSite(self.server, "0.0.0.0", port, ssl_context=ssl_context)
+            site = web.TCPSite(self.server, "0.0.0.0", port)
             await site.start()
-            logger.tsuccess("cluster.success.site.start")
+            logger.tsuccess("cluster.success.listen", port=port)
+
         except Exception as e:
-            logger.terror("cluster.error.router.exception", e=e)
+            logger.terror('cluster.error.listen')
+
+    async def enable(self) -> None:
+        if self.enabled:
+            return
+        logger.tinfo("cluster.info.enabling")
+        future = asyncio.Future()
+
+        async def callback(data: List[Any]):
+            error, ack = data
+            future.set_result((error, ack))
+
+        if not self.socket:
+            logger.terror("cluster.error.disconnected")
+            return
+
+        try:
+            await self.socket.socket.emit(
+                "enable",
+                data={
+                    "host": Config.get("cluster.host"),
+                    "port": Config.get("cluster.public_port"),
+                    "version": API_VERSION,
+                    "byoc": Config.get("cluster.byoc"),
+                    "noFastEnable": True,
+                    "flavor": {
+                        "runtime": f"python/{sys.version.split()[0]} python-openbmclapi/{VERSION}"
+                    },
+                },
+                callback=callback,
+            )
+
+            error, ack = await future
+
+            if error:
+                if isinstance(error, dict) and 'message' in error:
+                    logger.terror('cluster.error.enable.error', e=error['message'])
+
+            if ack is not True:
+                logger.terror('cluster.error.enable.failed')
+
+        except Exception as e:
+            logger.terror('cluster.error.enable.exception', e=e)
 
     async def connect(self) -> None:
         self.socket = WebSocketClient(self.token.token)

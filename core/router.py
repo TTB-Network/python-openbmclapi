@@ -26,10 +26,6 @@ class Router:
         return decorator
 
     def init(self) -> None:
-        # @self.route("/auth")
-        # async def _():
-        #     pass
-
         @self.route("/download/{hash}")
         async def _(
             request: web.Request,
@@ -45,11 +41,10 @@ class Router:
 
         @self.route("/measure/{size}")
         async def _(request: web.Request):
-            if not checkSign(Config.get('advanced.base_url') + request.path, self.secret, request.query):
-                return web.Response(status=403)
-
             try:
                 size = int(request.match_info['size'])
+                if not checkSign(f"/measure/{size}", self.secret, request.query):
+                    return web.Response(status=403)
                 if size > 200:
                     return web.Response(status=400)
 
