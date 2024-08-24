@@ -68,7 +68,7 @@ class Token:
                 self.ttl = res["ttl"] / 3600000
                 logger.tsuccess("token.success.fetched", ttl=int(self.ttl))
                 if not self.scheduler:
-                    self.scheduler = Scheduler.add_job(
+                    self.scheduler = scheduler.add_job(
                         self.fetchToken, IntervalTrigger(hours=self.ttl)
                     )
 
@@ -314,7 +314,7 @@ class Cluster:
                 return
 
             self.enabled = True
-            logger.tsuccess("cluster.success.enable.enabled")
+            logger.tsuccess("cluster.success.enable.enabled", id=self.id, port=Config.get("cluster.public_port"))
 
         except Exception as e:
             logger.terror("cluster.error.enable.exception", e=e)

@@ -2,6 +2,7 @@ import asyncio
 from core.cluster import Cluster
 from core.config import Config
 from core.logger import logger
+from core.scheduler import scheduler, IntervalTrigger
 
 cluster = Cluster()
 
@@ -13,20 +14,22 @@ async def main():
         await cluster.fetchFileList()
         await cluster.init()
         await cluster.checkStorages()
-        missing_filelist = await cluster.getMissingFiles()
-        await cluster.syncFiles(
-            missing_filelist, Config.get("advanced.retry"), Config.get("advanced.delay")
-        )
+        async def syncFiles():
+            missing_filelist = await cluster.getMissingFiles()
+            await cluster.syncFiles(
+                missing_filelist, Config.get("advanced.retry"), Config.get("advanced.delay")
+            )
+        await syncFiles()
+        scheduler.add_job(syncFiles, trigger=IntervalTrigger(minutes=Config.get('advanced.sync_interval')))
         await cluster.connect()
-
         protocol = "http" if Config.get("cluster.byoc") else "https"
         if protocol == "https":
             await cluster.socket.requestCertificate()
-
         await cluster.setupRouter()
         await cluster.listen(protocol == "https", Config.get("cluster.port"))
         await cluster.enable()
-
+        scheduler.start()
+        logger.tsuccess('main.success.scheduler')
         while True:
             await asyncio.sleep(3600)
 
@@ -38,6 +41,8 @@ async def main():
             await cluster.socket.socket.disconnect()
         if cluster.site:
             await cluster.site.stop()
+        if scheduler.state == 1:
+            scheduler.shutdown()
         logger.tsuccess("main.success.stopped")
 
 
