@@ -192,7 +192,6 @@ class Cluster:
                     for file in missing_filelist.files
                 ]
                 await asyncio.gather(*tasks)
-
             if not self.failed_filelist.files:
                 logger.tsuccess("cluster.success.sync_files.downloaded")
             elif retry > 1:
@@ -315,12 +314,13 @@ class Cluster:
                 return
 
             self.enabled = True
+            logger.tsuccess("cluster.success.enable.enabled")
 
         except Exception as e:
             logger.terror("cluster.error.enable.exception", e=e)
 
     async def disable(self) -> None:
-        if not self.socket:
+        if not self.socket or not self.enabled:
             return
         logger.tinfo("cluster.info.disabling")
         future = asyncio.Future()
@@ -344,6 +344,7 @@ class Cluster:
             if ack is not True:
                 logger.terror("cluster.error.disable.failed")
 
+            logger.tsuccess("cluster.success.disable.disabled")
         except Exception as e:
             logger.terror("cluster.error.enable.exception", e=e)
 

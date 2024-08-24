@@ -28,8 +28,8 @@ class WebSocketClient:
             logger.tsuccess("client.success.connected")
 
         @self.socket.on("disconnect")
-        async def _(reason: str) -> None:
-            logger.twarning("client.warn.disconnected", reason=reason)
+        async def _() -> None:
+            logger.twarning("client.warn.disconnected")
 
         @self.socket.on("message")
         async def _(message: str) -> None:
