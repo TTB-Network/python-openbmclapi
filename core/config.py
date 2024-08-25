@@ -9,6 +9,7 @@ defaults = {
     "advanced.debug": False,
     "advanced.retry": 5,
     "advanced.delay": 15,
+    "advanced.keep_alive": 10,
     "advanced.sync_interval": 60,
     "cluster.base_url": "https://openbmclapi.bangbang93.com",
     "cluster.id": "",

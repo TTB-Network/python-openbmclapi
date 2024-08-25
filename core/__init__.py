@@ -28,6 +28,9 @@ async def main():
         await cluster.setupRouter()
         await cluster.listen(protocol == "https", Config.get("cluster.port"))
         await cluster.enable()
+        if not cluster.enabled:
+            raise asyncio.CancelledError
+        scheduler.add_job(cluster.keepAlive, IntervalTrigger(seconds=Config.get("advanced.keep_alive")))
         scheduler.start()
         logger.tsuccess('main.success.scheduler')
         while True:
@@ -47,12 +50,7 @@ async def main():
 
 
 def init():
-    loop = asyncio.get_event_loop()
-    main_task = loop.create_task(main())
     try:
-        loop.run_until_complete(main_task)
+        asyncio.run(main())
     except KeyboardInterrupt:
-        main_task.cancel()
-        loop.run_until_complete(asyncio.shield(main_task))
-    finally:
-        loop.close()
+        pass

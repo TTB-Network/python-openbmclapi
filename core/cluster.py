@@ -3,7 +3,7 @@ from core.logger import logger
 from core.scheduler import *
 from core.exceptions import ClusterIdNotSetError, ClusterSecretNotSetError
 from core.storages import getStorages, LocalStorage
-from core.classes import FileInfo, FileList, AgentConfiguration
+from core.classes import FileInfo, FileList, AgentConfiguration, Counters
 from core.router import Router
 from core.client import WebSocketClient
 from core.i18n import locale
@@ -15,6 +15,7 @@ import zstandard as zstd
 import aiohttp
 import asyncio
 import hmac
+import datetime
 import hashlib
 import ssl
 import sys
@@ -314,10 +315,58 @@ class Cluster:
                 return
 
             self.enabled = True
-            logger.tsuccess("cluster.success.enable.enabled", id=self.id, port=Config.get("cluster.public_port"))
+            logger.tsuccess(
+                "cluster.success.enable.enabled",
+                id=self.id,
+                port=Config.get("cluster.public_port"),
+            )
 
         except Exception as e:
             logger.terror("cluster.error.enable.exception", e=e)
+
+    async def keepAlive(self) -> bool:
+        if not self.enabled:
+            logger.terror("cluster.error.keepalive.cluster_not_enabled")
+        if not self.socket:
+            logger.terror("cluster.error.keepalive.socket_not_setup")
+
+        future = asyncio.Future()
+
+        async def callback(data: List[Any]):
+            future.set_result(data)
+
+        counter = self.router.counters
+
+        try:
+            await self.socket.socket.emit(
+                "keep-alive",
+                data={
+                    "time": datetime.datetime.now(datetime.UTC)
+                    **counter,
+                },
+                callback=callback,
+            )
+
+            response = await future
+            error, date = (
+                (response + [None, None])[:2]
+                if isinstance(response, list)
+                else (None, None)
+            )
+            
+            if error:
+                logger.terror("cluster.error.keep_alive.error", e=error)
+                return False
+
+            logger.tsuccess("cluster.success.keep_alive.success", hits=humanize.intcomma(counter.hits), bytes=humanize.naturalsize(counter.bytes, binary=True))
+
+            self.router.counters.bytes -= counter.bytes
+            self.router.counters.hits -= counter.hits
+
+            return bool(date)
+
+        except Exception as e:
+            logger.terror("cluster.error.keep_alive.error", e=e)
 
     async def disable(self) -> None:
         if not self.socket or not self.enabled:
