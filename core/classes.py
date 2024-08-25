@@ -24,10 +24,12 @@ class AgentConfiguration:
     source: str
     concurrency: int
 
+
 @dataclass
 class Counters:
     hits: int
     bytes: int
+
 
 class Storage(ABC):
     @abstractmethod

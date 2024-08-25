@@ -341,8 +341,7 @@ class Cluster:
             await self.socket.socket.emit(
                 "keep-alive",
                 data={
-                    "time": datetime.datetime.now(datetime.UTC)
-                    **counter,
+                    "time": datetime.datetime.now(datetime.UTC) ** counter,
                 },
                 callback=callback,
             )
@@ -353,12 +352,16 @@ class Cluster:
                 if isinstance(response, list)
                 else (None, None)
             )
-            
+
             if error:
                 logger.terror("cluster.error.keep_alive.error", e=error)
                 return False
 
-            logger.tsuccess("cluster.success.keep_alive.success", hits=humanize.intcomma(counter.hits), bytes=humanize.naturalsize(counter.bytes, binary=True))
+            logger.tsuccess(
+                "cluster.success.keep_alive.success",
+                hits=humanize.intcomma(counter.hits),
+                bytes=humanize.naturalsize(counter.bytes, binary=True),
+            )
 
             self.router.counters.bytes -= counter.bytes
             self.router.counters.hits -= counter.hits

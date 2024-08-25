@@ -14,13 +14,20 @@ async def main():
         await cluster.fetchFileList()
         await cluster.init()
         await cluster.checkStorages()
+
         async def syncFiles():
             missing_filelist = await cluster.getMissingFiles()
             await cluster.syncFiles(
-                missing_filelist, Config.get("advanced.retry"), Config.get("advanced.delay")
+                missing_filelist,
+                Config.get("advanced.retry"),
+                Config.get("advanced.delay"),
             )
+
         await syncFiles()
-        scheduler.add_job(syncFiles, trigger=IntervalTrigger(minutes=Config.get('advanced.sync_interval')))
+        scheduler.add_job(
+            syncFiles,
+            trigger=IntervalTrigger(minutes=Config.get("advanced.sync_interval")),
+        )
         await cluster.connect()
         protocol = "http" if Config.get("cluster.byoc") else "https"
         if protocol == "https":
@@ -30,9 +37,12 @@ async def main():
         await cluster.enable()
         if not cluster.enabled:
             raise asyncio.CancelledError
-        scheduler.add_job(cluster.keepAlive, IntervalTrigger(seconds=Config.get("advanced.keep_alive")))
+        scheduler.add_job(
+            cluster.keepAlive,
+            IntervalTrigger(seconds=Config.get("advanced.keep_alive")),
+        )
         scheduler.start()
-        logger.tsuccess('main.success.scheduler')
+        logger.tsuccess("main.success.scheduler")
         while True:
             await asyncio.sleep(3600)
 
