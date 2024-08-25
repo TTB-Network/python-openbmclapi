@@ -11,5 +11,5 @@ ADD . .
 
 RUN pip install -r requirements.txt
 ENV cluster.port=8080
-EXPOSE $cluster.port
+EXPOSE 8080
 CMD ["python", "./main.py"]
