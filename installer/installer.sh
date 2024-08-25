@@ -15,6 +15,18 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published
+# by the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 if [ "$(id -u)" -ne 0 ]; then
 	echo -e "\e[31mERROR: Not root user\e[0m"
@@ -28,7 +40,6 @@ RAW_PREFIX="${MIRROR_PREFIX}https://raw.githubusercontent.com"
 RAW_REPO="$RAW_PREFIX/$REPO"
 BASE_PATH=/opt/python-openbmclapi
 USERNAME=openbmclapi
-PY_MIRCO=3.10
 if ! PY_VERSION=$(python -V 2>&1|awk '{print $2}') && $(python -V 2>&1|awk '{print $2}'|awk -F '.' '{print $1}') -lt 3 ; then
     echo -e "\e[31mERROR: Failed to detect Python version.\e[0m"
     exit 1

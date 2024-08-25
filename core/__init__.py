@@ -1,71 +1,66 @@
 import asyncio
-import sys
-import time
-from .env import env as env
-import atexit
-from .logger import logger, socketio_logger
-from .scheduler import init as scheduler_init
-from .scheduler import exit as scheduler_exit
-from .utils import WaitLock
+from core.cluster import Cluster
+from core.config import Config
+from core.logger import logger
+from core.scheduler import scheduler, IntervalTrigger
 
-env["MONOTONIC"] = time.monotonic()
-env["STARTUP"] = time.time()
+cluster = Cluster()
 
-wait_exit: WaitLock = WaitLock()
+
+async def main():
+    try:
+        await cluster.token.fetchToken()
+        await cluster.getConfiguration()
+        await cluster.fetchFileList()
+        await cluster.init()
+        await cluster.checkStorages()
+
+        async def syncFiles():
+            missing_filelist = await cluster.getMissingFiles()
+            await cluster.syncFiles(
+                missing_filelist,
+                Config.get("advanced.retry"),
+                Config.get("advanced.delay"),
+            )
+
+        await syncFiles()
+        scheduler.add_job(
+            syncFiles,
+            trigger=IntervalTrigger(minutes=Config.get("advanced.sync_interval")),
+        )
+        await cluster.connect()
+        protocol = "http" if Config.get("cluster.byoc") else "https"
+        if protocol == "https":
+            await cluster.socket.requestCertificate()
+        await cluster.setupRouter()
+        await cluster.listen(protocol == "https", Config.get("cluster.port"))
+        await cluster.enable()
+        if not cluster.enabled:
+            raise asyncio.CancelledError
+        scheduler.add_job(
+            cluster.keepAlive,
+            IntervalTrigger(seconds=Config.get("advanced.keep_alive")),
+        )
+        scheduler.start()
+        logger.tsuccess("main.success.scheduler")
+        while True:
+            await asyncio.sleep(3600)
+
+    except asyncio.CancelledError:
+        logger.tinfo("main.info.stopping")
+        if cluster.enabled:
+            await cluster.disable()
+        if cluster.socket:
+            await cluster.socket.socket.disconnect()
+        if cluster.site:
+            await cluster.site.stop()
+        if scheduler.state == 1:
+            scheduler.shutdown()
+        logger.tsuccess("main.success.stopped")
 
 
 def init():
-    wait_exit.acquire()
-    logger.tinfo("core.info.loading")
-    version = sys.version_info
-    logger.tinfo(
-        "core.info.python_version", v=f"{version.major}.{version.minor}.{version.micro}"
-    )
-    atexit.register(exit)
     try:
-        asyncio.run(async_init())
+        asyncio.run(main())
     except KeyboardInterrupt:
-        if wait_exit.locked:
-            wait_exit.release()
-
-async def async_init():
-    # first init
-    await scheduler_init()
-    # load modules
-    from .network import init as network_init
-    from .network import exit as network_exit
-    from .database import init as database_init
-    from .cluster import init as cluster_init
-    from .cluster import exit as cluster_exit
-    from .statistics import init as stats_init
-    from .statistics import exit as stats_exit
-    from .update import init as update_init
-    from .system import init as system_init
-    import plugins 
-
-    database_init()
-    update_init()
-    scheduler.delay(network_init)
-    stats_init()
-    await cluster_init()
-
-    system_init()
-    plugins.load_plugins()
-    for plugin in plugins.get_plugins():
-        await plugin.init()
-        await plugin.enable()
-
-    await wait_exit.wait()
-    env["EXIT"] = True
-    await cluster_exit()
-    for plugin in plugins.get_enable_plugins():
-        await plugin.disable()
-    network_exit()
-    stats_exit()
-    scheduler_exit()
-
-
-def exit():
-    if wait_exit.locked:
-        wait_exit.release()
-    logger.tsuccess("core.success.exit")
+        pass

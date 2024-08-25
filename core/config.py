@@ -1,52 +1,26 @@
 from pathlib import Path
-import random
-import string
 from typing import Any
 import yaml
 import os
 
 defaults = {
+    "advanced.api_version": "1.11.0",
+    "advanced.lang": "zh_cn",
+    "advanced.debug": False,
+    "advanced.retry": 5,
+    "advanced.delay": 15,
+    "advanced.keep_alive": 10,
+    "advanced.sync_interval": 60,
+    "cluster.base_url": "https://openbmclapi.bangbang93.com",
     "cluster.id": "",
     "cluster.secret": "",
-    "cluster.public_port": 8800,
-    "cluster.public_host": "",
+    "cluster.host": "",
     "cluster.byoc": False,
-    "cluster.enable": True,
-    "cluster.timeout.enable": 120,
-    "cluster.timeout.keepalive": 300,
-    "cluster.reconnect.delay": 60,
-    "cluster.reconnect.retry": -1,
-    "cluster.download_access_logs": True,
-    "cluster.download_retry_delay": 60,
-    "cache.buffer": 536870912,
-    "cache.time": 1800,
-    "cache.check": 360,
-    "cache.enable": True,
-    "web.server_name": "TTB-Network",
-    "web.x_forwarded_for": 0,
-    "web.port": 8080,
-    "web.ssl_port": 8800,
-    "web.force_ssl": False,
-    "advanced.timeout": 30,
-    "advanced.min_rate_timestamp": 1000,
-    "advanced.min_rate": 500,
-    "advanced.file_check_mode": "size",
-    "advanced.request_buffer": 8192,
-    "advanced.download_threads": 64,
-    "advanced.io_buffer": 16777216,
-    "advanced.header_bytes": 4096,
-    "advanced.url": "https://openbmclapi.bangbang93.com/",
-    "advanced.skip_sign": False,
-    "advanced.debug": False,
-    "advanced.language": "zh_cn",
-    "advanced.auto_update": False,
-    "advanced.copy_from_another_storage": True,
-    "dashboard.username": "admin",
-    "dashboard.websocket": True,
-    "dashboard.password": "".join(
-        random.choices(string.ascii_letters + string.digits, k=6)
-    ),
-    "storages": {"bmclapi": {"type": "file", "path": "./bmclapi", "width": 0}},
+    "cluster.public_port": 8080,
+    "cluster.port": 8800,
+    "storages": [{"type": "local", "path": "./cache"}],
+    "advanced.paths.cert": "./cert/cert.pem",
+    "advanced.paths.key": "./cert/key.pem",
 }
 
 
@@ -59,7 +33,6 @@ class CFG:
         else:
             for key, value in defaults.items():
                 self.set(key, value)
-            print(f"[Config] Dashboard password: {self.get('dashboard.password')}.")
 
     def load(self):
         with open(self.file, "r", encoding="utf-8") as f:
@@ -80,6 +53,7 @@ class CFG:
         self.save()
 
     def save(self):
+        self.file.parent.mkdir(parents=True, exist_ok=True)
         with open(self.file, "w", encoding="utf-8") as f:
             yaml.dump(data=self.cfg, stream=f, allow_unicode=True)
 
@@ -92,14 +66,11 @@ class CFG:
         return dict_obj
 
     def _set_value(self, dict_obj, keys, value):
-        for i, key in enumerate(keys[:-1]):
+        for _, key in enumerate(keys[:-1]):
             if key not in dict_obj:
                 dict_obj[key] = {}
             dict_obj = dict_obj[key]
         dict_obj[keys[-1]] = value
 
 
-if not os.path.exists("./config"):
-    print("The config dir is not exists.")
-    os.mkdir("./config")
 Config: CFG = CFG("./config/config.yml")
