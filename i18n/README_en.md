@@ -6,7 +6,9 @@
   <img src="https://socialify.git.ci/TTB-Network/python-openbmclapi/image?description=1&font=Inter&language=1&logo=https%3A%2F%2Fpython-openbmclapi.ttb-network.top%2Fimg%2Flogo.svg&name=1&owner=1&pattern=Plus&theme=Auto">
 </picture>
 
-# OpenBMCLAPI for Python
+# OpenBMCLAPI for Python v2
+
+🥳 热烈祝贺 python-openbmclapi v2 的发布！🥳
 
 简体中文 | [English](/i18n/README_en.md)
 
