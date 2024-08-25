@@ -9,11 +9,7 @@ LABEL org.opencontainers.image.title python-openbmclapi
 WORKDIR /opt/python-openbmclapi
 ADD . .
 
-RUN pip install --user pipx
-RUN pipx install poetry
-RUN pipx ensurepath
-RUN poetry install
-RUN poetry shell
-ENV port=80
-EXPOSE $port
+RUN pip install -r requirements.txt
+ENV cluster.port=8080
+EXPOSE $cluster.port
 CMD ["python", "./main.py"]
