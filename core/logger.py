@@ -15,7 +15,7 @@ def filter(record):
 
 class LoggingLogger:
     def __init__(self):
-        self.log = Logger
+        self.log = Logger.opt(depth=1)
         self.log.remove()
         self.log.add(
             sys.stderr,

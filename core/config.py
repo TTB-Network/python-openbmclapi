@@ -16,7 +16,7 @@ defaults = {
     "cluster.secret": "",
     "cluster.host": "",
     "cluster.byoc": False,
-    "cluster.public_port": 8080,
+    "cluster.public_port": -1,
     "cluster.port": 8800,
     "storages": [{"type": "local", "path": "./cache"}],
     "advanced.paths.cert": "./cert/cert.pem",

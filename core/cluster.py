@@ -10,6 +10,7 @@ from core.i18n import locale
 from typing import List, Any
 from aiohttp import web
 from tqdm import tqdm
+from pathlib import Path
 import toml
 import zstandard as zstd
 import aiohttp
@@ -251,8 +252,8 @@ class Cluster:
             if https:
                 ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
                 ssl_context.load_cert_chain(
-                    certfile=Config.get("advanced.paths.cert"),
-                    keyfile=Config.get("advanced.paths.key"),
+                    certfile=Path(Config.get("advanced.paths.cert")),
+                    keyfile=Path(Config.get("advanced.paths.key")),
                 )
             self.server = web.AppRunner(self.application)
             await self.server.setup()
@@ -282,7 +283,7 @@ class Cluster:
                 "enable",
                 data={
                     "host": Config.get("cluster.host"),
-                    "port": Config.get("cluster.public_port"),
+                    "port": Config.get("cluster.public_port") or Config.get("cluster.port"),
                     "version": API_VERSION,
                     "byoc": Config.get("cluster.byoc"),
                     "noFastEnable": True,
