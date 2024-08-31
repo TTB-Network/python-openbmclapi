@@ -326,7 +326,7 @@ class Cluster:
             else:
                 logger.tsuccess(
                     "cluster.success.enable.enabled.byoc",
-                    host=Config.get("cluster.host")
+                    host=Config.get("cluster.host"),
                     port=Config.get("cluster.public_port")
                 )
 
