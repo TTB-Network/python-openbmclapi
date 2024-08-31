@@ -25,12 +25,6 @@ class AgentConfiguration:
     concurrency: int
 
 
-@dataclass
-class Counters:
-    hits: int
-    bytes: int
-
-
 class Storage(ABC):
     @abstractmethod
     async def init(self) -> None:

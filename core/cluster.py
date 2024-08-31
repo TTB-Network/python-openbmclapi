@@ -3,7 +3,7 @@ from core.logger import logger
 from core.scheduler import *
 from core.exceptions import ClusterIdNotSetError, ClusterSecretNotSetError
 from core.storages import getStorages, LocalStorage
-from core.classes import FileInfo, FileList, AgentConfiguration, Counters
+from core.classes import FileInfo, FileList, AgentConfiguration
 from core.router import Router
 from core.client import WebSocketClient
 from core.i18n import locale
@@ -369,12 +369,12 @@ class Cluster:
 
             logger.tsuccess(
                 "cluster.success.keep_alive.success",
-                hits=humanize.intcomma(counter.hits),
-                bytes=humanize.naturalsize(counter.bytes, binary=True),
+                hits=humanize.intcomma(counter["hits"]),
+                bytes=humanize.naturalsize(counter["hits"], binary=True),
             )
 
-            self.router.counters.bytes -= counter.bytes
-            self.router.counters.hits -= counter.hits
+            self.router.counters["bytes"] -= counter["bytes"]
+            self.router.counters["hits"] -= counter["hits"]
 
             return bool(date)
 

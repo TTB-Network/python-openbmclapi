@@ -1,6 +1,6 @@
 from functools import wraps
 from core.config import Config
-from core.classes import Storage, Counters
+from core.classes import Storage
 from core.utils import checkSign
 from typing import List, Union
 from aiohttp import web
@@ -12,7 +12,7 @@ class Router:
         self.app = app
         self.secret = Config.get("cluster.secret")
         self.storages = storages
-        self.counters = Counters(hits=0, bytes=0)
+        self.counters = {"hits": 0, "bytes": 0}
         self.route = web.RouteTableDef()
 
     def init(self) -> None:
@@ -28,8 +28,8 @@ class Router:
             data = await random.choice(self.storages).express(
                 file_hash, request, response
             )
-            self.counters.bytes += data["bytes"]
-            self.counters.hits += data["hits"]
+            self.counters["bytes"] += data["bytes"]
+            self.counters["hits"] += data["hits"]
             return response
 
         @self.route.get("/measure/{size}")
