@@ -382,7 +382,7 @@ class Cluster:
             logger.terror("cluster.error.keep_alive.error", e=e)
 
     async def disable(self) -> None:
-        if not self.socket or not self.enabled or not self.socket.socket.connected:
+        if not self.socket or not self.enabled:
             return
         logger.tinfo("cluster.info.disabling")
         future = asyncio.Future()
