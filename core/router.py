@@ -28,8 +28,8 @@ class Router:
             data = await random.choice(self.storages).express(
                 file_hash, request, response
             )
-            self.counters.bytes += int(data["bytes"])
-            self.counters.hits += int(data["hits"])
+            self.counters.bytes += data["bytes"]
+            self.counters.hits += data["hits"]
             return response
 
         @self.route.get("/measure/{size}")

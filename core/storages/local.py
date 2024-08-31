@@ -86,7 +86,7 @@ class LocalStorage(Storage):
             response.set_status(404, "File not found")
             return {"bytes": 0, "hits": 0}
         try:
-            file_size = (os.path.getsize(path),)
+            file_size = os.path.getsize(path)
             response = web.FileResponse(path, status=200)
             response.headers["x-bmclapi-hash"] = hash
             await response.prepare(request)
