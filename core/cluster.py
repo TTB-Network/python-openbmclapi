@@ -94,8 +94,7 @@ class Cluster:
         self.server = None
         self.failed_filelist = FileList(files=[])
         self.enabled = False
-        self.https_site = None
-        self.http_site = None
+        self.site = None
 
     async def fetchFileList(self) -> None:
         logger.tinfo("cluster.info.filelist.fetching")
@@ -259,15 +258,10 @@ class Cluster:
                 ssl_context.check_hostname = False
             self.server = web.AppRunner(self.application)
             await self.server.setup()
-            if https:
-                self.https_site = web.TCPSite(
-                    self.server, "0.0.0.0", port, ssl_context=ssl_context
-                )
-                await self.https_site.start()
-            self.http_site = web.TCPSite(
-                self.server, "0.0.0.0", port
+            self.site = web.TCPSite(
+                self.server, "0.0.0.0", port, ssl_context=ssl_context
             )
-            await self.http_site.start()
+            await self.site.start()
             logger.tsuccess("cluster.success.listen", port=port)
         except Exception as e:
             logger.terror("cluster.error.listen", e=e)
@@ -290,7 +284,7 @@ class Cluster:
                 "enable",
                 data={
                     "host": Config.get("cluster.host"),
-                    "port": Config.get("cluster.public_port") or Config.get("cluster.port"),
+                    "port": Config.get("cluster.public_port") if Config.get("cluster.public_port") is not -1 else Config.get("cluster.port"),
                     "version": API_VERSION,
                     "byoc": Config.get("cluster.byoc"),
                     "noFastEnable": True,
