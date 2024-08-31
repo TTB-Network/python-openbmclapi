@@ -27,7 +27,8 @@ WorkingDirectory=/opt/python-openbmclapi
 ExecStart=/opt/python-openbmclapi/start.sh
 ExecReload=kill -s HUP $MAINPID
 RestartSec=30
-Restart=on-failure
+KillSignal=SIGINT
+Restart=always
 TimeoutSec=30
 
 [Install]
