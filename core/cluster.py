@@ -437,6 +437,10 @@ class Cluster:
         @self.socket.on("connect")
         async def _() -> None:
             logger.tsuccess("client.success.connected")
+            if self.wantEnable:
+                await self.enable()
+                if self.scheduler:
+                    self.scheduler.resume()
 
         @self.socket.on("disconnect")
         async def _() -> None:
@@ -448,21 +452,6 @@ class Cluster:
         @self.socket.on("message")
         async def _(message: str) -> None:
             logger.tinfo("client.info.message", message=message)
-
-        @self.socket.on("exception")
-        async def _(error: str) -> None:
-            logger.tinfo("client.error.exception", error=error)
-
-        @self.socket.on("reconnect")
-        async def _() -> None:
-            if self.wantEnable:
-                await self.enable()
-                if self.scheduler:
-                    self.scheduler.resume()
-
-        @self.socket.on("reconnect_error")
-        async def _(error: str) -> None:
-            logger.terror("client.error.reconnect", e=error)
 
         await self.socket.connect(
             self.base_url, transports=["websocket"], auth={"token": str(self.token.token)}
