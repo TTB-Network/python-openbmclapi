@@ -52,8 +52,10 @@ async def main():
             await cluster.disable()
         if cluster.socket:
             await cluster.socket.socket.disconnect()
-        if cluster.site:
-            await cluster.site.stop()
+        if cluster.http_site:
+            await cluster.http_site.stop()
+        if cluster.https_site:
+            await cluster.https_site.stop()
         if scheduler.state == 1:
             scheduler.shutdown()
         logger.tsuccess("main.success.stopped")

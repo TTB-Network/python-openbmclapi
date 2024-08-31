@@ -94,7 +94,8 @@ class Cluster:
         self.server = None
         self.failed_filelist = FileList(files=[])
         self.enabled = False
-        self.site = None
+        self.https_site = None
+        self.http_site = None
 
     async def fetchFileList(self) -> None:
         logger.tinfo("cluster.info.filelist.fetching")
@@ -250,17 +251,23 @@ class Cluster:
         try:
             ssl_context = None
             if https:
-                ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+                ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
                 ssl_context.load_cert_chain(
                     certfile=Path(Config.get("advanced.paths.cert")),
                     keyfile=Path(Config.get("advanced.paths.key")),
                 )
+                ssl_context.check_hostname = False
             self.server = web.AppRunner(self.application)
             await self.server.setup()
-            self.site = web.TCPSite(
-                self.server, "0.0.0.0", port, ssl_context=ssl_context
+            if https:
+                self.https_site = web.TCPSite(
+                    self.server, "0.0.0.0", port, ssl_context=ssl_context
+                )
+                await self.https_site.start()
+            self.http_site = web.TCPSite(
+                self.server, "0.0.0.0", port
             )
-            await self.site.start()
+            await self.http_site.start()
             logger.tsuccess("cluster.success.listen", port=port)
         except Exception as e:
             logger.terror("cluster.error.listen", e=e)

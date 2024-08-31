@@ -13,20 +13,10 @@ class Router:
         self.secret = Config.get("cluster.secret")
         self.storages = storages
         self.counters = Counters(hits=0, bytes=0)
-
-    def route(self, path, method="GET"):
-        def decorator(func):
-            @wraps(func)
-            async def wrapper(request: web.Request):
-                return await func(request)
-
-            self.app.router.add_route(method, path, wrapper)
-            return wrapper
-
-        return decorator
+        self.route = web.RouteTableDef()
 
     def init(self) -> None:
-        @self.route("/download/{hash}")
+        @self.route.get("/download/{hash}")
         async def _(
             request: web.Request,
         ) -> Union[web.Response, web.FileResponse, web.StreamResponse]:
@@ -42,7 +32,7 @@ class Router:
             self.counters.hits += data["hits"]
             return response
 
-        @self.route("/measure/{size}")
+        @self.route.get("/measure/{size}")
         async def _(request: web.Request) -> web.StreamResponse:
             try:
                 size = int(request.match_info.get("size", "0"))
@@ -71,3 +61,5 @@ class Router:
 
             except ValueError:
                 return web.Response(status=400)
+        
+        self.app.add_routes(self.route)
