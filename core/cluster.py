@@ -284,7 +284,11 @@ class Cluster:
                 "enable",
                 data={
                     "host": Config.get("cluster.host"),
-                    "port": Config.get("cluster.public_port") if Config.get("cluster.public_port") != -1 else Config.get("cluster.port"),
+                    "port": (
+                        Config.get("cluster.public_port")
+                        if Config.get("cluster.public_port") != -1
+                        else Config.get("cluster.port")
+                    ),
                     "version": API_VERSION,
                     "byoc": Config.get("cluster.byoc"),
                     "noFastEnable": True,
@@ -327,7 +331,7 @@ class Cluster:
                 logger.tsuccess(
                     "cluster.success.enable.enabled.byoc",
                     host=Config.get("cluster.host"),
-                    port=Config.get("cluster.public_port")
+                    port=Config.get("cluster.public_port"),
                 )
 
         except Exception as e:

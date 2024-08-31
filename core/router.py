@@ -61,5 +61,5 @@ class Router:
 
             except ValueError:
                 return web.Response(status=400)
-        
+
         self.app.add_routes(self.route)
