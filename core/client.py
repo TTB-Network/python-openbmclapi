@@ -41,7 +41,7 @@ class WebSocketClient:
 
         @self.socket.on("reconnect")
         async def _() -> None:
-            pass
+            
 
         @self.socket.on("reconnect_error")
         async def _(error: str) -> None:

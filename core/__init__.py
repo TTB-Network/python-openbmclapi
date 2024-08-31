@@ -50,8 +50,8 @@ async def main():
         logger.tinfo("main.info.stopping")
         if cluster.enabled:
             await cluster.disable()
-        # if cluster.socket:
-        #     await cluster.socket.socket.disconnect()
+        if cluster.socket:
+            await cluster.socket.socket.disconnect()
         if cluster.site:
             await cluster.site.stop()
         if scheduler.state == 1:
