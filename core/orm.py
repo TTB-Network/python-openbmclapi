@@ -27,9 +27,13 @@ class AgentInfo(Base):
 def create():
     Base.metadata.create_all(engine)
 
-def write_hits(hits: int, bytes: int):
+def writeHits(hits: int, bytes: int):
     session.add_all(HitsInfo(hits=hits, bytes=bytes, time=int(time.time())))
     session.commit()
 
-def write_agent(agent: str, hits: int):
+def writeAgent(agent: str, hits: int):
     session.add_all(AgentInfo(agent=agent, hits=hits))
+
+def getHits():
+    # todo
+    pass

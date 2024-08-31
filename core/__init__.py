@@ -11,11 +11,11 @@ async def main():
     try:
         await cluster.token.fetchToken()
         await cluster.getConfiguration()
-        await cluster.fetchFileList()
         await cluster.init()
         await cluster.checkStorages()
 
         async def syncFiles():
+            await cluster.fetchFileList()
             missing_filelist = await cluster.getMissingFiles()
             await cluster.syncFiles(
                 missing_filelist,
