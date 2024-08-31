@@ -19,6 +19,7 @@ aiofiles = "^24.1.0"
 tqdm = "^4.66.5"
 humanize = "^4.10.0"
 python-socketio = "^5.11.3"
+sqlalchemy = "^2.0.32"
 
 
 [[tool.poetry.source]]
