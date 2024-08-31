@@ -1,0 +1,5 @@
+{
+    "main.debug.service_unfinish": "在等待服务完成时出错。",
+    "main.success.start_service_done": "服务启动成功。耗时：${time} 秒。",
+    "main.success.service_exit": "已成功退出服务。"
+}
