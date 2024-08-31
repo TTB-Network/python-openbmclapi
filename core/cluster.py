@@ -317,20 +317,27 @@ class Cluster:
                 return
 
             self.enabled = True
-            logger.tsuccess(
-                "cluster.success.enable.enabled",
-                id=self.id,
-                port=Config.get("cluster.public_port"),
-            )
+            if not Config.get("cluster.byoc"):
+                logger.tsuccess(
+                    "cluster.success.enable.enabled",
+                    id=self.id,
+                    port=Config.get("cluster.public_port"),
+                )
+            else:
+                logger.tsuccess(
+                    "cluster.success.enable.enabled.byoc",
+                    host=Config.get("cluster.host")
+                    port=Config.get("cluster.public_port")
+                )
 
         except Exception as e:
             logger.terror("cluster.error.enable.exception", e=e)
 
     async def keepAlive(self) -> bool:
         if not self.enabled:
-            logger.terror("cluster.error.keepalive.cluster_not_enabled")
+            logger.terror("cluster.error.keep_alive.cluster_not_enabled")
         if not self.socket:
-            logger.terror("cluster.error.keepalive.socket_not_setup")
+            logger.terror("cluster.error.keep_alive.socket_not_setup")
 
         future = asyncio.Future()
 
@@ -343,7 +350,8 @@ class Cluster:
             await self.socket.socket.emit(
                 "keep-alive",
                 data={
-                    "time": datetime.datetime.now(datetime.UTC) ** counter,
+                    "time": datetime.datetime.now(datetime.UTC),
+                    **counter,
                 },
                 callback=callback,
             )
