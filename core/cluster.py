@@ -382,7 +382,7 @@ class Cluster:
             logger.terror("cluster.error.keep_alive.error", e=e)
 
     async def disable(self) -> None:
-        if not self.socket or not self.enabled:
+        if not self.socket or not self.enabled or not self.socket.socket.connected:
             return
         logger.tinfo("cluster.info.disabling")
         future = asyncio.Future()
@@ -408,7 +408,7 @@ class Cluster:
 
             logger.tsuccess("cluster.success.disable.disabled")
         except Exception as e:
-            logger.terror("cluster.error.enable.exception", e=e)
+            logger.terror("cluster.error.disable.exception", e=e)
 
     async def connect(self) -> None:
         self.socket = WebSocketClient(self.token.token)
