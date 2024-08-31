@@ -31,6 +31,7 @@
     "cluster.error.enable.exception": "在尝试启用节点时发生错误：${e}",
     "cluster.error.keep_alive.cluster_not_enabled": "无法保活：节点未启用。",
     "cluster.error.keep_alive.socket_not_setup": "无法保活：WebSocket 客户端未创建。",
+    "cluster.success.keep_alive.success": "保活成功！回源了 ${hits} 个文件，共 ${size}。",
     "cluster.error.keep_alive.error": "保活失败：${e}",
     "cluster.error.disable.error": "无法禁用节点：${e}",
     "cluster.error.enable.error": "无法启用节点：${e}",

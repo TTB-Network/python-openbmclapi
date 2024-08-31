@@ -370,7 +370,7 @@ class Cluster:
             logger.tsuccess(
                 "cluster.success.keep_alive.success",
                 hits=humanize.intcomma(counter["hits"]),
-                bytes=humanize.naturalsize(counter["hits"], binary=True),
+                size=humanize.naturalsize(counter["hits"], binary=True),
             )
 
             self.router.counters["bytes"] -= counter["bytes"]
