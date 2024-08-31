@@ -8,12 +8,14 @@ import os
 
 
 class WebSocketClient:
-    def __init__(self, token: str) -> None:
+    def __init__(self, token: str, cluster) -> None:
         self.socket = None
         self.base_url = Config.get("cluster.base_url")
         self.cert_path = Config.get("advanced.paths.cert")
         self.key_path = Config.get("advanced.paths.key")
+        self.want_enable = True
         self.token = token
+        self.cluster = cluster
         os.makedirs(os.path.dirname(self.cert_path), exist_ok=True)
         os.makedirs(os.path.dirname(self.key_path), exist_ok=True)
 
@@ -30,6 +32,7 @@ class WebSocketClient:
         @self.socket.on("disconnect")
         async def _() -> None:
             logger.twarning("client.warn.disconnected")
+            self.want_enable = False
 
         @self.socket.on("message")
         async def _(message: str) -> None:
@@ -41,7 +44,8 @@ class WebSocketClient:
 
         @self.socket.on("reconnect")
         async def _() -> None:
-            
+            if self.want_enable:
+                await self.cluster.enable()
 
         @self.socket.on("reconnect_error")
         async def _(error: str) -> None:

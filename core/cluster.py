@@ -411,7 +411,7 @@ class Cluster:
             logger.terror("cluster.error.disable.exception", e=e)
 
     async def connect(self) -> None:
-        self.socket = WebSocketClient(self.token.token)
+        self.socket = WebSocketClient(self.token.token, self)
         await self.socket.connect()
 
     async def init(self) -> None:
