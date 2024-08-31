@@ -30,6 +30,7 @@ RestartSec=30
 KillSignal=SIGINT
 Restart=always
 TimeoutSec=30
+TimeoutStopSec=60
 
 [Install]
 WantedBy=multi-user.target
