@@ -98,7 +98,7 @@ class Cluster:
         self.failed_filelist = FileList(files=[])
         self.enabled = False
         self.site = None
-        self.wantEnable = True
+        self.wantEnable = False
         self.scheduler = None
 
     async def fetchFileList(self) -> None:
@@ -341,7 +341,7 @@ class Cluster:
                     host=Config.get("cluster.host"),
                     port=Config.get("cluster.public_port"),
                 )
-
+            self.wantEnable = True
         except Exception as e:
             logger.terror("cluster.error.enable.exception", e=e)
 
