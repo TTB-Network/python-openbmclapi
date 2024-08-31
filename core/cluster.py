@@ -350,7 +350,7 @@ class Cluster:
             await self.socket.socket.emit(
                 "keep-alive",
                 data={
-                    "time": datetime.datetime.now(datetime.UTC),
+                    "time": datetime.datetime.now().isoformat(),
                     **counter,
                 },
                 callback=callback,
