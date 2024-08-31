@@ -15,7 +15,8 @@ async def main():
         await cluster.checkStorages()
 
         async def syncFiles():
-            cluster.scheduler.pause()
+            if cluster.scheduler:
+                cluster.scheduler.pause()
             await cluster.fetchFileList()
             missing_filelist = await cluster.getMissingFiles()
             await cluster.syncFiles(
@@ -23,7 +24,8 @@ async def main():
                 Config.get("advanced.retry"),
                 Config.get("advanced.delay"),
             )
-            cluster.scheduler.resume()
+            if cluster.scheduler:
+                cluster.scheduler.resume()
 
         await syncFiles()
         scheduler.add_job(
