@@ -31,16 +31,12 @@ async def main():
         await cluster.connect()
         protocol = "http" if Config.get("cluster.byoc") else "https"
         if protocol == "https":
-            await cluster.socket.requestCertificate()
+            await cluster.requestCertificate()
         await cluster.setupRouter()
         await cluster.listen(protocol == "https", Config.get("cluster.port"))
         await cluster.enable()
         if not cluster.enabled:
             raise asyncio.CancelledError
-        scheduler.add_job(
-            cluster.keepAlive,
-            IntervalTrigger(seconds=Config.get("advanced.keep_alive")),
-        )
         scheduler.start()
         logger.tsuccess("main.success.scheduler")
         while True:
@@ -51,7 +47,7 @@ async def main():
         if cluster.enabled:
             await cluster.disable()
         if cluster.socket:
-            await cluster.socket.socket.disconnect()
+            await cluster.socket.disconnect()
         if cluster.site:
             await cluster.site.stop()
         if scheduler.state == 1:

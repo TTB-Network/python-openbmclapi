@@ -5,13 +5,14 @@ from core.exceptions import ClusterIdNotSetError, ClusterSecretNotSetError
 from core.storages import getStorages, LocalStorage
 from core.classes import FileInfo, FileList, AgentConfiguration
 from core.router import Router
-from core.client import WebSocketClient
 from core.i18n import locale
 from typing import List, Any
 from aiohttp import web
 from tqdm import tqdm
 from pathlib import Path
 import toml
+import aiofiles
+import socketio
 import zstandard as zstd
 import aiohttp
 import asyncio
@@ -20,6 +21,7 @@ import datetime
 import hashlib
 import ssl
 import sys
+import os
 import humanize
 import io
 
@@ -36,9 +38,9 @@ class Token:
         self.token = None
         self.id = Config.get("cluster.id")
         self.secret = Config.get("cluster.secret")
-        self.ttl = 0  # hours
+        self.ttl = 0
         self.scheduler = None
-        self.application = None
+
         if not self.id or not self.secret:
             raise ClusterIdNotSetError if not self.id else ClusterSecretNotSetError
 
@@ -47,32 +49,33 @@ class Token:
         async with aiohttp.ClientSession(
             self.base_url, headers={"User-Agent": self.user_agent}
         ) as session:
-            async with session.get(
+            response = await session.get(
                 "/openbmclapi-agent/challenge", params={"clusterId": self.id}
-            ) as response:
-                response.raise_for_status()
-                challenge = (await response.json())["challenge"]
+            )
+            response.raise_for_status()
+            challenge = (await response.json())["challenge"]
 
             signature = hmac.new(
                 self.secret.encode(), challenge.encode(), hashlib.sha256
-            )
-            async with session.post(
+            ).hexdigest()
+            response = await session.post(
                 "/openbmclapi-agent/token",
                 data={
                     "clusterId": self.id,
                     "challenge": challenge,
-                    "signature": signature.hexdigest(),
+                    "signature": signature,
                 },
-            ) as response:
-                response.raise_for_status()
-                res = await response.json()
-                self.token = res["token"]
-                self.ttl = res["ttl"] / 3600000
-                logger.tsuccess("token.success.fetched", ttl=int(self.ttl))
-                if not self.scheduler:
-                    self.scheduler = scheduler.add_job(
-                        self.fetchToken, IntervalTrigger(hours=self.ttl)
-                    )
+            )
+            response.raise_for_status()
+            res = await response.json()
+            self.token = res["token"]
+            self.ttl = res["ttl"] / 3600000
+            logger.tsuccess("token.success.fetched", ttl=int(self.ttl))
+
+            if not self.scheduler:
+                self.scheduler = scheduler.add_job(
+                    self.fetchToken, IntervalTrigger(hours=self.ttl)
+                )
 
 
 class Cluster:
@@ -91,10 +94,12 @@ class Cluster:
         self.semaphore = None
         self.socket = None
         self.router = None
-        self.server = None
+        self.runner = None
         self.failed_filelist = FileList(files=[])
         self.enabled = False
         self.site = None
+        self.wantEnable = True
+        self.scheduler = None
 
     async def fetchFileList(self) -> None:
         logger.tinfo("cluster.info.filelist.fetching")
@@ -105,30 +110,32 @@ class Cluster:
                 "Authorization": f"Bearer {self.token.token}",
             },
         ) as session:
-            async with session.get(
+            response = await session.get(
                 "/openbmclapi/files", params={"lastModified": self.last_modified}
-            ) as response:
-                response.raise_for_status()
-                logger.tsuccess("cluster.success.filelist.fetched")
-                decompressor = zstd.ZstdDecompressor().stream_reader(
-                    io.BytesIO(await response.read())
+            )
+            response.raise_for_status()
+            logger.tsuccess("cluster.success.filelist.fetched")
+
+            decompressed_data = io.BytesIO(
+                zstd.ZstdDecompressor()
+                .stream_reader(io.BytesIO(await response.read()))
+                .read()
+            )
+            self.filelist.files = [
+                FileInfo(
+                    self.readString(decompressed_data),
+                    self.readString(decompressed_data),
+                    self.readLong(decompressed_data),
+                    self.readLong(decompressed_data),
                 )
-                decompressed_data = io.BytesIO(decompressor.read())
-                self.filelist.files = [
-                    FileInfo(
-                        self.readString(decompressed_data),
-                        self.readString(decompressed_data),
-                        self.readLong(decompressed_data),
-                        self.readLong(decompressed_data),
-                    )
-                    for _ in range(self.readLong(decompressed_data))
-                ]
-                size = sum(file.size for file in self.filelist.files)
-                logger.tsuccess(
-                    "cluster.success.filelist.parsed",
-                    count=humanize.intcomma(len(self.filelist.files)),
-                    size=humanize.naturalsize(size, binary=True),
-                )
+                for _ in range(self.readLong(decompressed_data))
+            ]
+            size = sum(file.size for file in self.filelist.files)
+            logger.tsuccess(
+                "cluster.success.filelist.parsed",
+                count=humanize.intcomma(len(self.filelist.files)),
+                size=humanize.naturalsize(size, binary=True),
+            )
 
     async def getConfiguration(self) -> None:
         async with aiohttp.ClientSession(
@@ -138,10 +145,10 @@ class Cluster:
                 "Authorization": f"Bearer {self.token.token}",
             },
         ) as session:
-            async with session.get("/openbmclapi/configuration") as response:
-                config_data = (await response.json())["sync"]
-                self.configuration = AgentConfiguration(**config_data)
-                self.semaphore = asyncio.Semaphore(self.configuration.concurrency)
+            response = await session.get("/openbmclapi/configuration")
+            config_data = (await response.json())["sync"]
+            self.configuration = AgentConfiguration(**config_data)
+            self.semaphore = asyncio.Semaphore(self.configuration.concurrency)
         logger.tdebug("configuration.debug.get", sync=self.configuration)
 
     async def getMissingFiles(self) -> FileList:
@@ -159,12 +166,12 @@ class Cluster:
                 if file.hash not in files and not files.add(file.hash)
             ]
             missing_filelist = FileList(files=missing_files)
-            missing_files_count = len(missing_filelist.files)
-            missing_files_size = sum(file.size for file in missing_filelist.files)
             logger.tsuccess(
                 "storage.success.get_missing",
-                count=humanize.intcomma(missing_files_count),
-                size=humanize.naturalsize(missing_files_size, binary=True),
+                count=humanize.intcomma(len(missing_filelist.files)),
+                size=humanize.naturalsize(
+                    sum(file.size for file in missing_filelist.files), binary=True
+                ),
             )
             return missing_filelist
 
@@ -176,7 +183,6 @@ class Cluster:
             return
 
         total_size = sum(file.size for file in missing_filelist.files)
-
         with tqdm(
             desc=locale.t("cluster.tqdm.desc.sync_files"),
             total=total_size,
@@ -185,8 +191,7 @@ class Cluster:
             unit_divisor=1024,
         ) as pbar:
             async with aiohttp.ClientSession(
-                self.base_url,
-                headers={"User-Agent": self.user_agent},
+                self.base_url, headers={"User-Agent": self.user_agent}
             ) as session:
                 self.failed_filelist = FileList(files=[])
                 tasks = [
@@ -194,6 +199,7 @@ class Cluster:
                     for file in missing_filelist.files
                 ]
                 await asyncio.gather(*tasks)
+
             if not self.failed_filelist.files:
                 logger.tsuccess("cluster.success.sync_files.downloaded")
             elif retry > 1:
@@ -203,12 +209,17 @@ class Cluster:
             else:
                 logger.terror("cluster.error.sync_files.failed")
 
+            if not self.scheduler:
+                self.scheduler = scheduler.add_job(
+                    self.keepAlive,
+                    IntervalTrigger(seconds=Config.get("advanced.keep_alive")),
+                )
+
     async def downloadFile(
         self, file: FileInfo, session: aiohttp.ClientSession, pbar: tqdm
     ) -> None:
         async with self.semaphore:
-            delay = Config.get("advanced.delay")
-            retry = Config.get("advanced.retry")
+            delay, retry = Config.get("advanced.delay"), Config.get("advanced.retry")
 
             for _ in range(retry):
                 try:
@@ -233,6 +244,7 @@ class Cluster:
                         retry=delay,
                     )
                 await asyncio.sleep(delay)
+
             logger.terror("cluster.error.download_file.failed", file=file.hash)
             self.failed_filelist.files.append(file)
 
@@ -256,10 +268,11 @@ class Cluster:
                     keyfile=Path(Config.get("advanced.paths.key")),
                 )
                 ssl_context.check_hostname = False
-            self.server = web.AppRunner(self.application)
-            await self.server.setup()
+
+            self.runner = web.AppRunner(self.application)
+            await self.runner.setup()
             self.site = web.TCPSite(
-                self.server, "0.0.0.0", port, ssl_context=ssl_context
+                self.runner, "0.0.0.0", port, ssl_context=ssl_context
             )
             await self.site.start()
             logger.tsuccess("cluster.success.listen", port=port)
@@ -269,6 +282,7 @@ class Cluster:
     async def enable(self) -> None:
         if self.enabled:
             return
+
         logger.tinfo("cluster.info.enabling")
         future = asyncio.Future()
 
@@ -280,7 +294,7 @@ class Cluster:
             return
 
         try:
-            await self.socket.socket.emit(
+            await self.socket.emit(
                 "enable",
                 data={
                     "host": Config.get("cluster.host"),
@@ -321,18 +335,15 @@ class Cluster:
                 return
 
             self.enabled = True
-            if not Config.get("cluster.byoc"):
-                logger.tsuccess(
-                    "cluster.success.enable.enabled",
-                    id=self.id,
-                    port=Config.get("cluster.public_port"),
-                )
-            else:
-                logger.tsuccess(
-                    "cluster.success.enable.enabled.byoc",
-                    host=Config.get("cluster.host"),
-                    port=Config.get("cluster.public_port"),
-                )
+            logger.tsuccess(
+                "cluster.success.enable.enabled",
+                id=self.id,
+                port=(
+                    Config.get("cluster.public_port")
+                    if not Config.get("cluster.byoc")
+                    else None
+                ),
+            )
 
         except Exception as e:
             logger.terror("cluster.error.enable.exception", e=e)
@@ -340,8 +351,11 @@ class Cluster:
     async def keepAlive(self) -> bool:
         if not self.enabled:
             logger.terror("cluster.error.keep_alive.cluster_not_enabled")
+            return False
+
         if not self.socket:
             logger.terror("cluster.error.keep_alive.socket_not_setup")
+            return False
 
         future = asyncio.Future()
 
@@ -351,12 +365,9 @@ class Cluster:
         counter = self.router.counters
 
         try:
-            await self.socket.socket.emit(
+            await self.socket.emit(
                 "keep-alive",
-                data={
-                    "time": datetime.datetime.now().isoformat(),
-                    **counter,
-                },
+                data={"time": datetime.datetime.now().isoformat(), **counter},
                 callback=callback,
             )
 
@@ -376,18 +387,19 @@ class Cluster:
                 hits=humanize.intcomma(counter["hits"]),
                 size=humanize.naturalsize(counter["bytes"], binary=True),
             )
-
             self.router.counters["bytes"] -= counter["bytes"]
             self.router.counters["hits"] -= counter["hits"]
-
             return bool(date)
 
         except Exception as e:
             logger.terror("cluster.error.keep_alive.error", e=e)
+            return False
 
     async def disable(self) -> None:
         if not self.socket or not self.enabled:
             return
+
+        self.wantEnable = False
         logger.tinfo("cluster.info.disabling")
         future = asyncio.Future()
 
@@ -395,7 +407,7 @@ class Cluster:
             future.set_result(data)
 
         try:
-            await self.socket.socket.emit("disable", callback=callback)
+            await self.socket.emit("disable", callback=callback)
 
             response = await future
             error, ack = (
@@ -415,15 +427,79 @@ class Cluster:
             logger.terror("cluster.error.disable.exception", e=e)
 
     async def connect(self) -> None:
-        self.socket = WebSocketClient(self.token.token, self)
-        await self.socket.connect()
+        if self.socket and self.socket.connected:
+            return
+
+        self.socket = socketio.AsyncClient(handle_sigint=False)
+
+        @self.socket.on("connect")
+        async def _() -> None:
+            logger.tsuccess("client.success.connected")
+
+        @self.socket.on("disconnect")
+        async def _() -> None:
+            logger.twarning("client.warn.disconnected")
+            self.enabled = False
+            if self.scheduler:
+                self.scheduler.pause()
+
+        @self.socket.on("message")
+        async def _(message: str) -> None:
+            logger.tinfo("client.info.message", message=message)
+
+        @self.socket.on("exception")
+        async def _(error: str) -> None:
+            logger.tinfo("client.error.exception", error=error)
+
+        @self.socket.on("reconnect")
+        async def _() -> None:
+            if self.wantEnable:
+                await self.enable()
+                if self.scheduler:
+                    self.scheduler.resume()
+
+        @self.socket.on("reconnect_error")
+        async def _(error: str) -> None:
+            logger.terror("client.error.reconnect", e=error)
+
+        await self.socket.connect(
+            self.base_url, transports=["websocket"], auth={"token": str(self.token.token)}
+        )
+
+    async def requestCertificate(self) -> None:
+        cert_path, key_path = Config.get("advanced.paths.cert"), Config.get(
+            "advanced.paths.key"
+        )
+        os.makedirs(os.path.dirname(cert_path), exist_ok=True)
+        os.makedirs(os.path.dirname(key_path), exist_ok=True)
+
+        future = asyncio.Future()
+
+        async def callback(data: List[Any]):
+            future.set_result(data)
+
+        try:
+            await self.socket.emit("request-cert", callback=callback)
+            error, cert = await future
+            if error:
+                raise Exception(error)
+
+            async with aiofiles.open(cert_path, "w") as f:
+                await f.write(cert["cert"])
+            async with aiofiles.open(key_path, "w") as f:
+                await f.write(cert["key"])
+
+            logger.tsuccess("client.success.request_certificate")
+        except Exception as e:
+            logger.terror("client.error.request_certificate", e=e)
 
     async def init(self) -> None:
         await asyncio.gather(*(storage.init() for storage in self.storages))
 
     async def checkStorages(self) -> bool:
-        results = await asyncio.gather(*(storage.check() for storage in self.storages))
-        return all(results)
+        return all(
+            await asyncio.gather(*(storage.check() for storage in self.storages))
+        )
 
     def readLong(self, stream: io.BytesIO):
         result, shift = 0, 0
