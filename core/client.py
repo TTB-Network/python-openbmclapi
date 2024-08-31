@@ -23,7 +23,7 @@ class WebSocketClient:
         if self.socket and self.socket.connected:
             return
 
-        self.socket = socketio.AsyncClient()
+        self.socket = socketio.AsyncClient(handle_sigint=False)
 
         @self.socket.on("connect")
         async def _() -> None:
