@@ -209,12 +209,6 @@ class Cluster:
             else:
                 logger.terror("cluster.error.sync_files.failed")
 
-            if not self.scheduler:
-                self.scheduler = scheduler.add_job(
-                    self.keepAlive,
-                    IntervalTrigger(seconds=Config.get("advanced.keep_alive")),
-                )
-
     async def downloadFile(
         self, file: FileInfo, session: aiohttp.ClientSession, pbar: tqdm
     ) -> None:
@@ -335,15 +329,18 @@ class Cluster:
                 return
 
             self.enabled = True
-            logger.tsuccess(
-                "cluster.success.enable.enabled",
-                id=self.id,
-                port=(
-                    Config.get("cluster.public_port")
-                    if not Config.get("cluster.byoc")
-                    else None
-                ),
-            )
+            if not Config.get("cluster.byoc"):
+                logger.tsuccess(
+                    "cluster.success.enable.enabled",
+                    id=self.id,
+                    port=Config.get("cluster.public_port"),
+                )
+            else:
+                logger.tsuccess(
+                    "cluster.success.enable.enabled.byoc",
+                    host=Config.get("cluster.host"),
+                    port=Config.get("cluster.public_port"),
+                )
 
         except Exception as e:
             logger.terror("cluster.error.enable.exception", e=e)
@@ -389,6 +386,11 @@ class Cluster:
             )
             self.router.counters["bytes"] -= counter["bytes"]
             self.router.counters["hits"] -= counter["hits"]
+            if not self.scheduler:
+                self.scheduler = scheduler.add_job(
+                    self.keepAlive,
+                    IntervalTrigger(seconds=Config.get("advanced.keep_alive")),
+                )
             return bool(date)
 
         except Exception as e:

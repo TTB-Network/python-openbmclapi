@@ -37,6 +37,7 @@ async def main():
         await cluster.enable()
         if not cluster.enabled:
             raise asyncio.CancelledError
+        await cluster.keepAlive()
         scheduler.start()
         logger.tsuccess("main.success.scheduler")
         while True:
