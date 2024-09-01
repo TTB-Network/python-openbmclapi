@@ -1,5 +1,6 @@
 import asyncio
 from collections import deque
+import io
 
 
 class CountLock:
@@ -38,3 +39,20 @@ class CountLock:
     @property
     def locked(self):
         return self.count > 0
+    
+
+class FileStream:
+    def __init__(self, data: bytes) -> None:
+        self.data = io.BytesIO(data)
+    
+    def read_long(self): 
+        result, shift = 0, 0
+        while True:
+            byte = ord(self.data.read(1))
+            result |= (byte & 0x7F) << shift
+            if not (byte & 0x80):
+                break
+            shift += 7
+        return (result >> 1) ^ -(result & 1)
+    def read_string(self):
+        return self.data.read(self.read_long()).decode('utf-8')

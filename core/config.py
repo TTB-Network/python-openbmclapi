@@ -75,8 +75,13 @@ class CFG:
 
 Config: CFG = CFG("./config/config.yml")
 
-class const:
+class Const:
     @property
     def debug(self):
         return Config.get("advanced.debug", False)
     
+    @property
+    def base_url(self) -> str:
+        return Config.get("cluster.base_url", "https://openbmclapi.bangbang93.com")
+    
+const = Const()

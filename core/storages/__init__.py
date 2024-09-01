@@ -102,7 +102,7 @@ class LocalStorage(iStorage):
 
     
 
-class AlistStorage(iStorage):
+class AlistStorage(iStorage): # TODO: 完成 alist 存储
     type: str = "alist"
     def __init__(self, path: str, url: str, username: Optional[str], password: Optional[str]) -> None:
         super().__init__(path)
