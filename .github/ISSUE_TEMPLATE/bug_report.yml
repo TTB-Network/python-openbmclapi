@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes: 
       value: |
-        你是一位 python-openbmclapi 的长期使用者，在一个阳光明媚的早晨 ☀️，你打开了 OpenBMCLAPI 仪表盘发现你的一个正在使用 python-openbmclapi 的节点的信用值掉到了 -1800，一怒之下，你火速打开 GitHub 来到了本仓库来提交这个问候 python-openbmclapi 开发者的友好 Issue。
+        你是一位 python-openbmclapi 的长期使用者。在一个阳光明媚的早晨 ☀️，你打开了 OpenBMCLAPI 仪表盘，你发现你的一个正在使用 python-openbmclapi 的节点的信用值掉到了 -1800，一怒之下，你打开 GitHub 来到了本仓库，来提交这个问候 python-openbmclapi 的那些开发者全家人的友好 Issue。
   - type: checkboxes
     attributes:
       label: 在开始之前……

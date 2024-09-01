@@ -1,3 +1,9 @@
+'''
+todo:
+1. 支持 report API
+2. 缺失文件时临时下载文件处理
+'''
+
 from core.config import Config
 from core.logger import logger
 from core.scheduler import *
@@ -390,6 +396,7 @@ class Cluster:
                 self.scheduler = scheduler.add_job(
                     self.keepAlive,
                     IntervalTrigger(seconds=Config.get("advanced.keep_alive")),
+                    max_instances=3
                 )
             return bool(date)
 
