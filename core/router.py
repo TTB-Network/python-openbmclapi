@@ -81,6 +81,6 @@ class Router:
         async def _(request: web.Request) -> web.FileResponse:
             return web.FileResponse("./assets/dashboard/index.html")
         
-        self.route.static('/assets/', './assets/dashboard/assets')
+        self.route.static('/', './assets/dashboard')
 
         self.app.add_routes(self.route)
