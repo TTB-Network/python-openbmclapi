@@ -71,7 +71,5 @@ class Router:
         async def _(request: web.Request) -> web.Response:
             return await getStatus(self.cluster)
 
-        self.route.static('/dashboard', './assets/dashboard')
-
-
         self.app.add_routes(self.route)
+        self.app.router.add_static('/dashboard', './assets/dashboard')
