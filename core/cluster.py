@@ -1,8 +1,8 @@
-'''
+"""
 todo:
 1. 支持 report API
 2. 缺失文件时临时下载文件处理
-'''
+"""
 
 from core.config import Config
 from core.logger import logger
@@ -398,7 +398,7 @@ class Cluster:
                 self.scheduler = scheduler.add_job(
                     self.keepAlive,
                     IntervalTrigger(seconds=Config.get("advanced.keep_alive")),
-                    max_instances=3
+                    max_instances=3,
                 )
             return bool(date)
 
@@ -463,7 +463,9 @@ class Cluster:
             logger.tinfo("client.info.message", message=message)
 
         await self.socket.connect(
-            self.base_url, transports=["websocket"], auth={"token": str(self.token.token)}
+            self.base_url,
+            transports=["websocket"],
+            auth={"token": str(self.token.token)},
         )
 
     async def requestCertificate(self) -> None:

@@ -20,6 +20,7 @@ async def main():
             logger.tsuccess("orm.success.created")
         except Exception as e:
             logger.terror("orm.error.failed", e=e)
+
         async def syncFiles():
             await cluster.fetchFileList()
             missing_filelist = await cluster.getMissingFiles()

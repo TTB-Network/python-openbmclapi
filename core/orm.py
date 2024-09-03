@@ -126,9 +126,16 @@ def getMonthlyHits() -> Dict[str, List[Dict[str, int]]]:
                 query := session.execute(
                     select(HitsInfo).where(
                         HitsInfo.time >= int(datetime(year, month, 1).timestamp()),
-                        HitsInfo.time < int(datetime(year, month + 1 if month < 12 else 1, 1).replace(year=year if month < 12 else year + 1).timestamp()),
+                        HitsInfo.time
+                        < int(
+                            datetime(year, month + 1 if month < 12 else 1, 1)
+                            .replace(year=year if month < 12 else year + 1)
+                            .timestamp()
+                        ),
                     )
-                ).scalars().all()
+                )
+                .scalars()
+                .all()
             )
         ]
 
@@ -136,14 +143,10 @@ def getMonthlyHits() -> Dict[str, List[Dict[str, int]]]:
     current_year = now.year
     previous_year = current_year - 1
 
-    return {
-        "stats": fetchData(current_year),
-        "prevStats": fetchData(previous_year)
-    }
+    return {"stats": fetchData(current_year), "prevStats": fetchData(previous_year)}
+
 
 def getAgentInfo() -> Dict[str, int]:
-    agents_info = session.execute(
-        select(AgentInfo)
-    ).scalars().all()
-    
+    agents_info = session.execute(select(AgentInfo)).scalars().all()
+
     return {agent.agent: agent.hits for agent in agents_info}

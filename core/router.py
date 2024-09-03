@@ -17,7 +17,6 @@ class Router:
         self.route = web.RouteTableDef()
         self.connection = 0
 
-
     async def on_start(self, *args, **kwargs):
         self.connection = 0
 
@@ -74,7 +73,7 @@ class Router:
             except ValueError:
                 return web.Response(status=400)
 
-        @self.route.get('/api/status')
+        @self.route.get("/api/status")
         async def _() -> web.Response:
             return getStatus()
 
@@ -82,5 +81,3 @@ class Router:
         self.app.on_startup.append(self.on_start)
         self.app.on_response_prepare(self.on_response_prepare)
         self.app.on_cleanup(self.on_response_end)
-
-
