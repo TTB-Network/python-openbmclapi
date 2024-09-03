@@ -60,23 +60,23 @@ def getHourlyHits() -> Dict[str, List[Dict[str, int]]]:
         timestamps = [
             int((base_time + timedelta(hours=i)).timestamp()) for i in range(24)
         ] + [int((base_time.replace(hour=1) + timedelta(days=1)).timestamp())]
+
         return [
             {
                 "hits": sum(item.hits for item in query) if query else 0,
                 "bytes": sum(item.bytes for item in query) if query else 0,
             }
             for i in range(24)
-            if (
-                query := session.execute(
+            for query in [
+                session.execute(
                     select(HitsInfo).where(
                         HitsInfo.time >= timestamps[i],
                         HitsInfo.time < timestamps[i + 1],
                     )
-                )
-                .scalars()
-                .all()
-            )
+                ).scalars().all()
+            ]
         ]
+
 
     current = datetime.now().replace(hour=1, minute=0, second=0, microsecond=0)
     previous = current - timedelta(days=1)
@@ -87,24 +87,22 @@ def getDailyHits() -> Dict[str, List[Dict[str, int]]]:
     def fetchData(year: int, month: int, total_days: int) -> List[Dict[str, int]]:
         return [
             {
-                "hits": sum(item.hits for item in query) if query else 0,
-                "bytes": sum(item.bytes for item in query) if query else 0,
+                "hits": sum(item.hits for item in query),
+                "bytes": sum(item.bytes for item in query),
             }
             for day in range(1, total_days + 1)
-            if (
-                query := session.execute(
+            for query in [
+                session.execute(
                     select(HitsInfo).where(
                         HitsInfo.time >= int(datetime(year, month, day).timestamp()),
-                        HitsInfo.time
-                        < int(
+                        HitsInfo.time < int(
                             (datetime(year, month, day) + timedelta(days=1)).timestamp()
                         ),
                     )
-                )
-                .scalars()
-                .all()
-            )
+                ).scalars().all()
+            ]
         ]
+
 
     now = datetime.now()
     current_year, current_month = now.year, now.month
@@ -128,25 +126,24 @@ def getMonthlyHits() -> Dict[str, List[Dict[str, int]]]:
     def fetchData(year: int) -> List[Dict[str, int]]:
         return [
             {
-                "hits": sum(item.hits for item in query) if query else 0,
-                "bytes": sum(item.bytes for item in query) if query else 0,
+                "hits": sum(item.hits for item in query),
+                "bytes": sum(item.bytes for item in query),
             }
             for month in range(1, 13)
-            if (
-                query := session.execute(
+            for query in [
+                session.execute(
                     select(HitsInfo).where(
                         HitsInfo.time >= int(datetime(year, month, 1).timestamp()),
-                        HitsInfo.time
-                        < int(
-                            datetime(year, month + 1 if month < 12 else 1, 1)
-                            .replace(year=year if month < 12 else year + 1)
-                            .timestamp()
+                        HitsInfo.time < int(
+                            datetime(
+                                year if month < 12 else year + 1,
+                                month + 1 if month < 12 else 1,
+                                1
+                            ).timestamp()
                         ),
                     )
-                )
-                .scalars()
-                .all()
-            )
+                ).scalars().all()
+            ]
         ]
 
     now = datetime.now()
