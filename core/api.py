@@ -2,7 +2,6 @@ from core.orm import *
 from aiohttp import web
 from core.cluster import VERSION, API_VERSION
 import os
-import humanize
 import platform
 import psutil
 
