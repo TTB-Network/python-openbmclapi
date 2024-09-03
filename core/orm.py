@@ -16,7 +16,7 @@ class Base(DeclarativeBase):
 
 class HitsInfo(Base):
     __tablename__ = "hits_info"
-    
+
     time: Mapped[int] = mapped_column(primary_key=True)
     hits: Mapped[int]
     bytes: Mapped[int]
@@ -73,10 +73,11 @@ def getHourlyHits() -> Dict[str, List[Dict[str, int]]]:
                         HitsInfo.time >= timestamps[i],
                         HitsInfo.time < timestamps[i + 1],
                     )
-                ).scalars().all()
+                )
+                .scalars()
+                .all()
             ]
         ]
-
 
     current = datetime.now().replace(hour=1, minute=0, second=0, microsecond=0)
     previous = current - timedelta(days=1)
@@ -95,14 +96,16 @@ def getDailyHits() -> Dict[str, List[Dict[str, int]]]:
                 session.execute(
                     select(HitsInfo).where(
                         HitsInfo.time >= int(datetime(year, month, day).timestamp()),
-                        HitsInfo.time < int(
+                        HitsInfo.time
+                        < int(
                             (datetime(year, month, day) + timedelta(days=1)).timestamp()
                         ),
                     )
-                ).scalars().all()
+                )
+                .scalars()
+                .all()
             ]
         ]
-
 
     now = datetime.now()
     current_year, current_month = now.year, now.month
@@ -134,15 +137,18 @@ def getMonthlyHits() -> Dict[str, List[Dict[str, int]]]:
                 session.execute(
                     select(HitsInfo).where(
                         HitsInfo.time >= int(datetime(year, month, 1).timestamp()),
-                        HitsInfo.time < int(
+                        HitsInfo.time
+                        < int(
                             datetime(
                                 year if month < 12 else year + 1,
                                 month + 1 if month < 12 else 1,
-                                1
+                                1,
                             ).timestamp()
                         ),
                     )
-                ).scalars().all()
+                )
+                .scalars()
+                .all()
             ]
         ]
 

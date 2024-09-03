@@ -17,7 +17,7 @@ async def main():
         await cluster.checkStorages()
         logger.tinfo("orm.info.creating")
         try:
-            os.makedirs('./database', exist_ok=True)
+            os.makedirs("./database", exist_ok=True)
             orm.create()
             logger.tsuccess("orm.success.created")
         except Exception as e:
