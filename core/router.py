@@ -72,9 +72,14 @@ class Router:
         async def _(request: web.Request) -> web.Response:
             return await getStatus(self.cluster)
 
+        @self.route.get("/dashboard/")
+        @self.route.get("/")
+        async def _(request: web.Request) -> web.HTTPFound:
+            return web.HTTPFound("/dashboard")
+
         @self.route.get("/dashboard")
-        async def _(request: web.Request) -> web.Response:
-            return web.Response(Path("./assets/dashboard/index.html"), content_type="text/html")
+        async def _(request: web.Request) -> web.FileResponse:
+            return web.FileResponse("./assets/dashboard/index.html")
         
         self.route.static('/assets/', './assets/dashboard/assets')
 
