@@ -1,9 +1,8 @@
 from core.orm import writeAgent
 from core.config import Config
-from core.classes import Storage
 from core.utils import checkSign
 from core.api import getStatus
-from typing import List, Union
+from typing import Union
 from aiohttp import web
 import random
 

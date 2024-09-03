@@ -1,7 +1,9 @@
 from core.orm import *
 from aiohttp import web
+from core.cluster import VERSION, API_VERSION
 import os
 import humanize
+import platform
 import psutil
 
 
@@ -25,9 +27,11 @@ async def getStatus(cluster) -> web.Response:
         },
         "accesses": agent_info,
         "connections": cluster.router.connection if cluster.router else 0,
-        "memory": humanize.naturalsize(
-            psutil.Process(os.getpid()).memory_info().rss, binary=True
-        ),
-        "cpu": psutil.Process(os.getpid()).cpu_percent(),
+        "memory": psutil.Process(os.getpid()).memory_info().rss,
+        "cpu": psutil.Process(os.getpid()).cpu_percent(interval=1),
+        "cpuType": platform.processor(),
+        "pythonVersion": platform.python_version(),
+        "apiVersion": API_VERSION,
+        "version": VERSION
     }
     return web.json_response(data=response)
