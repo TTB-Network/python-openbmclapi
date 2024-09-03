@@ -11,16 +11,21 @@ defaults = {
     "advanced.delay": 15,
     "advanced.keep_alive": 60,
     "advanced.sync_interval": 60,
-    "cluster.base_url": "https://openbmclapi.bangbang93.com",
-    "cluster.id": "",
-    "cluster.secret": "",
-    "cluster.host": "",
-    "cluster.byoc": False,
-    "cluster.public_port": -1,
-    "cluster.port": 8800,
+    "advanced.base_url": "https://openbmclapi.bangbang93.com",
+    "advanced.threads": 128,
+    "clusters": [
+        {
+            "id": "",
+            "secret": "",
+            "host": "",
+            "byoc": False,
+            "public_port": -1,
+            "port": 8800,
+            "cert": "./cert/cert.pem",
+            "key": "./cert/key.pem",
+        }
+    ],
     "storages": [{"type": "local", "path": "./cache"}],
-    "advanced.paths.cert": "./cert/cert.pem",
-    "advanced.paths.key": "./cert/key.pem",
 }
 
 
@@ -82,6 +87,10 @@ class Const:
     
     @property
     def base_url(self) -> str:
-        return Config.get("cluster.base_url", "https://openbmclapi.bangbang93.com")
+        return Config.get("advanced.base_url", "https://openbmclapi.bangbang93.com")
+    
+    @property
+    def threads(self):
+        return Config.get("advanced.threads", 128)
     
 const = Const()

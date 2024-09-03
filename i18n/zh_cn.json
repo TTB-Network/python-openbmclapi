@@ -1,5 +1,14 @@
 {
     "main.debug.service_unfinish": "在等待服务完成时出错。",
     "main.success.start_service_done": "服务启动成功。耗时：${time} 秒。",
-    "main.success.service_exit": "已成功退出服务。"
+    "main.success.service_exit": "已成功退出服务。",
+    "cluster.success.load_cluster": "已成功加载节点 [${id}]。开放 Host [${host}] 端口 [${port}]",
+    "cluster.debug.base_url": "使用的地址是 [${base_url}]",
+    "cluster.success.fetch_filelist": "已成功获取文件列表，数量 [${total}] 大小 [${size}]",
+    "cluster.debug.fetch_token": "正在获取 Token (${cluster})",
+    "cluster.debug.fetch_token_success": "已成功获取 Token (${cluster})，有效期为 [${ttl}]",
+    "cluster.error.unspported_storage": "不支持的存储类型：[${type}] [${path}]",
+    "cluster.success.load_storage": "已成功加载 [${type}] 路径为 [${path}]",
+    "cluster.info.sync_configuration": "同步策略来源于 [${source}] 并发速度为 [${concurrency}]",
+    "i18n.prompt.failed": "未找到 i18n 字符串 [${key}]"
 }

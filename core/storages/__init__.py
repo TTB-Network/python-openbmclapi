@@ -2,6 +2,7 @@ import abc
 from dataclasses import dataclass
 import hashlib
 import os
+from pathlib import Path
 from typing import Optional
 
 import aiofiles
@@ -64,11 +65,14 @@ class LocalStorage(iStorage):
         return f"LocalStorage({self.path})"
     
     async def write_file(self, file: File, content: bytes, mtime: Optional[float]) -> bool:
+        Path(f"{self.path}/{file.hash[:2]}").mkdir(parents=True, exist_ok=True)
         async with aiofiles.open(f"{self.path}/{file.hash[:2]}/{file.hash}", "wb") as f:
             await f.write(content)
         return True
 
     async def read_file(self, file_hash: str) -> bytes:
+        if not await self.exists(file_hash):
+            raise FileNotFoundError(f"File {file_hash} not found")
         async with aiofiles.open(f"{self.path}/{file_hash[:2]}/{file_hash}", "rb") as f:
             return await f.read()
 

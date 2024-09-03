@@ -1,5 +1,4 @@
 import asyncio
-from dataclasses import dataclass
 import time
 from typing import Callable
 from apscheduler.schedulers.background import (
@@ -9,10 +8,10 @@ from apscheduler.schedulers.asyncio import (
     AsyncIOScheduler as AsyncBackground
 )
 from apscheduler.job import Job
-from logger import logger
+from . import logger
 from weakref import WeakValueDictionary
 
-import units
+from . import units
 
 background = SyncBackground()
 async_background: AsyncBackground
@@ -87,7 +86,6 @@ def run_repeat(func: Callable, interval: float, args = (), kwargs = {}) -> int:
 
 def cancel(task_id: int):
     if task_id in tasks:
-        tasks[task_id].remove()
-        del tasks[task_id]
+        tasks.pop(task_id).remove()
         logger.debug(f'Task {task_id} canceled')
     
