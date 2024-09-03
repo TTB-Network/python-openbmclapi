@@ -393,7 +393,7 @@ class Cluster:
                 hits=humanize.intcomma(counter["hits"]),
                 size=humanize.naturalsize(counter["bytes"], binary=True),
             )
-            writeHits(self.router.counters["hits"], self.router.counters["bytess"])
+            writeHits(self.router.counters["hits"], self.router.counters["bytes"])
             self.router.counters["bytes"] -= counter["bytes"]
             self.router.counters["hits"] -= counter["hits"]
             if not self.scheduler:
