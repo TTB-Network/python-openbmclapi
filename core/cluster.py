@@ -30,6 +30,7 @@ import sys
 import os
 import humanize
 import io
+import time
 
 API_VERSION = Config.get("advanced.api_version")
 VERSION = toml.loads(open("pyproject.toml", "r").read())["tool"]["poetry"]["version"]
@@ -104,8 +105,9 @@ class Cluster:
         self.failed_filelist = FileList(files=[])
         self.enabled = False
         self.site = None
-        self.wantEnable = False
+        self.want_enable = False
         self.scheduler = None
+        self.start_time = int(time.time() * 1000)
 
     async def fetchFileList(self) -> None:
         logger.tinfo("cluster.info.filelist.fetching")
@@ -347,7 +349,7 @@ class Cluster:
                     host=Config.get("cluster.host"),
                     port=Config.get("cluster.public_port"),
                 )
-            self.wantEnable = True
+            self.want_enable = True
         except Exception as e:
             logger.terror("cluster.error.enable.exception", e=e)
 
@@ -408,7 +410,7 @@ class Cluster:
         if not self.socket or not self.enabled:
             return
 
-        self.wantEnable = False
+        self.want_enable = False
         logger.tinfo("cluster.info.disabling")
         future = asyncio.Future()
 
@@ -444,7 +446,7 @@ class Cluster:
         @self.socket.on("connect")
         async def _() -> None:
             logger.tsuccess("client.success.connected")
-            if self.wantEnable:
+            if self.want_enable:
                 await self.enable()
                 if self.scheduler:
                     self.scheduler.resume()

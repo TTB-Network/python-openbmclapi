@@ -2,6 +2,7 @@ from functools import wraps
 from core.config import Config
 from core.classes import Storage
 from core.utils import checkSign
+from core.api import getStatus
 from typing import List, Union
 from aiohttp import web
 import random
@@ -14,6 +15,17 @@ class Router:
         self.storages = storages
         self.counters = {"hits": 0, "bytes": 0}
         self.route = web.RouteTableDef()
+        self.connection = 0
+
+
+    async def on_start(self, *args, **kwargs):
+        self.connection = 0
+
+    async def on_response_prepare(self, *args, **kwargs):
+        self.connection += 1
+
+    async def on_response_end(self, *args, **kwargs):
+        self.connection -= 1
 
     def init(self) -> None:
         @self.route.get("/download/{hash}")
@@ -62,4 +74,13 @@ class Router:
             except ValueError:
                 return web.Response(status=400)
 
+        @self.route.get('/api/status')
+        async def _() -> web.Response:
+            return getStatus()
+
         self.app.add_routes(self.route)
+        self.app.on_startup.append(self.on_start)
+        self.app.on_response_prepare(self.on_response_prepare)
+        self.app.on_cleanup(self.on_response_end)
+
+
