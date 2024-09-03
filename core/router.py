@@ -9,13 +9,14 @@ import random
 
 
 class Router:
-    def __init__(self, app: web.Application, storages: List[Storage]) -> None:
+    def __init__(self, app: web.Application, cluster) -> None:
         self.app = app
         self.secret = Config.get("cluster.secret")
-        self.storages = storages
+        self.storages = cluster.storages
         self.counters = {"hits": 0, "bytes": 0}
         self.route = web.RouteTableDef()
         self.connection = 0
+        self.cluster = cluster
 
     async def on_start(self, *args, **kwargs):
         self.connection = 0
@@ -76,7 +77,7 @@ class Router:
 
         @self.route.get("/api/status")
         async def _(request: web.Request) -> web.Response:
-            return getStatus()
+            return getStatus(self.cluster)
 
         self.app.add_routes(self.route)
         self.app.on_startup.append(self.on_start)

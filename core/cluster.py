@@ -254,7 +254,7 @@ class Cluster:
         logger.tinfo("cluster.info.router.creating")
         try:
             self.application = web.Application()
-            self.router = Router(self.application, self.storages)
+            self.router = Router(self.application, self)
             self.router.init()
             logger.tsuccess("cluster.success.router.created")
         except Exception as e:
