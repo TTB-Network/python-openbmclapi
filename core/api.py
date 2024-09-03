@@ -24,7 +24,7 @@ async def getStatus(cluster) -> web.Response:
             "months": monthly_hits["prevStats"],
         },
         "accesses": agent_info,
-        "connections": cluster.router.connections if cluster.router else 0,
+        "connections": cluster.router.connection if cluster.router else 0,
         "memory": humanize.naturalsize(
             psutil.Process(os.getpid()).memory_info().rss, binary=True
         ),
