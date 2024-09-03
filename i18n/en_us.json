@@ -54,5 +54,8 @@
     "client.error.request_certificate": "在尝试获取证书时发生错误：${e}",
     "client.success.request_certificate": "成功获取证书！",
     "cluster.success.listen": "开始监听端口 ${port}！",
+    "orm.info.creating": "正在初始化统计数据库……",
+    "orm.success.created": "成功初始化统计数据库！",
+    "orm.error.failed": "无法初始化统计数据库：${e}",
     "configuration.debug.get": "同步策略：${sync}。"
 }
