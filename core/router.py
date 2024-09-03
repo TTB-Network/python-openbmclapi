@@ -72,4 +72,4 @@ class Router:
             return await getStatus(self.cluster)
 
         self.app.add_routes(self.route)
-        self.app.router.add_static('/dashboard', './assets/dashboard')
+        self.app.router.add_static('/dashboard/', './assets/dashboard')
