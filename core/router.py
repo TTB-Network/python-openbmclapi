@@ -4,6 +4,7 @@ from core.utils import checkSign
 from core.api import getStatus
 from typing import Union
 from aiohttp import web
+from pathlib import Path
 import random
 
 
@@ -71,5 +72,10 @@ class Router:
         async def _(request: web.Request) -> web.Response:
             return await getStatus(self.cluster)
 
+        @self.route.get("/dashboard")
+        async def _(request: web.Request) -> web.Response:
+            return web.Response(Path("./assets/dashboard/index.html"), content_type="text/html")
+        
+        self.route.static('/assets/', './assets/dashboard/assets')
+
         self.app.add_routes(self.route)
-        self.app.router.add_static('/', './assets/dashboard', name='static')
