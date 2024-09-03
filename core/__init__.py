@@ -3,6 +3,7 @@ from core.cluster import Cluster
 from core.config import Config
 from core.logger import logger
 from core.scheduler import scheduler, IntervalTrigger
+from core import orm
 
 cluster = Cluster()
 
@@ -13,10 +14,13 @@ async def main():
         await cluster.getConfiguration()
         await cluster.init()
         await cluster.checkStorages()
-
+        logger.tinfo("orm.info.creating")
+        try:
+            orm.create()
+            logger.tsuccess("orm.success.created")
+        except Exception as e:
+            logger.terror("orm.error.failed", e=e)
         async def syncFiles():
-            if cluster.scheduler:
-                cluster.scheduler.pause()
             await cluster.fetchFileList()
             missing_filelist = await cluster.getMissingFiles()
             await cluster.syncFiles(
@@ -24,8 +28,6 @@ async def main():
                 Config.get("advanced.retry"),
                 Config.get("advanced.delay"),
             )
-            if cluster.scheduler:
-                cluster.scheduler.resume()
 
         await syncFiles()
         scheduler.add_job(
