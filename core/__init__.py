@@ -4,6 +4,7 @@ from core.config import Config
 from core.logger import logger
 from core.scheduler import scheduler, IntervalTrigger
 from core import orm
+import os
 
 cluster = Cluster()
 
@@ -16,6 +17,7 @@ async def main():
         await cluster.checkStorages()
         logger.tinfo("orm.info.creating")
         try:
+            os.makedirs('./database', exist_ok=True)
             orm.create()
             logger.tsuccess("orm.success.created")
         except Exception as e:

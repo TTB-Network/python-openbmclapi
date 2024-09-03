@@ -4,3 +4,4 @@ logs
 config/config.yml
 cache
 cert
+database
