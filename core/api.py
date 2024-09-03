@@ -5,7 +5,7 @@ import humanize
 import psutil
 
 
-async def getStatus(cluster) -> web.Response:
+def getStatus(cluster) -> web.Response:
     hourly_hits = getHourlyHits()
     daily_hits = getDailyHits()
     monthly_hits = getMonthlyHits()
