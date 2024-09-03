@@ -16,10 +16,10 @@ class Base(DeclarativeBase):
 
 class HitsInfo(Base):
     __tablename__ = "hits_info"
-
-    hits: Mapped[int] = mapped_column(primary_key=True)
+    
+    time: Mapped[int] = mapped_column(primary_key=True)
+    hits: Mapped[int]
     bytes: Mapped[int]
-    time: Mapped[int]
 
 
 class AgentInfo(Base):
@@ -37,7 +37,10 @@ def writeHits(hits: int, bytes: int) -> None:
     if hits == 0 and bytes == 0:
         return
     session.add(HitsInfo(hits=hits, bytes=bytes, time=int(time.time())))
-    session.commit()
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
 
 
 def writeAgent(agent: str, hits: int) -> None:
@@ -46,7 +49,10 @@ def writeAgent(agent: str, hits: int) -> None:
         agent_info.hits += hits
     else:
         session.add(AgentInfo(agent=agent, hits=hits))
-    session.commit()
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
 
 
 def getHourlyHits() -> Dict[str, List[Dict[str, int]]]:
