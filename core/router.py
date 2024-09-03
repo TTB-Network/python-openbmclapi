@@ -75,7 +75,7 @@ class Router:
                 return web.Response(status=400)
 
         @self.route.get("/api/status")
-        async def _() -> web.Response:
+        async def _(request: web.Request) -> web.Response:
             return getStatus()
 
         self.app.add_routes(self.route)
