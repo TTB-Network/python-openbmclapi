@@ -80,5 +80,5 @@ class Router:
 
         self.app.add_routes(self.route)
         self.app.on_startup.append(self.on_start)
-        self.app.on_response_prepare(self.on_response_prepare)
-        self.app.on_cleanup(self.on_response_end)
+        self.app.on_response_prepare.append(self.on_response_prepare)
+        self.app.on_cleanup.append(self.on_response_end)
