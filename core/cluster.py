@@ -400,7 +400,7 @@ class Cluster:
                 self.scheduler = scheduler.add_job(
                     self.keepAlive,
                     IntervalTrigger(seconds=Config.get("advanced.keep_alive")),
-                    max_instances=3,
+                    max_instances=50,
                 )
             return bool(date)
 
