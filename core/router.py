@@ -15,23 +15,15 @@ class Router:
         self.storages = cluster.storages
         self.counters = {"hits": 0, "bytes": 0}
         self.route = web.RouteTableDef()
-        self.connection = 0
         self.cluster = cluster
-
-    async def on_start(self, *args, **kwargs):
         self.connection = 0
-
-    async def on_response_prepare(self, *args, **kwargs):
-        self.connection += 1
-
-    async def on_response_end(self, *args, **kwargs):
-        self.connection -= 1
 
     def init(self) -> None:
         @self.route.get("/download/{hash}")
         async def _(
             request: web.Request,
         ) -> Union[web.Response, web.FileResponse, web.StreamResponse]:
+            self.connection += 1
             writeAgent(request.headers["User-Agent"], 1)
             file_hash = request.match_info.get("hash", "").lower()
             if not checkSign(file_hash, self.secret, request.query):
@@ -43,6 +35,7 @@ class Router:
             )
             self.counters["bytes"] += data["bytes"]
             self.counters["hits"] += data["hits"]
+            self.connection -= 1
             return response
 
         @self.route.get("/measure/{size}")
@@ -80,6 +73,3 @@ class Router:
             return await getStatus(self.cluster)
 
         self.app.add_routes(self.route)
-        self.app.on_startup.append(self.on_start)
-        self.app.on_response_prepare.append(self.on_response_prepare)
-        self.app.on_cleanup.append(self.on_response_end)
