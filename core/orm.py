@@ -51,7 +51,9 @@ def writeAgent(agent: str, hits: int) -> None:
 
 def getHourlyHits() -> Dict[str, List[Dict[str, int]]]:
     def fetchData(base_time: datetime) -> List[Dict[str, int]]:
-        timestamps = [int(base_time.replace(hour=i).timestamp()) for i in range(1, 26)]
+        timestamps = [
+            int((base_time + timedelta(hours=i)).timestamp()) for i in range(24)
+        ] + [int((base_time.replace(hour=1) + timedelta(days=1)).timestamp())]
         return [
             {
                 "hits": sum(item.hits for item in query) if query else 0,

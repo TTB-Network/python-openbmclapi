@@ -11,6 +11,7 @@ from core.exceptions import ClusterIdNotSetError, ClusterSecretNotSetError
 from core.storages import getStorages, LocalStorage
 from core.classes import FileInfo, FileList, AgentConfiguration
 from core.router import Router
+from core.orm import writeHits
 from core.i18n import locale
 from typing import List, Any
 from aiohttp import web
