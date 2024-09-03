@@ -7,9 +7,9 @@ def checkSign(hash: str, secret: str, query: dict) -> bool:
         return False
     sign = (
         base64.urlsafe_b64encode(
-            hashlib.sha1(f"{secret}{hash}{e}".encode("utf-8")).digest()
+            hashlib.sha1(f"{secret}{hash}{e}".encode()).digest()
         )
-        .decode("utf-8")
+        .decode()
         .rstrip("=")
     )
     return sign == s and time.time() < int(e, 36)
