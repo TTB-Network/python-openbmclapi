@@ -34,6 +34,8 @@ def create() -> None:
 
 
 def writeHits(hits: int, bytes: int) -> None:
+    if hits == 0 and bytes == 0:
+        return
     session.add(HitsInfo(hits=hits, bytes=bytes, time=int(time.time())))
     session.commit()
 

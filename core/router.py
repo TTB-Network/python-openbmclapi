@@ -1,4 +1,4 @@
-from functools import wraps
+from core.orm import writeAgent
 from core.config import Config
 from core.classes import Storage
 from core.utils import checkSign
@@ -31,6 +31,7 @@ class Router:
         async def _(
             request: web.Request,
         ) -> Union[web.Response, web.FileResponse, web.StreamResponse]:
+            writeAgent(request.headers['User-Agent'], 1)
             file_hash = request.match_info.get("hash", "").lower()
             if not checkSign(file_hash, self.secret, request.query):
                 return web.Response(text="Invalid signature.", status=403)
