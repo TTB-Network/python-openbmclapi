@@ -3,6 +3,7 @@ from collections import defaultdict, deque
 from dataclasses import asdict, dataclass
 import hashlib
 import hmac
+import io
 from pathlib import Path
 import time
 from typing import Optional
@@ -209,12 +210,14 @@ class FileListManager:
         while not file_queues.empty():
             try:
                 file = await file_queues.get()
-                async with session.get(
-                    file.path
-                ) as resp:
-                    ...
-                    pbar.update(file.size)
-                    pbar.update_success()
+                content = io.BytesIO()
+                async with self.sync_sem:
+                    async with session.get(
+                        file.path
+                    ) as resp:
+                        ...
+                        pbar.update(file.size)
+                        pbar.update_success()
 
             except asyncio.CancelledError:
                 break

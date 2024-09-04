@@ -10,5 +10,6 @@
     "cluster.error.unspported_storage": "不支持的存储类型：[${type}] [${path}]",
     "cluster.success.load_storage": "已成功加载 [${type}] 路径为 [${path}]",
     "cluster.info.sync_configuration": "同步策略来源于 [${source}] 并发速度为 [${concurrency}]",
-    "i18n.prompt.failed": "未找到 i18n 字符串 [${key}]"
+    "cluster.processbar.download_files": "下载文件",
+    "i18n.prompt.failed": " 未找到 i18n 字符串"
 }
