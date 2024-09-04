@@ -24,6 +24,8 @@ async def main():
             logger.terror("orm.error.failed", e=e)
 
         async def syncFiles():
+            if cluster.enabled:
+                await cluster.disable()
             await cluster.fetchFileList()
             missing_filelist = await cluster.getMissingFiles()
             await cluster.syncFiles(
@@ -31,6 +33,8 @@ async def main():
                 Config.get("advanced.retry"),
                 Config.get("advanced.delay"),
             )
+            if not cluster.enabled:
+                await cluster.enable()
 
         await syncFiles()
         scheduler.add_job(
@@ -47,8 +51,9 @@ async def main():
         await cluster.enable()
         if not cluster.enabled:
             raise asyncio.CancelledError
-        await cluster.keepAlive()
         scheduler.start()
+        asyncio.sleep(10)
+        await cluster.keepAlive()
         logger.tsuccess("main.success.scheduler")
         while True:
             await asyncio.sleep(3600)
