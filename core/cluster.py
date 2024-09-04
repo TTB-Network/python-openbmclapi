@@ -412,6 +412,7 @@ class Cluster:
         if not self.socket or not self.enabled:
             return
 
+        self.enabled = False
         self.want_enable = False
         logger.tinfo("cluster.info.disabling")
         future = asyncio.Future()

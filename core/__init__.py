@@ -24,7 +24,7 @@ async def main():
             logger.terror("orm.error.failed", e=e)
 
         async def syncFiles():
-            if cluster.enabled:
+            if cluster.enabled and cluster.socket:
                 await cluster.disable()
             await cluster.fetchFileList()
             missing_filelist = await cluster.getMissingFiles()
@@ -33,7 +33,7 @@ async def main():
                 Config.get("advanced.retry"),
                 Config.get("advanced.delay"),
             )
-            if not cluster.enabled:
+            if not cluster.enabled and cluster.socket:
                 await cluster.enable()
 
         await syncFiles()
