@@ -135,7 +135,6 @@ files = [
 [package.dependencies]
 aiohappyeyeballs = ">=2.3.0"
 aiosignal = ">=1.1.2"
-async-timeout = {version = ">=4.0,<5.0", markers = "python_version < \"3.11\""}
 attrs = ">=17.3.0"
 frozenlist = ">=1.1.1"
 multidict = ">=4.5,<7.0"
@@ -195,22 +194,6 @@ testing = ["pytest", "pytest-asyncio", "pytest-cov", "pytest-tornado5"]
 tornado = ["tornado (>=4.3)"]
 twisted = ["twisted"]
 zookeeper = ["kazoo"]
-
-[package.source]
-type = "legacy"
-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
-reference = "mirrors"
-
-[[package]]
-name = "async-timeout"
-version = "4.0.3"
-description = "Timeout context manager for asyncio programs"
-optional = false
-python-versions = ">=3.7"
-files = [
-    {file = "async-timeout-4.0.3.tar.gz", hash = "sha256:4640d96be84d82d02ed59ea2b7105a0f7b33abe8703703cd0ab0bf87c427522f"},
-    {file = "async_timeout-4.0.3-py3-none-any.whl", hash = "sha256:7405140ff1230c310e51dc27b3145b9092d659ce68ff733fb0cefe3ee42be028"},
-]
 
 [package.source]
 type = "legacy"
@@ -1376,5 +1359,5 @@ reference = "mirrors"
 
 [metadata]
 lock-version = "2.0"
-python-versions = "^3.10"
-content-hash = "b76a564b9da08f9f09aaeaa65e308e286c0c0e81f91c104131ca6ef2f63dddbb"
+python-versions = "^3.12"
+content-hash = "76d7a6464a356a541d5f38dd63874315832b0f4b85e4458da764a90f38d073b9"
