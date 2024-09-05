@@ -31,7 +31,7 @@
 
 ✨ **Docker** support.With the help of Docker, you can deploy python-openbmclapi in a **short time**.
 
-🎉 **\* New features!\*** WebDAV support.Through WebDAV (Web-based Distorting and Versioning), users can edit and manage files stored on web servers in collaboration with them.
+🎉 **\* New features!\*** 仪表盘。我们使用了 Vue.js 和前端请求（axios）等功能使得新一代仪表盘界面更加简洁。
 
 </div>
 
