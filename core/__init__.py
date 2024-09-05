@@ -26,6 +26,8 @@ async def main():
         async def syncFiles():
             if cluster.enabled and cluster.socket:
                 await cluster.disable()
+            if cluster.scheduler:
+                await cluster.scheduler.pause()
             await cluster.fetchFileList()
             missing_filelist = await cluster.getMissingFiles()
             await cluster.syncFiles(
@@ -35,6 +37,8 @@ async def main():
             )
             if not cluster.enabled and cluster.socket:
                 await cluster.enable()
+            if cluster.scheduler:
+                await cluster.scheduler.resume()
 
         await syncFiles()
         scheduler.add_job(

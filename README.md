@@ -31,7 +31,7 @@
 
 ✨ **Docker** 支持。通过 Docker 更加**快捷地**部署 python-openbmclapi ~~（更支持一键跑路）~~。
 
-🎉 __*新增功能！*__ WebDAV 支持。通过基于 Web 的分布式编写和版本控制（英语：Web-based Distributed Authoring and Versioning，缩写：WebDAV），用户可以协同编辑和管理存储在万维网服务器文件。
+🎉 __*新增功能！*__ 仪表盘。我们使用了 Vue.js 和前端请求（axios）等功能使得新一代仪表盘界面更加简洁。
 
 </div>
 
