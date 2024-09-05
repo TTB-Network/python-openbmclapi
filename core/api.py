@@ -8,6 +8,8 @@ import psutil
 
 API_VERSION = Config.get("advanced.api_version")
 VERSION = toml.loads(open("pyproject.toml", "r").read())["tool"]["poetry"]["version"]
+
+
 async def getStatus(cluster) -> web.Response:
     hourly_hits = getHourlyHits()
     daily_hits = getDailyHits()
@@ -33,6 +35,6 @@ async def getStatus(cluster) -> web.Response:
         "cpuType": platform.processor(),
         "pythonVersion": platform.python_version(),
         "apiVersion": API_VERSION,
-        "version": VERSION
+        "version": VERSION,
     }
     return web.json_response(data=response)

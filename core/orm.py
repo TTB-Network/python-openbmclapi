@@ -4,7 +4,7 @@ from datetime import timedelta, datetime
 from calendar import monthrange
 from typing import List, Dict
 import time
-
+import re
 
 engine = create_engine("sqlite:///database/data.db")
 session = Session(engine)
@@ -44,15 +44,18 @@ def writeHits(hits: int, bytes: int) -> None:
 
 
 def writeAgent(agent: str, hits: int) -> None:
-    agent_info = session.get(AgentInfo, agent)
-    if agent_info:
-        agent_info.hits += hits
-    else:
-        session.add(AgentInfo(agent=agent, hits=hits))
-    try:
-        session.commit()
-    except Exception:
-        session.rollback()
+    agent = re.match(r"^(\w+)/", agent).group(1)
+    if agent not in ["bmclapi-ctrl", "bmclapi-warden"]:
+        agent_info = session.get(AgentInfo, agent)
+        if agent_info:
+            agent_info.hits += hits
+        else:
+            session.add(AgentInfo(agent=agent, hits=hits))
+
+        try:
+            session.commit()
+        except Exception:
+            session.rollback()
 
 
 def getHourlyHits() -> Dict[str, List[Dict[str, int]]]:

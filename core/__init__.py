@@ -44,7 +44,7 @@ async def main():
         scheduler.add_job(
             syncFiles,
             trigger=IntervalTrigger(minutes=Config.get("advanced.sync_interval")),
-            max_instances=50
+            max_instances=50,
         )
         await cluster.connect()
         protocol = "http" if Config.get("cluster.byoc") else "https"
