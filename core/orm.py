@@ -44,7 +44,7 @@ def writeHits(hits: int, bytes: int) -> None:
 
 
 def writeAgent(agent: str, hits: int) -> None:
-    agent = re.match(r"^(\w+)/.*", agent).group(1)
+    agent = re.match(r"^(.*?)/", agent).group(1)
     if agent not in ["bmclapi-ctrl", "bmclapi-warden"]:
         agent_info = session.get(AgentInfo, agent)
         if agent_info:
