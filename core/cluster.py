@@ -6,7 +6,8 @@ import hmac
 import io
 from pathlib import Path
 import time
-from typing import Optional
+from typing import Any, Callable, Coroutine, Optional
+import aiohttp.client_exceptions
 import pyzstd as zstd
 import aiohttp
 from tqdm import tqdm
@@ -39,6 +40,8 @@ class StorageManager:
 
         self.check_available.acquire()
 
+        self.check_type_file = "exists+size"
+
     def init(self):
         scheduler.run_repeat(self._check_available, 120)
 
@@ -63,6 +66,43 @@ class StorageManager:
     async def available(self):
         await self.check_available.wait()
         return len(self.available_storages) > 0
+    
+    async def write_file(self, file: File, content: bytes):
+        return all(await asyncio.gather(*(asyncio.create_task(storage.write_file(convert_file_to_storage_file(file), content, file.mtime)) for storage in self.available_storages)))
+
+    async def get_missing_files(self, files: set[File]):
+        function = None
+        if function is None:
+            logger.twarning("cluster.warning.no_check_function")
+            function = self._check_exists
+        with tqdm(
+            total=len(files) * len(self.available_storages),
+            desc="Checking files",
+            unit="file",
+            unit_scale=True,
+        ) as pbar:
+            missing_files = set().union(await asyncio.gather(*(self._get_missing_file(function, file, pbar) for file in files)))
+            if None in missing_files:
+                missing_files.remove(None)
+            return missing_files or set()
+        
+    
+    async def _get_missing_file(self, function: Callable[..., Coroutine[Any, Any, bool]], file: File, pbar: tqdm):
+        if all(await asyncio.gather(*(self._get_missing_file_storage(function, file, storage, pbar) for storage in self.available_storages))):
+            return None
+        return file
+    
+    async def _get_missing_file_storage(self, function: Callable[..., Coroutine[Any, Any, bool]], file: File, storage: storages.iStorage, pbar: tqdm):
+        result = await function(file, storage)
+        pbar.update(1)
+        return result
+    
+    async def _check_exists(self, file: File, storage: storages.iStorage):
+        return await storage.exists(file.hash)
+    async def _check_size(self, file: File, storage: storages.iStorage):
+        return await self._check_exists(file, storage) and await storage.get_size(file.hash) == file.size
+    async def _check_hash(self, file: File, storage: storages.iStorage):
+        return await self._check_exists(file, storage) and utils.equals_hash(file.hash, await storage.read_file(file.hash))
 
 @dataclass
 class OpenBMCLAPIConfiguration:
@@ -155,13 +195,16 @@ class FileListManager:
                     self.cluster_last_modified[cluster] = max(filelist, key=lambda f: f.mtime).mtime
                 return filelist
 
-    async def fetch_filelist(self):
+    async def fetch_filelist(self) -> set[File]:
         result_filelist = set().union(*await asyncio.gather(*(asyncio.create_task(self._get_filelist(cluster)) for cluster in self.clusters.clusters)))
         logger.tsuccess("cluster.success.fetch_filelist", total=units.format_number(len(result_filelist)), size=units.format_bytes(sum(f.size for f in result_filelist)))
         return result_filelist
 
     async def sync(self):
         result = await self.fetch_filelist()
+
+        missing = await self.clusters.storage_manager.get_missing_files(result)
+
         await self.clusters.storage_manager.available()
         configurations: defaultdict[str, deque[OpenBMCLAPIConfiguration]] = defaultdict(deque)
         for configuration in await asyncio.gather(*(asyncio.create_task(self._get_configuration(cluster)) for cluster in self.clusters.clusters)):
@@ -172,7 +215,7 @@ class FileListManager:
         logger.tinfo("cluster.info.sync_configuration", source=configuration.source, concurrency=configuration.concurrency)
         self.sync_sem.set_value(configuration.concurrency)
 
-        await self.download(result)
+        await self.download(missing)
 
     async def download(self, filelist: set[File]):
         total = len(filelist)
@@ -208,6 +251,7 @@ class FileListManager:
 
     async def _download(self, session: aiohttp.ClientSession, file_queues: asyncio.Queue[File], pbar: DownloadStatistics):
         while not file_queues.empty():
+            recved = 0
             try:
                 file = await file_queues.get()
                 content = io.BytesIO()
@@ -215,18 +259,65 @@ class FileListManager:
                     async with session.get(
                         file.path
                     ) as resp:
-                        ...
-                        pbar.update(file.size)
-                        pbar.update_success()
-
+                        async for chunk in resp.content.iter_any():
+                            content.write(chunk)
+                            recved += len(chunk)
+                            pbar.update(len(chunk))
+                # check hash
+                hash = utils.get_hash_hexdigest(file.hash, content.getvalue())
+                if hash != file.hash:
+                    raise ValueError(hash)
+                if await self.clusters.storage_manager.write_file(file, content.getvalue()):
+                    pbar.update_success()
+                else:
+                    raise FileNotFoundError()
             except asyncio.CancelledError:
+                pbar.update(-recved)
                 break
-            except:
+            except Exception as e:
+                pbar.update(-recved)
                 await file_queues.put(file)
                 pbar.update_failed()
-                logger.traceback()
+                r = None
+                if "resp" in locals():
+                    r = resp
+                self.report(file, e, r)
+                continue
+            pbar.update_success()
 
-
+    def report(self, file: File, error: Exception, resp: Optional[aiohttp.ClientResponse] = None):
+        msg = error.args
+        type = "unknown"
+        if isinstance(error, ValueError):
+            type = "hash"
+        elif isinstance(error, (
+            aiohttp.client_exceptions.ClientConnectionError,
+            aiohttp.client_exceptions.ClientConnectorError,
+            aiohttp.client_exceptions.ServerDisconnectedError,
+            aiohttp.client_exceptions.ClientPayloadError,
+            aiohttp.client_exceptions.ClientOSError,
+            aiohttp.client_exceptions.ClientResponseError,
+            aiohttp.client_exceptions.ServerTimeoutError,
+            aiohttp.client_exceptions.ClientHttpProxyError,
+            aiohttp.client_exceptions.ClientProxyConnectionError,
+            aiohttp.client_exceptions.ClientSSLError,
+            aiohttp.client_exceptions.ClientConnectorCertificateError,
+            aiohttp.client_exceptions.ClientConnectorSSLError,
+            OSError
+        )):
+            type = "network"
+        else:
+            type = "file"
+        responses = []
+        host = None
+        if resp is not None:
+            for r in resp.history:
+                responses.append(f"{r.status} | {r.url}")
+            responses.append(f"{resp.status} | {resp.url}")
+            host = resp.host
+        hash = msg[0] if len(msg) > 0 else None
+        logger.debug(error)
+        logger.terror(f"clusters.error.downloading", type=type, file_hash=file.hash, file_size=units.format_bytes(file.size), host=host, file_path=file.path, hash=hash, responses="\n".join(("", *responses)))
 
 
     async def _get_configuration(self, cluster: 'Cluster'):

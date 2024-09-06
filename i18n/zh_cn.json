@@ -11,5 +11,7 @@
     "cluster.success.load_storage": "已成功加载 [${type}] 路径为 [${path}]",
     "cluster.info.sync_configuration": "同步策略来源于 [${source}] 并发速度为 [${concurrency}]",
     "cluster.processbar.download_files": "下载文件",
-    "i18n.prompt.failed": " 未找到 i18n 字符串"
+    "i18n.prompt.failed": " 未找到 i18n 字符串",
+    "cluster.warning.no_check_function": "没有找到检查函数，使用类型为 exists",
+    "clusters.error.downloading": "下载时候出错，原因 [${type}]，文件 [${file_path} ${file_hash}(${file_size})]，主机 [${host}] 下载时候的历史记录：${responses}"
 }

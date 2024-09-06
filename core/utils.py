@@ -1,5 +1,6 @@
 import asyncio
 from collections import deque
+import hashlib
 import io
 
 
@@ -111,3 +112,13 @@ class FileStream:
         return (result >> 1) ^ -(result & 1)
     def read_string(self):
         return self.data.read(self.read_long()).decode('utf-8')
+    
+
+def equals_hash(origin: str, content: bytes):
+    return get_hash_hexdigest(origin, content) == origin
+
+def get_hash_hexdigest(origin: str, content: bytes):
+    h = hashlib.sha1
+    if len(origin) == 32:
+        h = hashlib.md5
+    return h(content).hexdigest()
