@@ -70,7 +70,7 @@ class StorageManager:
     async def write_file(self, file: File, content: bytes):
         return all(await asyncio.gather(*(asyncio.create_task(storage.write_file(convert_file_to_storage_file(file), content, file.mtime)) for storage in self.available_storages)))
 
-    async def get_missing_files(self, files: set[File]):
+    async def get_missing_files(self, files: set[File]) -> set[File | Any]:
         function = None
         if function is None:
             logger.twarning("cluster.warning.no_check_function")
