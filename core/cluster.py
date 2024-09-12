@@ -71,7 +71,9 @@ class StorageManager:
         return all(await asyncio.gather(*(asyncio.create_task(storage.write_file(convert_file_to_storage_file(file), content, file.mtime)) for storage in self.available_storages)))
 
     async def get_missing_files(self, files: set[File]) -> set[File | Any]:
-        function = None
+        async def _(file: File, storage: storages.iStorage):
+            return True
+        function = _
         if function is None:
             logger.twarning("cluster.warning.no_check_function")
             function = self._check_exists
@@ -81,21 +83,24 @@ class StorageManager:
             unit="file",
             unit_scale=True,
         ) as pbar:
-            missing_files = set().union(await asyncio.gather(*(self._get_missing_file(function, file, pbar) for file in files)))
-            if None in missing_files:
-                missing_files.remove(None)
+            missing_files = set()
+            waiting_files: asyncio.Queue[File] = asyncio.Queue()
+            
+            for file in files:
+                waiting_files.put_nowait(file)
+            
+            await asyncio.gather(*(self._get_missing_file_storage(function, missing_files, waiting_files, storage, pbar) for storage in self.available_storages))
             return missing_files or set()
-        
     
-    async def _get_missing_file(self, function: Callable[..., Coroutine[Any, Any, bool]], file: File, pbar: tqdm):
-        if all(await asyncio.gather(*(self._get_missing_file_storage(function, file, storage, pbar) for storage in self.available_storages))):
-            return None
-        return file
-    
-    async def _get_missing_file_storage(self, function: Callable[..., Coroutine[Any, Any, bool]], file: File, storage: storages.iStorage, pbar: tqdm):
-        result = await function(file, storage)
-        pbar.update(1)
-        return result
+    async def _get_missing_file_storage(self, function: Callable[..., Coroutine[Any, Any, bool]], missing_files: set[File], files: asyncio.Queue[File], storage: storages.iStorage, pbar: tqdm):
+        while not files.empty():
+            file = await files.get()
+            if await function(file, storage):
+                pbar.update(1)
+            else:
+                missing_files.add(file)
+            files.task_done()
+            await asyncio.sleep(0)
     
     async def _check_exists(self, file: File, storage: storages.iStorage):
         return await storage.exists(file.hash)
@@ -161,7 +166,7 @@ class FileListManager:
     def __init__(self, clusters: 'ClusterManager'):
         self.clusters = clusters
         self.cluster_last_modified: defaultdict['Cluster', int] = defaultdict(lambda: 0)
-        self.sync_sem: utils.SemaphoreLock = utils.SemaphoreLock(10)
+        self.sync_sem: utils.SemaphoreLock = utils.SemaphoreLock(256)
         self.download_statistics = DownloadStatistics()
 
     async def _get_filelist(self, cluster: 'Cluster'):
@@ -205,6 +210,10 @@ class FileListManager:
 
         missing = await self.clusters.storage_manager.get_missing_files(result)
 
+        if not missing:
+            logger.tsuccess("cluster.success.no_missing_files")
+            return
+
         await self.clusters.storage_manager.available()
         configurations: defaultdict[str, deque[OpenBMCLAPIConfiguration]] = defaultdict(deque)
         for configuration in await asyncio.gather(*(asyncio.create_task(self._get_configuration(cluster)) for cluster in self.clusters.clusters)):
@@ -213,7 +222,7 @@ class FileListManager:
         # get better configuration
         configuration = max(configurations.items(), key=lambda x: x[1][0].concurrency)[1][0]
         logger.tinfo("cluster.info.sync_configuration", source=configuration.source, concurrency=configuration.concurrency)
-        self.sync_sem.set_value(configuration.concurrency)
+        #self.sync_sem.set_value(configuration.concurrency)
 
         await self.download(missing)
 
@@ -315,7 +324,7 @@ class FileListManager:
                 responses.append(f"{r.status} | {r.url}")
             responses.append(f"{resp.status} | {resp.url}")
             host = resp.host
-        hash = msg[0] if len(msg) > 0 else None
+        hash = msg[0] if len(msg) > 0 and type == "file" else None
         logger.debug(error)
         logger.terror(f"clusters.error.downloading", type=type, file_hash=file.hash, file_size=units.format_bytes(file.size), host=host, file_path=file.path, hash=hash, responses="\n".join(("", *responses)))
 
@@ -350,6 +359,8 @@ class ClusterManager:
         logger.tdebug("cluster.debug.base_url", base_url=config.const.base_url)
         # check files
         await self.file_manager.sync()
+
+        # start job
 
 
 
@@ -455,7 +466,10 @@ async def init():
             continue
         logger.tsuccess("cluster.success.load_cluster", id=cluster.id, host=cluster.host, port=cluster.port)
         clusters.add_cluster(cluster)
-    
+    if len(clusters.clusters) == 0:
+        logger.terror("cluster.error.no_cluster")
+        utils.pause()
+        return
     config_storages = config_clusters = config.Config.get("storages")
     for cstorage in config_storages:
         type = cstorage['type']

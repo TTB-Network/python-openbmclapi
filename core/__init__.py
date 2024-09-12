@@ -5,12 +5,16 @@ from . import utils
 import atexit
 from . import cluster
 from . import scheduler
+from . import web
+from . import dashboard
 
 _WAITLOCK = utils.CountLock()
 
 async def main():
     start = time.monotonic_ns()
     await scheduler.init()
+    await web.init()
+    await dashboard.init()
     await cluster.init()
     _WAITLOCK.acquire()
     end = time.monotonic_ns()
@@ -20,6 +24,7 @@ async def main():
     except:
         logger.tdebug("main.debug.service_unfinish")
     finally:
+        await web.unload()
         await scheduler.unload()
 
 def init():

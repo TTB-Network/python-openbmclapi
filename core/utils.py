@@ -122,3 +122,10 @@ def get_hash_hexdigest(origin: str, content: bytes):
     if len(origin) == 32:
         h = hashlib.md5
     return h(content).hexdigest()
+
+def pause():
+    try:
+        input("Press Enter to continue...")
+    except KeyboardInterrupt:
+        exit()
+        pass

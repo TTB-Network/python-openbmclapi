@@ -3,60 +3,64 @@ from datetime import datetime
 NUMBER_UNITS = (
     ('', 1),
     ('K', 1e3),
-    ('M', 1e6),
-    ('G', 1e9),
-    ('T', 1e12),
-    ('P', 1e15),
-    ('E', 1e18),
-    ('Z', 1e21),
-    ('Y', 1e24),
+    ('M', 1e3),
+    ('G', 1e3),
+    ('T', 1e3),
+    ('P', 1e3),
+    ('E', 1e3),
+    ('Z', 1e3),
+    ('Y', 1e3),
 )
 
 TIME_UNITS = (
     ('ns', 1),
     ('μs', 1e3),
-    ('ms', 1e6),
-    ('s', 1e9),
-    ('min', 6e10),
-    ('h', 3.6e12),
+    ('ms', 1e3),
+    ('s', 1e3),
+    ('min', 60),
+    ('h', 60),
 )
 # 1024
 BYTES_UNITS = (
     ('iB', 1),
     ('KiB', 1024),
-    ('MiB', 1024**2),
-    ('GiB', 1024**3),
-    ('TiB', 1024**4),
-    ('PiB', 1024**5),
-    ('EiB', 1024**6),
-    ('ZiB', 1024**7),
-    ('YiB', 1024**8)
+    ('MiB', 1024),
+    ('GiB', 1024),
+    ('TiB', 1024),
+    ('PiB', 1024),
+    ('EiB', 1024),
+    ('ZiB', 1024),
+    ('YiB', 1024)
 )
 
 def format_bytes(n: float) -> str:
     i = 0
-    while n >= 1024 and i < len(BYTES_UNITS) - 1:
-        n /= 1024
+    for u, un in BYTES_UNITS[1:]:
+        if n / un < 1:
+            break
+        n /= un
         i += 1
     return f'{n:.2f}{BYTES_UNITS[i][0]}'
 
 
 def format_number(n: float) -> str:
-    i = 0   
-    while n >= 1000 and i < len(NUMBER_UNITS) - 1:
-        n /= 1000
+    i = 0
+    for u, un in NUMBER_UNITS[1:]:
+        if n / un < 1:
+            break
+        n /= un
         i += 1
     return f'{n:.2f}{NUMBER_UNITS[i][0]}'
 
 
-def format_count_time(n: float) -> str:
+def format_count_time(n: float, round: int = 2) -> str:
     i = 0
-    for unit, t in TIME_UNITS:
-        if n < t:
+    for u, un in TIME_UNITS[1:]:
+        if n / un < 1:
             break
-        n /= t
+        n /= un
         i += 1
-    return f'{n:.2f}{TIME_UNITS[i][0]}'
+    return f'{n:.{round}f}{TIME_UNITS[i][0]}'
 
 def format_count_datetime(secs: float) -> str:
     ms = int(secs * 1000)

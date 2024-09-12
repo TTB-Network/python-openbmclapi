@@ -13,14 +13,16 @@ defaults = {
     "advanced.sync_interval": 60,
     "advanced.base_url": "https://openbmclapi.bangbang93.com",
     "advanced.threads": 128,
+    "web": {
+        "port": -1,
+        "public_port": 6000
+    },
     "clusters": [
         {
             "id": "",
             "secret": "",
             "host": "",
             "byoc": False,
-            "public_port": -1,
-            "port": 8800,
             "cert": "./cert/cert.pem",
             "key": "./cert/key.pem",
         }
@@ -92,5 +94,9 @@ class Const:
     @property
     def threads(self):
         return Config.get("advanced.threads", 128)
+    
+    @property
+    def public_port(self):
+        return Config.get("web.public_port", 6000)
     
 const = Const()
