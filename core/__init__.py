@@ -9,6 +9,7 @@ from . import web
 from . import dashboard
 
 _WAITLOCK = utils.CountLock()
+_START_RUNTIME = time.monotonic()
 
 async def main():
     start = time.monotonic_ns()

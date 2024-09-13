@@ -2,6 +2,7 @@ import asyncio
 from collections import deque
 import hashlib
 import io
+import time
 
 
 class CountLock:
@@ -129,3 +130,7 @@ def pause():
     except KeyboardInterrupt:
         exit()
         pass
+
+def get_runtime():
+    from core import _START_RUNTIME
+    return time.monotonic() - _START_RUNTIME
