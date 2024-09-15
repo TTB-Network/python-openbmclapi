@@ -81,7 +81,7 @@ async def _(request: web.Request):
 route.static("/assets", "./assets")
 
 def record():
-    memory           = process.memory_info()
+    memory            = process.memory_info()
     connection = process.connections()
     stats = SystemInfo(
         cpu_usage=process.cpu_percent(interval=1),
