@@ -404,9 +404,8 @@ class Cluster:
                 )
             return bool(date)
 
-        except Exception as e:
-            logger.terror("cluster.error.keep_alive.error", e=e)
-            return False
+        except Exception:
+            logger.terror("cluster.error.keep_alive.error")
 
     async def disable(self) -> None:
         if not self.socket or not self.enabled:
