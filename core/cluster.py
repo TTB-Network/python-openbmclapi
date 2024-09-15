@@ -12,8 +12,10 @@ import pyzstd as zstd
 import aiohttp
 from tqdm import tqdm
 
+from . import web
 from . import utils, logger, config, scheduler, units, storages, i18n
 from .storages import File as SFile
+import socketio
 
 @dataclass
 class Token:
@@ -159,8 +161,6 @@ class DownloadStatistics:
         if self.pbar is None:
             return
         self.pbar.close()
-
-
 
 class FileListManager:
     def __init__(self, clusters: 'ClusterManager'):
@@ -362,7 +362,24 @@ class ClusterManager:
 
         # start job
 
+        # remote certificate
+        # start web ssl
+        cert = await self.get_certificate()
+        await web.start_ssl_server(
+            cert.cert, cert.key
+        )
 
+    async def get_certificate(self):
+        await asyncio.gather(*[cluster.request_cert() for cluster in self.clusters])
+        main = ClusterCertificate(
+            config.const.host,
+            Path(config.const.ssl_cert),
+            Path(config.const.ssl_key)
+        )
+        if main.is_valid:
+            return main
+        return [cluster.certificate for cluster in self.clusters][0]
+        
 
 class Cluster:
     def __init__(self, id: str, secret: str, port: int, public_port: int = -1, host: str = "", byoc: bool = False, cert: Optional[str] = None, key: Optional[str] = None):
@@ -375,15 +392,16 @@ class Cluster:
         self.cert = cert
         self.key = key
         self.token: Optional[Token] = None
-        self.last_token: float = 0
+        self.fetch_time: float = 0
         self.token_ttl: float = 0
         self.token_scheduler: Optional[int] = None
+        self.socket_io = ClusterSocketIO(self)
 
     def __repr__(self):
         return f"Cluster(id={self.id}, host={self.host}, port={self.port}, public_port={self.public_port}, byoc={self.byoc}, cert={self.cert}, key={self.key})"
 
     async def get_token(self):
-        if self.token is None or time.time() - self.last_token > self.token_ttl - 300:
+        if self.token is None or time.time() - self.fetch_time > self.token_ttl - 300:
             await self._fetch_token()
 
         if self.token is None or self.token.last + self.token.ttl < time.time():
@@ -424,6 +442,98 @@ class Cluster:
                 if self.token_scheduler is not None:
                     scheduler.cancel(self.token_scheduler)
                 self.token_scheduler = scheduler.run_later(self.get_token, delay=self.token.ttl - 300)
+
+    async def start_job(self):
+        await self.socket_io.connect()
+
+    async def request_cert(self):
+        ssl_dir = Path(config.const.ssl_dir)
+        if not ssl_dir.exists():
+            ssl_dir.mkdir(parents=True, exist_ok=True)
+        cert_file, key_file = ssl_dir / f"{self.id}_cert.pem", ssl_dir / f"{self.id}_key.pem"
+        result = await self.socket_io.emit(
+            "request-cert",
+        )
+        if result.err is not None:
+            logger.terror("cluster.error.socketio.request_cert", cluster=self.id, err=result.err)
+            return
+        with open(cert_file, "w") as cert, open(key_file, "w") as key:
+            cert.write(result.ack["cert"])
+            key.write(result.ack["key"])
+
+    @property
+    def certificate(self):
+        return ClusterCertificate(
+            f"{self.id}.openbmclapi.933.moe",
+            Path(config.const.ssl_dir) / f"{self.id}_cert.pem", 
+            Path(config.const.ssl_dir) / f"{self.id}_key.pem"
+        )
+
+class ClusterSocketIO:
+    def __init__(self, cluster: Cluster) -> None:
+        self.cluster = cluster
+        self.sio = socketio.AsyncClient(
+            logger=True
+        )
+    
+    async def connect(self):
+        auth = {
+            "token": await self.cluster.get_token()
+        }
+
+        self.setup_handlers()
+
+        await self.sio.connect(
+            config.const.base_url,
+            transports=["websocket"],
+            auth=auth
+        )
+
+    def setup_handlers(self):
+        @self.sio.on("connect") # type: ignore
+        async def _() -> None:
+            logger.tdebug("cluster.debug.socketio.connected", cluster=self.cluster.id)
+
+        @self.sio.on("disconnect") # type: ignore
+        async def _() -> None:
+            logger.tdebug("cluster.debug.socketio.disconnected", cluster=self.cluster.id)
+
+    async def _check_connect(self):
+        if not self.sio.connected:
+            await self.connect()
+
+    async def emit(self, event: str, data: Any = {}, timeout: Optional[float] = None) -> 'SocketIOEmitResult':
+        await self._check_connect()
+        fut = asyncio.get_event_loop().create_future()
+
+        async def callback(data: tuple[Any, Any]):
+            fut.set_result(SocketIOEmitResult(data[0], data[1]))
+
+        await self.sio.emit(
+            event, data, callback=callback
+        )
+        if timeout is not None:
+            scheduler.run_later(lambda: fut.set_exception(asyncio.TimeoutError), timeout)
+        try:
+            await fut
+        except:
+            raise
+        return fut.result()
+
+@dataclass
+class ClusterCertificate:
+    host: str
+    cert: Path
+    key: Path
+
+    @property
+    def is_valid(self):
+        return self.host and self.cert.exists() and self.key.exists()
+
+@dataclass
+class SocketIOEmitResult:
+    err: Any
+    ack: Any
 
 ROOT = Path(__file__).parent.parent
 

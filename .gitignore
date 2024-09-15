@@ -2,4 +2,5 @@
 /logs
 /config
 .lh
+.ssl
 bmclapi

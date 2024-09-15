@@ -13,6 +13,10 @@ defaults = {
     "advanced.sync_interval": 60,
     "advanced.base_url": "https://openbmclapi.bangbang93.com",
     "advanced.threads": 128,
+    "advanced.ssl_dir": ".ssl",
+    "advanced.host": "",
+    "advnaced.ssl_cert": "",
+    "advanced.ssl_key": "",
     "web": {
         "port": -1,
         "public_port": 6000
@@ -21,10 +25,6 @@ defaults = {
         {
             "id": "",
             "secret": "",
-            "host": "",
-            "byoc": False,
-            "cert": "./cert/cert.pem",
-            "key": "./cert/key.pem",
         }
     ],
     "storages": [{"type": "local", "path": "./cache"}],
@@ -98,5 +98,21 @@ class Const:
     @property
     def public_port(self):
         return Config.get("web.public_port", 6000)
+    
+    @property
+    def ssl_dir(self):
+        return Config.get("advanced.ssl_dir", ".ssl")
+    
+    @property
+    def host(self):
+        return Config.get("advanced.host")
+    
+    @property
+    def ssl_cert(self):
+        return Config.get("advanced.ssl_cert")
+    
+    @property
+    def ssl_key(self):
+        return Config.get("advanced.ssl_key")
     
 const = Const()

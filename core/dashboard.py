@@ -26,10 +26,16 @@ class ConnectionStatistics:
         return self.tcp + self.udp
 
 @dataclass
+class ClusterInfo:
+    name: str
+
+
+@dataclass
 class SystemInfo:
     cpu_usage: float
     memory_usage: int
     connection: ConnectionStatistics
+    clusters: list[ClusterInfo]
 
 @dataclass
 class CounterValue:
@@ -89,7 +95,8 @@ def record():
         connection=ConnectionStatistics(
             tcp=len([c for c in connection if c.type == socket.SOCK_STREAM]),
             udp=len([c for c in connection if c.type == socket.SOCK_DGRAM])
-        )
+        ),
+        clusters=[]
     )
     counter.add(stats)
 
