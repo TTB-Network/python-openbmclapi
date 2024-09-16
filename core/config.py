@@ -17,6 +17,7 @@ defaults = {
     "advanced.host": "",
     "advnaced.ssl_cert": "",
     "advanced.ssl_key": "",
+    "advanced.check_sign": True,
     "web": {
         "port": -1,
         "public_port": 6000
@@ -27,7 +28,13 @@ defaults = {
             "secret": "",
         }
     ],
-    "storages": [{"type": "local", "path": "./cache"}],
+    "storages": [
+        {
+            "type": "local", 
+            "path": "./bmclapi",
+            "width": 0
+        }
+    ],
 }
 
 
@@ -114,5 +121,9 @@ class Const:
     @property
     def ssl_key(self):
         return Config.get("advanced.ssl_key")
+    
+    @property
+    def check_sign(self):
+        return Config.get("advanced.check_sign", True)
     
 const = Const()

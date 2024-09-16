@@ -1,3 +1,4 @@
+import abc
 import asyncio
 from collections import defaultdict, deque
 from dataclasses import asdict, dataclass
@@ -32,7 +33,7 @@ class File:
 
     def __hash__(self) -> int:
         return hash((self.hash, self.size, self.mtime))
-    
+
 class StorageManager:
     def __init__(self, clusters: 'ClusterManager'):
         self.clusters = clusters
@@ -110,6 +111,51 @@ class StorageManager:
         return await self._check_exists(file, storage) and await storage.get_size(file.hash) == file.size
     async def _check_hash(self, file: File, storage: storages.iStorage):
         return await self._check_exists(file, storage) and utils.equals_hash(file.hash, await storage.read_file(file.hash))
+
+    async def get_file(self, hash: str):
+        file = None
+        if self.available():
+            storage = self.get_width_storage()
+            if isinstance(storage, storages.LocalStorage) and await storage.exists(hash):
+                return LocalStorageFile(
+                    hash,
+                    await storage.get_size(hash),
+                    await storage.get_mtime(hash),
+                    Path(storage.get_path(hash))
+                )
+            elif isinstance(storage, storages.AlistStorage):
+                ...
+        if file is None:
+            async with aiohttp.ClientSession(
+                config.const.base_url,
+                headers={
+                    "User-Agent": USER_AGENT,
+                    "Authorization": await self.clusters.clusters[0].get_token()
+                }
+            ) as session:
+                async with session.get(
+                    f"/openbmclapi/download/{hash}"
+                ) as resp:
+                    file = MemoryStorageFile(
+                        hash,
+                        resp.content_length or -1,
+                        time.time(),
+                        await resp.content.read()
+                    )
+        return file
+
+    def get_width_storage(self, c_storage: Optional[storages.iStorage] = None) -> storages.iStorage:
+        current_storage = self.available_storages[0]
+        if current_storage.current_width > current_storage.width:
+            current_storage.current_width += 1
+            return current_storage
+        else:
+            self.available_storages.remove(current_storage)
+            self.available_storages.append(current_storage)
+            if c_storage is not None:
+                return c_storage
+            return self.get_width_storage(c_storage=c_storage or current_storage)
+
 
 @dataclass
 class OpenBMCLAPIConfiguration:
@@ -360,14 +406,21 @@ class ClusterManager:
         # check files
         await self.file_manager.sync()
 
-        # start job
-
-        # remote certificate
         # start web ssl
         cert = await self.get_certificate()
         await web.start_ssl_server(
             cert.cert, cert.key
         )
+        public_port = config.const.public_port
+        public_host = cert.host
+
+        logger.tdebug("cluster.debug.public_host", host=public_host, port=public_port)
+
+        # start job
+
+        for cluster in self.clusters:
+            await cluster.enable()
+
 
     async def get_certificate(self):
         await asyncio.gather(*[cluster.request_cert() for cluster in self.clusters])
@@ -396,6 +449,8 @@ class Cluster:
         self.token_ttl: float = 0
         self.token_scheduler: Optional[int] = None
         self.socket_io = ClusterSocketIO(self)
+        self.want_enable: bool = False
+        self.enabled = True
 
     def __repr__(self):
         return f"Cluster(id={self.id}, host={self.host}, port={self.port}, public_port={self.public_port}, byoc={self.byoc}, cert={self.cert}, key={self.key})"
@@ -461,6 +516,29 @@ class Cluster:
             cert.write(result.ack["cert"])
             key.write(result.ack["key"])
 
+    async def enable(self):
+        cert = await clusters.get_certificate()
+        if self.want_enable:
+            return
+        self.want_enable = True
+        result = await self.socket_io.emit(
+            "enable", {
+                "host": cert.host,
+                "port": config.const.public_port,
+                "byoc": True,
+                "version": API_VERSION,
+                "noFastEnable": False,
+                "flavor": {
+                    "storage": "local",
+                    "runtime": "python"
+                }
+            }
+        )
+        self.want_enable = False
+        if result.err:
+            self.socketio_error("enable", result)
+            return
+        self.enabled = True
     @property
     def certificate(self):
         return ClusterCertificate(
@@ -468,6 +546,13 @@ class Cluster:
             Path(config.const.ssl_dir) / f"{self.id}_cert.pem", 
             Path(config.const.ssl_dir) / f"{self.id}_key.pem"
         )
+
+    def socketio_error(self, type: str, result: 'SocketIOEmitResult'):
+        err = result.err
+        if "message" in err:
+            logger.terror("cluster.error.socketio", type=type, id=self.id, err=err["message"])
+        else:
+            logger.terror("cluster.error.socketio", type=type, id=self.id, err=err)
 
 class ClusterSocketIO:
     def __init__(self, cluster: Cluster) -> None:
@@ -507,8 +592,8 @@ class ClusterSocketIO:
         fut = asyncio.get_event_loop().create_future()
 
         async def callback(data: tuple[Any, Any]):
-            fut.set_result(SocketIOEmitResult(data[0], data[1]))
-
+            fut.set_result(SocketIOEmitResult(data[0], data[1] if len(data) > 1 else None))
+        print(data)
         await self.sio.emit(
             event, data, callback=callback
         )
@@ -534,6 +619,31 @@ class ClusterCertificate:
 class SocketIOEmitResult:
     err: Any
     ack: Any
+
+class StorageFile(metaclass=abc.ABCMeta):
+    type: str = "abstract"
+    def __init__(self, hash: str, size: int, mtime: float) -> None:
+        self.hash = hash
+        self.size = size
+        self.mtime = int(mtime * 1000)
+
+class LocalStorageFile(StorageFile):
+    type: str = "local"
+    def __init__(self, hash: str, size: int, mtime: float, path: Path) -> None:
+        super().__init__(hash=hash, size=size, mtime=mtime)
+        self.path = path
+
+class URLStorageFile(StorageFile):
+    type: str = "url"
+    def __init__(self, hash: str, size: int, mtime: float, url: str) -> None:
+        super().__init__(hash=hash, size=size, mtime=mtime)
+        self.url = url
+
+class MemoryStorageFile(StorageFile):
+    type: str = "memory"
+    def __init__(self, hash: str, size: int, mtime: float, data: bytes) -> None:
+        super().__init__(hash=hash, size=size, mtime=mtime)
+        self.data = data
 
 ROOT = Path(__file__).parent.parent
 
@@ -584,9 +694,9 @@ async def init():
     for cstorage in config_storages:
         type = cstorage['type']
         if type == "local":
-            storage = storages.LocalStorage(cstorage['path'])
+            storage = storages.LocalStorage(cstorage['path'], cstorage['width'])
         elif type == "alist":
-            storage = storages.AlistStorage(cstorage['path'], cstorage['url'], cstorage['username'], cstorage['password'])
+            storage = storages.AlistStorage(cstorage['path'], cstorage['width'], cstorage['url'], cstorage['username'], cstorage['password'])
         else:
             logger.terror("cluster.error.unspported_storage", type=type, path=cstorage['path'])
             continue
@@ -595,3 +705,62 @@ async def init():
     scheduler.run_later(
         clusters.start, 0
     )
+
+def check_sign(hash: str, s: str, e: str):
+    if not config.const.check_sign:
+        return True
+    return any(
+        utils.check_sign(hash, cluster.secret, s, e) for cluster in clusters.clusters
+    )
+
+
+routes = web.routes
+aweb = web.web
+
+@routes.get("/measure/{size}")
+async def _(request: aweb.Request):
+    try:
+        size = int(request.match_info["size"])
+        query = request.query
+        s = query.get("s", "")
+        e = query.get("e", "")
+        if not check_sign(request.match_info["size"], s, e):
+            return aweb.Response(status=403)
+        response = aweb.StreamResponse(
+            status=200,
+            reason="OK",
+            headers={
+                "Content-Length": str(size * 1024 * 1024),
+                "Content-Type": "application/octet-stream",
+            },
+        )
+        await response.prepare(request)
+        for _ in range(size):
+            await response.write(b'\x00' * 1024 * 1024)
+        await response.write_eof()
+        return response
+    except:
+        return aweb.Response(status=400)
+    
+@routes.get("/download/{hash}")
+async def _(request: aweb.Request):
+    try:
+        hash = request.match_info["hash"]
+        query = request.query
+        s = query.get("s", "")
+        e = query.get("e", "")
+        if not check_sign(request.match_info["hash"], s, e):
+            return aweb.Response(status=403)
+        file = await clusters.storage_manager.get_file(hash)
+        if isinstance(file, LocalStorageFile):
+            return aweb.FileResponse(
+                file.path
+            )
+        elif isinstance(file, MemoryStorageFile):
+            return aweb.Response(
+                body=file.data
+            )
+        else:
+            aweb.Response(status=403)
+    except:
+        return aweb.Response(status=400)

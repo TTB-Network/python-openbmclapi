@@ -1,4 +1,6 @@
 import asyncio
+from collections import deque
+from dataclasses import dataclass
 import io
 from pathlib import Path
 import time
@@ -44,6 +46,7 @@ class SNIHelper:
 async def middleware(request: web.Request, handler: Any) -> web.Response:
     with request.match_info.set_current_app(app):
         start = time.monotonic_ns()
+        address = find_origin_ip(request._transport_peername)[0]
         resp = None
         try:
             resp = await handler(request)
@@ -56,10 +59,31 @@ async def middleware(request: web.Request, handler: Any) -> web.Response:
                 if isinstance(resp, web.StreamResponse):
                     status = resp.status
             end = time.monotonic_ns()
-            logger.tdebug("web.debug.request_info", time=units.format_count_time(end - start, 4).rjust(16), host=request.host, address=(request.remote or "").rjust(16), user_agent=request.headers.get("User-Agent"), real_path=request.raw_path, method=request.method.ljust(9), status=status)
+            logger.tdebug("web.debug.request_info", time=units.format_count_time(end - start, 4).rjust(16), host=request.host, address=address.rjust(16), user_agent=request.headers.get("User-Agent"), real_path=request.raw_path, method=request.method.ljust(9), status=status)
 
 REQUEST_BUFFER = 4096
 IO_BUFFER = 16384
+FINDING_FILTER = "127.0.0.1"
+ip_tables: dict[tuple[str, int], tuple[str, int]] = {}
+
+def find_origin_ip(target: tuple[str, int]):
+    if target not in ip_tables:
+        return target
+    return find_origin_ip(ip_tables[target])
+
+@dataclass
+class IPAddressTable:
+    origin: tuple[str, int]
+    target: tuple[str, int]
+    def __enter__(self):
+        ip_tables[self.target] = self.origin
+        return self
+    
+    def __exit__(self, _, __, ___):
+        if self.target in ip_tables:
+            ip_tables.pop(self.target)
+        return self
+
 
 routes = web.RouteTableDef()
 
@@ -100,18 +124,22 @@ async def open_forward_data(reader: asyncio.StreamReader, writer: asyncio.Stream
                 target_port
             ), 5
         )
-        target_w.write(data)
-        await target_w.drain()
-        await asyncio.gather(*(
-            forward_data(
-                reader, target_w
-            )
-            ,
-            forward_data(
-                target_r, writer
-            )
-            
-        ))
+        with IPAddressTable(
+            writer.get_extra_info("peername"),
+            target_w.get_extra_info("sockname")
+        ):
+            target_w.write(data)
+            await target_w.drain()
+            await asyncio.gather(*(
+                forward_data(
+                    reader, target_w
+                )
+                ,
+                forward_data(
+                    target_r, writer
+                )
+
+            ))
     except:
         ...
     finally:
@@ -163,14 +191,14 @@ async def init():
 
     port = await get_free_port()
 
-    site = web.TCPSite(runner, '0.0.0.0', port)
+    site = web.TCPSite(runner, '127.0.0.1', port)
     await site.start()
 
     logger.tdebug("web.debug.local_port", port=site._port)
 
 
     public_server = await asyncio.start_server(
-        public_handle, port=config.const.public_port
+        public_handle, host='0.0.0.0',port=config.const.public_port
     )
     logger.tsuccess("web.success.public_port", port=config.const.public_port)
 

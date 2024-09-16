@@ -20,11 +20,13 @@ class iStorage(metaclass=abc.ABCMeta):
     type: str = "_interface"
     can_write: bool = False
 
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: str, width: int) -> None:
         if self.type == "_interface":
             raise ValueError("Cannot instantiate interface")
         self.path = path
+        self.width = width
         self.unique_id = hashlib.md5(f"{self.type},{self.path}".encode("utf-8")).hexdigest()
+        self.current_width = 0
 
     def __repr__(self) -> str:
         return f"{self.type}({self.path})"
@@ -55,8 +57,8 @@ class iStorage(metaclass=abc.ABCMeta):
 class LocalStorage(iStorage):
     type: str = "local"
     can_write: bool = True
-    def __init__(self, path: str) -> None:
-        super().__init__(path)
+    def __init__(self, path: str, width: int) -> None:
+        super().__init__(path, width)
 
     def __str__(self) -> str:
         return f"Local Storage: {self.path}"
@@ -103,13 +105,16 @@ class LocalStorage(iStorage):
 
     async def get_mtime(self, file_hash: str) -> float:
         return os.path.getmtime(f"{self.path}/{file_hash[:2]}/{file_hash}")
+    
+    def get_path(self, file_hash: str) -> str:
+        return f"{self.path}/{file_hash[:2]}/{file_hash}"
 
     
 
 class AlistStorage(iStorage): # TODO: 完成 alist 存储
     type: str = "alist"
-    def __init__(self, path: str, url: str, username: Optional[str], password: Optional[str]) -> None:
-        super().__init__(path)
+    def __init__(self, path: str, width: int, url: str, username: Optional[str], password: Optional[str]) -> None:
+        super().__init__(path, width)
         self.url = url
         self.username = username
         self.password = password

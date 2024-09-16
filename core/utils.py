@@ -1,4 +1,5 @@
 import asyncio
+import base64
 from collections import deque
 import hashlib
 import io
@@ -114,6 +115,17 @@ class FileStream:
     def read_string(self):
         return self.data.read(self.read_long()).decode('utf-8')
     
+def check_sign(hash: str, secret: str, s: str, e: str) -> bool:
+    if not s or not e:
+        return False
+    sign = (
+        base64.urlsafe_b64encode(
+            hashlib.sha1(f"{secret}{hash}{e}".encode()).digest()
+        )
+        .decode()
+        .rstrip("=")
+    )
+    return sign == s and time.time() < int(e, 36)
 
 def equals_hash(origin: str, content: bytes):
     return get_hash_hexdigest(origin, content) == origin
