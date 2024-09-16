@@ -4,6 +4,7 @@ from core.utils import checkSign
 from core.api import getStatus
 from typing import Union
 from aiohttp import web
+import aiohttp
 from pathlib import Path
 import random
 
@@ -74,7 +75,10 @@ class Router:
         
         @self.route.get("/api/rank")
         async def _(request: web.Request) -> web.Response:
-            return web.HTTPFound("https://bd.bangbang93.com/openbmclapi/metric/rank")
+            async with aiohttp.ClientSession('https://bd.bangbang93.com') as session:
+                data = await session.get('/openbmclapi/metric/rank')
+                response = await web.json_response(await data.json())
+                return response
 
         @self.route.get("/")
         async def _(request: web.Request) -> web.HTTPFound:
