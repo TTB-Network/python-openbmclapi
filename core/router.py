@@ -71,6 +71,10 @@ class Router:
         @self.route.get("/api/status")
         async def _(request: web.Request) -> web.Response:
             return await getStatus(self.cluster)
+        
+        @self.route.get("/api/rank")
+        async def _(request: web.Request) -> web.Response:
+            return web.HTTPFound("https://bd.bangbang93.com/openbmclapi/metric/rank")
 
         @self.route.get("/")
         async def _(request: web.Request) -> web.HTTPFound:

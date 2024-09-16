@@ -31,7 +31,6 @@ async def getStatus(cluster) -> web.Response:
         "accesses": agent_info,
         "connections": cluster.router.connection if cluster.router else 0,
         "memory": psutil.Process(os.getpid()).memory_info().rss,
-        "cpu": psutil.Process(os.getpid()).cpu_percent(interval=1),
         "cpuType": platform.processor(),
         "pythonVersion": platform.python_version(),
         "apiVersion": API_VERSION,
