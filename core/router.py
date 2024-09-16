@@ -77,7 +77,7 @@ class Router:
         async def _(request: web.Request) -> web.Response:
             async with aiohttp.ClientSession('https://bd.bangbang93.com') as session:
                 data = await session.get('/openbmclapi/metric/rank')
-                response = await web.json_response(await data.json())
+                response = web.json_response(await data.json())
                 return response
 
         @self.route.get("/")
