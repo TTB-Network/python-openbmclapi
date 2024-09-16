@@ -354,7 +354,7 @@ class Cluster:
         except Exception as e:
             logger.terror("cluster.error.enable.exception", e=e)
 
-    async def keepAlive(self) -> bool:
+    async def keepAlive(self) -> None:
         if not self.enabled:
             logger.terror("cluster.error.keep_alive.cluster_not_enabled")
             return False
@@ -402,7 +402,6 @@ class Cluster:
                     IntervalTrigger(seconds=Config.get("advanced.keep_alive")),
                     max_instances=50,
                 )
-            return bool(date)
 
         except Exception:
             logger.terror("cluster.error.keep_alive.error")

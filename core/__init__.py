@@ -41,11 +41,11 @@ async def main():
                 cluster.scheduler.resume()
 
         await syncFiles()
-        # scheduler.add_job(
-        #     syncFiles,
-        #     trigger=IntervalTrigger(minutes=Config.get("advanced.sync_interval")),
-        #     max_instances=50,
-        # )
+        scheduler.add_job(
+            syncFiles,
+            trigger=IntervalTrigger(minutes=Config.get("advanced.sync_interval")),
+            max_instances=50,
+        )
         await cluster.connect()
         protocol = "http" if Config.get("cluster.byoc") else "https"
         if protocol == "https":
@@ -56,7 +56,6 @@ async def main():
         if not cluster.enabled:
             raise asyncio.CancelledError
         scheduler.start()
-        await asyncio.sleep(10)
         await cluster.keepAlive()
         logger.tsuccess("main.success.scheduler")
         while True:
