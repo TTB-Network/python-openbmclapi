@@ -35,6 +35,10 @@ defaults = {
             "width": 0
         }
     ],
+    "database": {
+        "type": "sqlite",
+        "url": "./database.db"
+    }
 }
 
 

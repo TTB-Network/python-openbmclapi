@@ -114,7 +114,7 @@ class StorageManager:
 
     async def get_file(self, hash: str):
         file = None
-        if self.available():
+        if await self.available():
             storage = self.get_width_storage()
             if isinstance(storage, storages.LocalStorage) and await storage.exists(hash):
                 return LocalStorageFile(
@@ -124,6 +124,12 @@ class StorageManager:
                     Path(storage.get_path(hash))
                 )
             elif isinstance(storage, storages.AlistStorage):
+                return URLStorageFile(
+                    hash,
+                    await storage.get_size(hash),
+                    await storage.get_mtime(hash),
+                    await storage.get_url(hash)
+                )
                 ...
         if file is None:
             async with aiohttp.ClientSession(
@@ -393,12 +399,16 @@ class FileListManager:
 
 class ClusterManager:
     def __init__(self):
-        self.clusters: list['Cluster'] = []
+        self.cluster_id_tables: dict[str, 'Cluster'] = {}
         self.file_manager = FileListManager(self)
         self.storage_manager = StorageManager(self)
 
     def add_cluster(self, cluster: 'Cluster'):
-        self.clusters.append(cluster)
+        self.cluster_id_tables[cluster.id] = cluster
+
+    @property
+    def clusters(self):
+        return list(self.cluster_id_tables.values())
 
     async def start(self):
         self.storage_manager.init()
@@ -421,9 +431,11 @@ class ClusterManager:
         for cluster in self.clusters:
             await cluster.enable()
 
+    def get_cluster_by_id(self, id: Optional[str] = None) -> Optional['Cluster']:
+        return self.cluster_id_tables.get(id or "", None)
+
 
     async def get_certificate(self):
-        await asyncio.gather(*[cluster.request_cert() for cluster in self.clusters])
         main = ClusterCertificate(
             config.const.host,
             Path(config.const.ssl_cert),
@@ -431,19 +443,39 @@ class ClusterManager:
         )
         if main.is_valid:
             return main
+        await asyncio.gather(*[cluster.request_cert() for cluster in self.clusters])
         return [cluster.certificate for cluster in self.clusters][0]
-        
+    
+    async def stop(self):
+        await asyncio.gather(*[cluster.disable(True) for cluster in self.clusters])
+        await asyncio.gather(*[cluster.socket_io.disconnect() for cluster in self.clusters])
+
+@dataclass
+class ClusterCounter:
+    hits: int = 0
+    bytes: int = 0
+
+    def __sub__(self, object: 'ClusterCounter'):
+        self.hits -= object.hits
+        self.bytes -= object.bytes
+        return self
+
+    def clone(self):
+        return ClusterCounter(
+            self.hits,
+            self.bytes
+        )
+    
+    def __repr__(self) -> str:
+        return f"ClusterCounter(hits={self.hits}, bytes={self.bytes})"
+    
+    def __str__(self) -> str:
+        return f"ClusterCounter(hits={units.format_number(self.hits)}, bytes={units.format_bytes(self.bytes)})"
 
 class Cluster:
-    def __init__(self, id: str, secret: str, port: int, public_port: int = -1, host: str = "", byoc: bool = False, cert: Optional[str] = None, key: Optional[str] = None):
+    def __init__(self, id: str, secret: str):
         self.id = id
         self.secret = secret
-        self.port = port
-        self.public_port = public_port
-        self.host = host
-        self.byoc = byoc
-        self.cert = cert
-        self.key = key
         self.token: Optional[Token] = None
         self.fetch_time: float = 0
         self.token_ttl: float = 0
@@ -451,9 +483,12 @@ class Cluster:
         self.socket_io = ClusterSocketIO(self)
         self.want_enable: bool = False
         self.enabled = True
+        self.keepalive_task: Optional[int] = None
+        self.delay_enable_task: Optional[int] = None
+        self.counter = ClusterCounter()
 
     def __repr__(self):
-        return f"Cluster(id={self.id}, host={self.host}, port={self.port}, public_port={self.public_port}, byoc={self.byoc}, cert={self.cert}, key={self.key})"
+        return f"Cluster(id={self.id})"
 
     async def get_token(self):
         if self.token is None or time.time() - self.fetch_time > self.token_ttl - 300:
@@ -518,9 +553,11 @@ class Cluster:
 
     async def enable(self):
         cert = await clusters.get_certificate()
+        scheduler.cancel(self.delay_enable_task)
         if self.want_enable:
             return
         self.want_enable = True
+        logger.tinfo("cluster.info.want_enable", cluster=self.id)
         result = await self.socket_io.emit(
             "enable", {
                 "host": cert.host,
@@ -539,6 +576,49 @@ class Cluster:
             self.socketio_error("enable", result)
             return
         self.enabled = True
+        scheduler.cancel(self.keepalive_task)
+        self.keepalive_task = scheduler.run_repeat_later(self.keepalive, 1, interval=60)
+
+    def hit(self, bytes: int):
+        self.counter.hits += 1
+        self.counter.bytes += bytes
+
+
+    async def keepalive(self):
+        commit_counter = self.counter.clone()
+        result = await self.socket_io.emit(
+            "keep-alive", {
+                "time": int(time.time() * 1000),
+                **asdict(commit_counter)
+            }
+        )
+        if result.err:
+            logger.twarning("cluster.warning.kicked_by_remote")
+            await self.disable()
+            return
+        self.counter -= commit_counter
+        timestamp = utils.parse_isotime_to_timestamp(result.ack)
+        ping = (time.time() - timestamp) // 0.0002
+        logger.tsuccess("cluster.success.keepalive", cluster=self.id, hits=units.format_number(commit_counter.hits), bytes=units.format_bytes(commit_counter.bytes), ping=ping)
+        
+    async def disable(self, exit: bool = False):
+        scheduler.cancel(self.keepalive_task)
+        scheduler.cancel(self.delay_enable_task)
+        if self.enabled or self.want_enable:
+            result = await self.socket_io.emit(
+                "disable"
+            )
+            if result.err:
+                self.socketio_error(
+                    "disable",
+                    result
+                )
+            logger.tsuccess("cluster.success.cluster.disable", cluster=self.id)
+        if not exit:
+            self.delay_enable_task = scheduler.run_later(self.enable, 60)
+            logger.tinfo("cluster.info.cluster.retry_enable", delay=60)
+            
+
     @property
     def certificate(self):
         return ClusterCertificate(
@@ -558,7 +638,8 @@ class ClusterSocketIO:
     def __init__(self, cluster: Cluster) -> None:
         self.cluster = cluster
         self.sio = socketio.AsyncClient(
-            logger=True
+            logger=True,
+            handle_sigint=False
         )
     
     async def connect(self):
@@ -583,6 +664,15 @@ class ClusterSocketIO:
         async def _() -> None:
             logger.tdebug("cluster.debug.socketio.disconnected", cluster=self.cluster.id)
 
+        @self.sio.on("message") # type: ignore
+        async def _(message: Any):
+            if isinstance(message, dict) and "message" in message:
+                message = message["message"]
+            logger.tinfo("cluster.info.socketio.message", cluster=self.cluster.id, message=message)
+
+    async def disconnect(self):
+        await self.sio.disconnect()
+
     async def _check_connect(self):
         if not self.sio.connected:
             await self.connect()
@@ -593,7 +683,6 @@ class ClusterSocketIO:
 
         async def callback(data: tuple[Any, Any]):
             fut.set_result(SocketIOEmitResult(data[0], data[1] if len(data) > 1 else None))
-        print(data)
         await self.sio.emit(
             event, data, callback=callback
         )
@@ -675,16 +764,10 @@ async def init():
         cluster = Cluster(
             ccluster['id'],
             ccluster['secret'],
-            ccluster['port'],
-            ccluster['public_port'],
-            ccluster['host'],
-            ccluster['byoc'],
-            ccluster['cert'],
-            ccluster['key']
         )
         if not cluster.id:
             continue
-        logger.tsuccess("cluster.success.load_cluster", id=cluster.id, host=cluster.host, port=cluster.port)
+        logger.tsuccess("cluster.success.load_cluster", id=cluster.id)
         clusters.add_cluster(cluster)
     if len(clusters.clusters) == 0:
         logger.terror("cluster.error.no_cluster")
@@ -706,12 +789,21 @@ async def init():
         clusters.start, 0
     )
 
+async def unload():
+    await clusters.stop()
+
 def check_sign(hash: str, s: str, e: str):
     if not config.const.check_sign:
         return True
     return any(
         utils.check_sign(hash, cluster.secret, s, e) for cluster in clusters.clusters
     )
+
+def get_cluster_id_from_sign(hash: str, s: str, e: str) -> Optional[str]:
+    for cluster in clusters.clusters:
+        if utils.check_sign(hash, cluster.secret, s, e):
+            return cluster.id
+    return None
 
 
 routes = web.routes
@@ -724,9 +816,10 @@ async def _(request: aweb.Request):
         query = request.query
         s = query.get("s", "")
         e = query.get("e", "")
-        if not check_sign(request.match_info["size"], s, e):
+        if not check_sign(f"/measure/{size}", s, e):
             return aweb.Response(status=403)
-        response = aweb.StreamResponse(
+        cluster_id = get_cluster_id_from_sign(f"/measure/{size}", s, e)
+        """response = aweb.StreamResponse(
             status=200,
             reason="OK",
             headers={
@@ -738,7 +831,10 @@ async def _(request: aweb.Request):
         for _ in range(size):
             await response.write(b'\x00' * 1024 * 1024)
         await response.write_eof()
-        return response
+        return response"""
+        return aweb.HTTPFound(
+            f"https://speedtest1.online.sh.cn:8080/download?size={size * 1024 * 1024}&r=0.7129844570865569"
+        )
     except:
         return aweb.Response(status=400)
     
@@ -751,16 +847,34 @@ async def _(request: aweb.Request):
         e = query.get("e", "")
         if not check_sign(request.match_info["hash"], s, e):
             return aweb.Response(status=403)
+        cluster_id = get_cluster_id_from_sign(hash, s, e)
+
+        # get cluster instance
+        resp = aweb.Response(status=403)
+        cluster = clusters.get_cluster_by_id(cluster_id)
+        if cluster is None:
+            return resp
+
         file = await clusters.storage_manager.get_file(hash)
+        start = request.http_range.start or 0
+        end = request.http_range.stop or file.size
+        size = end - start + 1
+
+        cluster.hit(size)
+        # add database
+        # stats
         if isinstance(file, LocalStorageFile):
-            return aweb.FileResponse(
+            resp = aweb.FileResponse(
                 file.path
             )
         elif isinstance(file, MemoryStorageFile):
-            return aweb.Response(
+            resp = aweb.Response(
                 body=file.data
             )
-        else:
-            aweb.Response(status=403)
+        elif isinstance(file, URLStorageFile):
+            resp= aweb.HTTPFound(
+                file.url
+            )
+        return resp
     except:
         return aweb.Response(status=400)

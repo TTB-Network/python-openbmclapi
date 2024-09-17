@@ -58,6 +58,8 @@ async def middleware(request: web.Request, handler: Any) -> web.Response:
             if resp is not None:
                 if isinstance(resp, web.StreamResponse):
                     status = resp.status
+            if request.http_range.start is not None and status == 200:
+                status = 206
             end = time.monotonic_ns()
             logger.tdebug("web.debug.request_info", time=units.format_count_time(end - start, 4).rjust(16), host=request.host, address=address.rjust(16), user_agent=request.headers.get("User-Agent"), real_path=request.raw_path, method=request.method.ljust(9), status=status)
 
@@ -114,6 +116,8 @@ async def forward_data(reader: asyncio.StreamReader, writer: asyncio.StreamWrite
             break
         writer.write(data)
         await writer.drain()
+    writer.close()
+    await writer.wait_closed()
 
 
 async def open_forward_data(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, target_ip: str, target_port: int, data: bytes = b''):
@@ -145,7 +149,9 @@ async def open_forward_data(reader: asyncio.StreamReader, writer: asyncio.Stream
     finally:
         if "target_w" in locals():
             target_w.close()
+            await target_w.wait_closed()
         writer.close()
+        await writer.wait_closed()
 
 async def public_handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     try:
@@ -172,14 +178,21 @@ async def public_handle(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
         ...
     finally:
         writer.close()
+        await writer.wait_closed()
     ...
 
 async def ssl_handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    if site is None:
-        return
-    await open_forward_data(
-        reader, writer, "127.0.0.1", site._port
-    )
+    try:
+        if site is None:
+           return
+        await open_forward_data(
+            reader, writer, "127.0.0.1", site._port
+        )
+    except:
+        ...
+    finally:
+        writer.close()
+        await writer.wait_closed()
 
 async def init():
     global runner, site, public_server, routes, app

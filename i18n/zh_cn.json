@@ -2,7 +2,7 @@
     "main.debug.service_unfinish": "在等待服务完成时出错。",
     "main.success.start_service_done": "服务启动成功。耗时：${time} 秒。",
     "main.success.service_exit": "已成功退出服务。",
-    "cluster.success.load_cluster": "已成功加载节点 [${id}]。开放 Host [${host}] 端口 [${port}]",
+    "cluster.success.load_cluster": "已成功加载节点 [${id}]。",
     "cluster.debug.base_url": "使用的地址是 [${base_url}]",
     "cluster.success.fetch_filelist": "已成功获取文件列表，数量 [${total}] 大小 [${size}]",
     "cluster.debug.fetch_token": "正在获取 Token (${cluster})",
@@ -21,5 +21,12 @@
     "web.debug.request_info": "${host} | ${time} | ${address} | ${method} ${status} | ${real_path} - ${user_agent}",
     "cluster.error.socketio.request_cert": "节点 [${cluster}] 请求证书失败，原因 [${err}]",
     "cluster.debug.public_host": "已在 [${host}:${port}] 上开放",
-    "cluster.error.socketio": "节点 [${id}] 发送 [${type}] 时出错，原因 [${err}]"
+    "cluster.error.socketio": "节点 [${id}] 发送 [${type}] 时出错，原因 [${err}]",
+    "cluster.info.socketio.message": "节点 [${cluster}] 主控消息：${message}",
+    "storage.error.alist": "Alist 返回出错，错误代码 [${status}]，原因 [${message}]",
+    "storage.error.alist.fetch_token": "Alist 获取 Token 出错，错误代码 [${status}]，原因 [${message}]",
+    "cluster.success.keepalive": "节点 [${cluster}] 保活成功，已回原 [${hits}] 个文件，共计 [${bytes}] 流量，延迟为 [${ping}ms]",
+    "cluster.debug.socketio.disconnected": "SocketIO 已断开连接",
+    "cluster.debug.socketio.connected": "SocketIO 已连接",
+    "cluster.success.cluster.disable": "节点 [${cluster}] 已正常下线"
 }

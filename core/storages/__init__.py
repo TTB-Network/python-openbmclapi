@@ -1,9 +1,14 @@
 import abc
+from collections import deque
 from dataclasses import dataclass
 import hashlib
 import os
 from pathlib import Path
-from typing import Optional
+import time
+from typing import Any, Optional
+from .. import scheduler, utils, cache
+from ..logger import logger
+import urllib.parse as urlparse
 
 import aiofiles
 import aiohttp
@@ -52,6 +57,9 @@ class iStorage(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     async def get_mtime(self, file_hash: str) -> float:
         raise NotImplementedError("Not implemented")
+    
+    def get_path(self, file_hash: str) -> str:
+        return f"{self.path}/{file_hash[:2]}/{file_hash}"
 
 
 class LocalStorage(iStorage):
@@ -105,11 +113,23 @@ class LocalStorage(iStorage):
 
     async def get_mtime(self, file_hash: str) -> float:
         return os.path.getmtime(f"{self.path}/{file_hash[:2]}/{file_hash}")
-    
-    def get_path(self, file_hash: str) -> str:
-        return f"{self.path}/{file_hash[:2]}/{file_hash}"
 
-    
+
+@dataclass
+class AlistFileInfo:
+    name: str
+    size: int
+    is_dir: bool
+    modified: float
+    created: float
+    sign: str
+    raw_url: str
+
+@dataclass
+class AlistResult:
+    code: int
+    message: str
+    data: Any
 
 class AlistStorage(iStorage): # TODO: 完成 alist 存储
     type: str = "alist"
@@ -119,24 +139,168 @@ class AlistStorage(iStorage): # TODO: 完成 alist 存储
         self.username = username
         self.password = password
         self.can_write = username is not None and password is not None
+        self.fetch_token = None
+        self.last_token = 0
+        self.wait_token = utils.CountLock()
+        self.wait_token.acquire()
+        self.tcp_connector = aiohttp.TCPConnector(limit=256)
+        self.download_connector = aiohttp.TCPConnector(limit=256)
+        self.cache = cache.MemoryStorage()
+        scheduler.run_repeat_later(self._check_token, 0, 10)
 
     async def _get_token(self):
-        async with aiohttp.ClientSession(
-            self.url
-        ) as session:
+        await self.wait_token.wait()
+        return str(self.fetch_token)
+
+    async def _check_token(self):
+        async def _check():
+            if self.fetch_token is None or self.last_token + 172000 < time.time():
+                return False
+            async with session.get(
+                "/api/me",
+                headers={
+                    "Authorization": str(self.fetch_token)
+                }
+            ) as resp:
+                return AlistResult(
+                    **await resp.json()
+                ).code != 200
+            
+        async def _fetch():
             async with session.post(
-                f"{self.url}/api/auth/login",
+                f"/api/auth/login",
                 json = {
                     "username": self.username,
                     "password": self.password
                 }
             ) as resp:
-                return (await resp.json())["data"]["token"]
+                return AlistResult(
+                    **await resp.json()
+                )
+
+        async with aiohttp.ClientSession(
+            self.url
+        ) as session:
+            if not await _check():
+                r = await _fetch()
+                if r.code == 200:
+                    self.fetch_token = r.data["token"]
+                    self.last_token = time.time()
+                    self.wait_token.release()
+                else:
+                    logger.terror("storage.error.alist.fetch_token", status=r.code, message=r.message)
+                
 
     def __str__(self) -> str:
         return f"Alist Storage: {self.path}"
 
     def __repr__(self) -> str:
         return f"AlistStorage({self.path})"
+
+    async def _action_data(self, action: str, url: str, data: Any, headers: dict[str, str] = {}) -> AlistResult:
+        hash = hashlib.sha256(f"{action},{url},{data},{headers}".encode()).hexdigest()
+        if hash in self.cache:
+            return self.cache.get(hash)
+        async with aiohttp.ClientSession(
+            self.url,
+            headers={
+                **headers,
+                **{
+                    "Authorization": await self._get_token()
+                }
+            }
+        ) as session:
+            async with session.request(
+                action, url,
+                data=data,
+            ) as resp:
+                result = AlistResult(
+                    **await resp.json()
+                )
+                if result.code != 200:
+                    logger.terror("storage.error.alist", status=result.code, message=result.message)
+                else:
+                    self.cache.set(hash, result, 30)
+                return result
+            
+    async def __info_file(self, file_hash: str) -> AlistFileInfo:
+        r = await self._action_data(
+            "post",
+            "/api/fs/get",
+            {
+                "path": self.get_path(file_hash),
+                "password": ""
+            }
+        )
+        if r.code == 500:
+            return AlistFileInfo(
+                file_hash,
+                -1,
+                False,
+                0,
+                0,
+                "",
+                ""
+            )
+        return AlistFileInfo(
+            r.data["name"],
+            r.data["size"],
+            r.data["is_dir"],
+            utils.parse_isotime_to_timestamp(r.data["modified"]),
+            utils.parse_isotime_to_timestamp(r.data["created"]),
+            r.data["sign"],
+            r.data["raw_url"]
+        )
+
+    async def delete_file(self, file_hash: str) -> bool:
+        result = await self._action_data(
+            "post",
+            "/api/fs/remove",
+            {
+                "names": [
+                    file_hash
+                ],
+                "dir": f"{self.path}/{file_hash[:2]}"
+            }
+        )
+        return result.code == 200
+    async def exists(self, file_hash: str) -> bool:
+        info = await self.__info_file(file_hash)
+        return info.size != -1
+    async def get_mtime(self, file_hash: str) -> float:
+        return (await self.__info_file(file_hash)).modified
+    async def get_size(self, file_hash: str) -> int:
+        info = await self.__info_file(file_hash)
+        return max(0, info.size)
+    async def list_files(self) -> list:
+        return []
+    async def read_file(self, file_hash: str) -> bytes:
+        info = await self.__info_file(file_hash)
+        if info.size == -1:
+            return b''
+        async with aiohttp.ClientSession(
+            connector=self.download_connector
+        ) as session:
+            async with session.get(
+                info.raw_url
+            ) as resp:
+                return await resp.read()
+
+    async def get_url(self, file_hash: str) -> str:
+        info = await self.__info_file(file_hash)
+        if info.size == -1:
+            return ''
+        return info.raw_url
+
+    async def write_file(self, file: File, content: bytes, mtime: float | None) -> bool:
+        result = await self._action_data(
+            "put",
+            "/api/fs/put",
+            content,
+            {
+                "File-Path": urlparse.quote(self.get_path(file.hash))
+            }
+        )
+        return result.code == 200
     
     

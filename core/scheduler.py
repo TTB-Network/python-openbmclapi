@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Callable
+from typing import Callable, Optional
 from apscheduler.schedulers.background import (
     BackgroundScheduler as SyncBackground
 )
@@ -84,7 +84,9 @@ def run_repeat_later(func: Callable, delay: float, interval: float, args = (), k
 def run_repeat(func: Callable, interval: float, args = (), kwargs = {}) -> int:
     return run_repeat_later(func, 0, interval, args, kwargs)
 
-def cancel(task_id: int):
+def cancel(task_id: Optional[int] = None):
+    if task_id is None:
+        return
     if task_id in tasks:
         tasks.pop(task_id).remove()
         logger.debug(f'Task {task_id} canceled')

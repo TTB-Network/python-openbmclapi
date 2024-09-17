@@ -1,6 +1,7 @@
 import asyncio
 import base64
 from collections import deque
+from datetime import datetime
 import hashlib
 import io
 import time
@@ -146,3 +147,6 @@ def pause():
 def get_runtime():
     from core import _START_RUNTIME
     return time.monotonic() - _START_RUNTIME
+
+def parse_isotime_to_timestamp(iso_format: str) -> float:
+    return datetime.fromisoformat(iso_format).timestamp()
