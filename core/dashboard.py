@@ -11,7 +11,10 @@ from core import config
 from . import utils
 
 from . import scheduler
-from .web import routes as route
+from .web import (
+    routes as route,
+    qps as web_qps
+)
 from aiohttp import web
 
 @dataclass
@@ -39,7 +42,7 @@ class SystemInfo:
     memory_usage: int
     connection: ConnectionStatistics
     clusters: list[ClusterInfo]
-    qps: 'WebValue'
+    qps: int
 
 @dataclass
 class CounterValue:
@@ -69,20 +72,10 @@ class Counter:
                      "tcp": item.value.connection.tcp,
                      "udp": item.value.connection.udp,
                  },
-                 "qps": item.value.qps.qps
+                 "qps": item.value.qps
              }} for item in self._data
         ]
 
-@dataclass
-class WebValue:
-    qps: int = 0
-
-    def clone(self):
-        return WebValue(
-            self.qps
-        )
-
-qps = WebValue()
 counter = Counter()
 process = psutil.Process(os.getpid())
 
@@ -116,6 +109,7 @@ async def _(request: web.Request):
 route.static("/assets", "./assets")
 
 def record():
+    global web_qps
     memory            = process.memory_info()
     connection = process.connections()
     stats = SystemInfo(
@@ -126,9 +120,9 @@ def record():
             udp=len([c for c in connection if c.type == socket.SOCK_DGRAM])
         ),
         clusters=[],
-        qps=qps.clone()
+        qps=web_qps
     )
-    qps.qps -= stats.qps.qps
+    web_qps -= stats.qps
     counter.add(stats)
 
 async def init():

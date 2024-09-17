@@ -8,11 +8,12 @@ from typing import Any, Optional
 from aiohttp import web
 from aiohttp.web_urldispatcher import SystemRoute
 
-from . import dashboard
 from . import units
 from . import config
 from .logger import logger
 import ssl
+
+qps: int = 0
 
 class SNIHelper:
     def __init__(self, data: bytes) -> None:
@@ -45,7 +46,8 @@ class SNIHelper:
 
 @web.middleware
 async def middleware(request: web.Request, handler: Any) -> web.Response:
-    dashboard.qps.qps += 1
+    global qps
+    qps += 1
     with request.match_info.set_current_app(app):
         address = request.remote or ""
         try:
