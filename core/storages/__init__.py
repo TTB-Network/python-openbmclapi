@@ -1,11 +1,14 @@
 import abc
-from collections import deque
+import asyncio
+from collections import defaultdict, deque
 from dataclasses import dataclass
 import hashlib
 import os
 from pathlib import Path
 import time
 from typing import Any, Optional
+
+from tqdm import tqdm
 from .. import scheduler, utils, cache
 from ..logger import logger
 import urllib.parse as urlparse
@@ -32,6 +35,7 @@ class iStorage(metaclass=abc.ABCMeta):
         self.width = width
         self.unique_id = hashlib.md5(f"{self.type},{self.path}".encode("utf-8")).hexdigest()
         self.current_width = 0
+        self.cache_files = cache.MemoryStorage()
 
     def __repr__(self) -> str:
         return f"{self.type}({self.path})"
@@ -46,7 +50,7 @@ class iStorage(metaclass=abc.ABCMeta):
     async def delete_file(self, file_hash: str) -> bool:
         raise NotImplementedError("Not implemented")
     @abc.abstractmethod
-    async def list_files(self) -> list:
+    async def list_files(self, pbar: Optional[tqdm] = None) -> defaultdict[str, deque[File]]:
         raise NotImplementedError("Not implemented")
     @abc.abstractmethod
     async def exists(self, file_hash: str) -> bool:
@@ -95,17 +99,33 @@ class LocalStorage(iStorage):
         os.remove(f"{self.path}/{file_hash[:2]}/{file_hash}")
         return True
 
-    async def list_files(self) -> list:
-        files = []
-        for root, dirs, filenames in os.walk(self.path):
-            for filename in filenames:
-                file = File(
-                    name=filename,
-                    size=os.path.getsize(os.path.join(root, filename)),
-                    mtime=os.path.getmtime(os.path.join(root, filename)),
-                    hash=filename
-                )
-                files.append(file)
+    async def list_files(self, pbar: Optional[tqdm] = None) -> dict[str, deque[File]]:
+        def update():
+            pbar.update(1) # type: ignore
+        def empty():
+            ...
+        update_tqdm = empty
+        if pbar is not None:
+            update_tqdm = update
+
+        files: defaultdict[str, deque[File]] = defaultdict(deque)
+        for root_id in range(0, 256):
+            root = f"{self.path}/{root_id:02x}"
+            if not os.path.exists(root):
+                update_tqdm()
+                continue
+            for file in os.listdir(root):
+                path = os.path.join(root, file)
+                if not os.path.isfile(path):
+                    continue
+                files[root].append(File(
+                    file,
+                    os.path.getsize(path),
+                    os.path.getmtime(path),
+                    file
+                ))
+                await asyncio.sleep(0)
+            update_tqdm()
         return files
 
     async def get_size(self, file_hash: str) -> int:
@@ -197,7 +217,7 @@ class AlistStorage(iStorage): # TODO: 完成 alist 存储
     def __repr__(self) -> str:
         return f"AlistStorage({self.path})"
 
-    async def _action_data(self, action: str, url: str, data: Any, headers: dict[str, str] = {}) -> AlistResult:
+    async def _action_data(self, action: str, url: str, data: Any, headers: dict[str, str] = {}, session: Optional[aiohttp.ClientSession] = None) -> AlistResult:
         hash = hashlib.sha256(f"{action},{url},{data},{headers}".encode()).hexdigest()
         if hash in self.cache:
             return self.cache.get(hash)
@@ -214,14 +234,18 @@ class AlistStorage(iStorage): # TODO: 完成 alist 存储
                 action, url,
                 data=data,
             ) as resp:
-                result = AlistResult(
-                    **await resp.json()
-                )
-                if result.code != 200:
-                    logger.terror("storage.error.alist", status=result.code, message=result.message)
-                else:
-                    self.cache.set(hash, result, 30)
-                return result
+                try:
+                    result = AlistResult(
+                        **await resp.json()
+                    )
+                    if result.code != 200:
+                        logger.terror("storage.error.alist", status=result.code, message=result.message)
+                    else:
+                        self.cache.set(hash, result, 30)
+                    return result
+                except:
+                    logger.terror("storage.error.alist", status=resp.status, message=await resp.text())
+                    raise
             
     async def __info_file(self, file_hash: str) -> AlistFileInfo:
         r = await self._action_data(
@@ -272,8 +296,51 @@ class AlistStorage(iStorage): # TODO: 完成 alist 存储
     async def get_size(self, file_hash: str) -> int:
         info = await self.__info_file(file_hash)
         return max(0, info.size)
-    async def list_files(self) -> list:
-        return []
+    async def list_files(self, pbar: Optional[tqdm] = None) -> defaultdict[str, deque[File]]:
+        def update():
+            pbar.update(1) # type: ignore
+        def empty():
+            ...
+        update_tqdm = empty
+        if pbar is not None:
+            update_tqdm = update
+    
+        files: defaultdict[str, deque[File]] = defaultdict(deque)
+        async with aiohttp.ClientSession(
+            self.url,
+            headers={
+                "Authorization": await self._get_token()
+            }
+        ) as session:
+            for root_id in range(0, 256):
+                root = f"{self.path}/{root_id:02x}"
+                if f"listfile_{root}" in self.cache:
+                    result = self.cache.get(f"listfile_{root}")
+                else:
+                    async with session.post(
+                        "/api/fs/list",
+                        data={
+                            "path": root
+                        },
+                    ) as resp:
+                        result = AlistResult(
+                            **await resp.json()
+                        )
+                        if result.code != 200:
+                            logger.terror("storage.error.alist", status=result.code, message=result.message)
+                        else:
+                            self.cache.set(f"listfile_{root}", result, 30)
+                for r in result.data["content"]:
+                    file = File(
+                        r["name"],
+                        r["size"],
+                        utils.parse_isotime_to_timestamp(r["modified"]),
+                        r["name"]
+                    )
+                    files[f"{root_id:02x}"].append(file)
+                update_tqdm()
+            
+        return files
     async def read_file(self, file_hash: str) -> bytes:
         info = await self.__info_file(file_hash)
         if info.size == -1:

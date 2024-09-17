@@ -44,6 +44,7 @@ class StorageManager:
         self.check_available.acquire()
 
         self.check_type_file = "exists+size"
+        self.cache_filelist: defaultdict[storages.iStorage, defaultdict[str, storages.File]] = defaultdict(defaultdict)
 
     def init(self):
         scheduler.run_repeat(self._check_available, 120)
@@ -74,12 +75,18 @@ class StorageManager:
         return all(await asyncio.gather(*(asyncio.create_task(storage.write_file(convert_file_to_storage_file(file), content, file.mtime)) for storage in self.available_storages)))
 
     async def get_missing_files(self, files: set[File]) -> set[File | Any]:
-        async def _(file: File, storage: storages.iStorage):
-            return True
-        function = _
+        function = None
         if function is None:
             logger.twarning("cluster.warning.no_check_function")
             function = self._check_exists
+
+        with tqdm(
+            total=len(self.available_storages) * 256,
+            desc="List Files",
+            unit="dir",
+            unit_scale=True
+        ) as pbar:
+            await asyncio.gather(*(self.get_storage_filelist(storage, pbar) for storage in self.available_storages))
         with tqdm(
             total=len(files) * len(self.available_storages),
             desc="Checking files",
@@ -95,6 +102,13 @@ class StorageManager:
             await asyncio.gather(*(self._get_missing_file_storage(function, missing_files, waiting_files, storage, pbar) for storage in self.available_storages))
             return missing_files or set()
     
+    async def get_storage_filelist(self, storage: storages.iStorage, pbar: tqdm):
+        result = await storage.list_files(pbar)
+        for files in result.values():
+            for file in files:
+                self.cache_filelist[storage][file.hash] = file
+        return result
+
     async def _get_missing_file_storage(self, function: Callable[..., Coroutine[Any, Any, bool]], missing_files: set[File], files: asyncio.Queue[File], storage: storages.iStorage, pbar: tqdm):
         while not files.empty():
             file = await files.get()
@@ -106,8 +120,14 @@ class StorageManager:
             await asyncio.sleep(0)
     
     async def _check_exists(self, file: File, storage: storages.iStorage):
+        if storage in self.cache_filelist:
+            file_hash = file.hash
+            return file_hash in self.cache_filelist[storage]
         return await storage.exists(file.hash)
     async def _check_size(self, file: File, storage: storages.iStorage):
+        if storage in self.cache_filelist:
+            file_hash = file.hash
+            return file_hash in self.cache_filelist[storage] and self.cache_filelist[storage][file_hash].size == file.size
         return await self._check_exists(file, storage) and await storage.get_size(file.hash) == file.size
     async def _check_hash(self, file: File, storage: storages.iStorage):
         return await self._check_exists(file, storage) and utils.equals_hash(file.hash, await storage.read_file(file.hash))
@@ -428,8 +448,8 @@ class ClusterManager:
 
         # start job
 
-        for cluster in self.clusters:
-            await cluster.enable()
+        #for cluster in self.clusters:
+        #    await cluster.enable()
 
     def get_cluster_by_id(self, id: Optional[str] = None) -> Optional['Cluster']:
         return self.cluster_id_tables.get(id or "", None)
@@ -533,9 +553,6 @@ class Cluster:
                     scheduler.cancel(self.token_scheduler)
                 self.token_scheduler = scheduler.run_later(self.get_token, delay=self.token.ttl - 300)
 
-    async def start_job(self):
-        await self.socket_io.connect()
-
     async def request_cert(self):
         ssl_dir = Path(config.const.ssl_dir)
         if not ssl_dir.exists():
@@ -592,7 +609,7 @@ class Cluster:
                 **asdict(commit_counter)
             }
         )
-        if result.err:
+        if result.err or not result.ack:
             logger.twarning("cluster.warning.kicked_by_remote")
             await self.disable()
             return
