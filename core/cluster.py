@@ -448,8 +448,8 @@ class ClusterManager:
 
         # start job
 
-        #for cluster in self.clusters:
-        #    await cluster.enable()
+        for cluster in self.clusters:
+            await cluster.enable()
 
     def get_cluster_by_id(self, id: Optional[str] = None) -> Optional['Cluster']:
         return self.cluster_id_tables.get(id or "", None)
@@ -614,7 +614,6 @@ class Cluster:
             await self.disable()
             return
         self.counter -= commit_counter
-        logger.debug(result.ack)
         timestamp = utils.parse_isotime_to_timestamp(result.ack)
         ping = (time.time() - timestamp) // 0.0002
         logger.tsuccess("cluster.success.keepalive", cluster=self.id, hits=units.format_number(commit_counter.hits), bytes=units.format_bytes(commit_counter.bytes), ping=ping)
