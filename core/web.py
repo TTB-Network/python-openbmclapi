@@ -99,6 +99,12 @@ site: Optional[web.TCPSite] = None
 public_server: Optional[asyncio.Server] = None
 private_ssl_server: Optional[asyncio.Server] = None
 
+async def close_writer(writer: asyncio.StreamWriter):
+    if writer.is_closing():
+        return
+    writer.close()
+    await writer.wait_closed()
+
 async def get_free_port():
     async def _(_, __):
         ...
@@ -178,7 +184,6 @@ async def public_handle(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
         ...
     finally:
         writer.close()
-        await writer.wait_closed()
     ...
 
 async def ssl_handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -192,7 +197,6 @@ async def ssl_handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter)
         ...
     finally:
         writer.close()
-        await writer.wait_closed()
 
 async def init():
     global runner, site, public_server, routes, app

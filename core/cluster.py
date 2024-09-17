@@ -294,7 +294,7 @@ class FileListManager:
         # get better configuration
         configuration = max(configurations.items(), key=lambda x: x[1][0].concurrency)[1][0]
         logger.tinfo("cluster.info.sync_configuration", source=configuration.source, concurrency=configuration.concurrency)
-        #self.sync_sem.set_value(configuration.concurrency)
+        self.sync_sem.set_value(configuration.concurrency)
 
         await self.download(missing)
 
@@ -502,7 +502,7 @@ class Cluster:
         self.token_scheduler: Optional[int] = None
         self.socket_io = ClusterSocketIO(self)
         self.want_enable: bool = False
-        self.enabled = True
+        self.enabled = False
         self.keepalive_task: Optional[int] = None
         self.delay_enable_task: Optional[int] = None
         self.counter = ClusterCounter()
@@ -633,7 +633,7 @@ class Cluster:
             logger.tsuccess("cluster.success.cluster.disable", cluster=self.id)
         if not exit:
             self.delay_enable_task = scheduler.run_later(self.enable, 60)
-            logger.tinfo("cluster.info.cluster.retry_enable", delay=60)
+            logger.tinfo("cluster.info.cluster.retry_enable", delay=units.format_count_datetime(60))
             
 
     @property
