@@ -433,18 +433,19 @@ class ClusterManager:
     async def start(self):
         self.storage_manager.init()
         logger.tdebug("cluster.debug.base_url", base_url=config.const.base_url)
-        # check files
-        await self.file_manager.sync()
 
-        # start web ssl
         cert = await self.get_certificate()
         await web.start_ssl_server(
             cert.cert, cert.key
         )
+        # start web ssl
         public_port = config.const.public_port
         public_host = cert.host
 
         logger.tdebug("cluster.debug.public_host", host=public_host, port=public_port)
+        
+        # check files
+        await self.file_manager.sync()
 
         # start job
 
@@ -581,7 +582,7 @@ class Cluster:
                 "port": config.const.public_port,
                 "byoc": True,
                 "version": API_VERSION,
-                "noFastEnable": False,
+                "noFastEnable": True,
                 "flavor": {
                     "storage": "local",
                     "runtime": "python"
@@ -595,6 +596,7 @@ class Cluster:
         self.enabled = True
         scheduler.cancel(self.keepalive_task)
         self.keepalive_task = scheduler.run_repeat_later(self.keepalive, 1, interval=60)
+        logger.tsuccess("cluster.success.enabled", cluster=self.id)
 
     def hit(self, bytes: int):
         self.counter.hits += 1
@@ -631,6 +633,8 @@ class Cluster:
                     result
                 )
             logger.tsuccess("cluster.success.cluster.disable", cluster=self.id)
+        self.want_enable = False
+        self.enabled = False
         if not exit:
             self.delay_enable_task = scheduler.run_later(self.enable, 60)
             logger.tinfo("cluster.info.cluster.retry_enable", delay=units.format_count_datetime(60))

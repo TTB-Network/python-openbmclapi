@@ -3,7 +3,10 @@ from dataclasses import dataclass
 import os
 import socket
 
+import aiohttp
 import psutil
+
+from core import config
 
 from . import utils
 
@@ -36,6 +39,7 @@ class SystemInfo:
     memory_usage: int
     connection: ConnectionStatistics
     clusters: list[ClusterInfo]
+    qps: 'WebValue'
 
 @dataclass
 class CounterValue:
@@ -43,7 +47,7 @@ class CounterValue:
     value: SystemInfo
 
 class Counter:
-    def __init__(self, max: int = 300):
+    def __init__(self, max: int = 600):
         self._data: deque[CounterValue] = deque(maxlen=max)
     
     def add(self, value: SystemInfo):
@@ -64,10 +68,21 @@ class Counter:
                  "connection": {
                      "tcp": item.value.connection.tcp,
                      "udp": item.value.connection.udp,
-                 }
+                 },
+                 "qps": item.value.qps.qps
              }} for item in self._data
         ]
 
+@dataclass
+class WebValue:
+    qps: int = 0
+
+    def clone(self):
+        return WebValue(
+            self.qps
+        )
+
+qps = WebValue()
 counter = Counter()
 process = psutil.Process(os.getpid())
 
@@ -80,9 +95,23 @@ async def _(request: web.Request):
 async def _(request: web.Request):
     return web.HTTPFound('/dashboard/')
 
+@route.get("/favicon.ico")
+async def _(request: web.Request):
+    return web.FileResponse("./assets/favicon.ico")
+
 @route.get("/api/system_info")
 async def _(request: web.Request):
     return web.json_response(counter.get_json())
+
+@route.get("/api/openbmclapi/rank")
+async def _(request: web.Request):
+    async with aiohttp.ClientSession(
+        "bd.bangbang93.com"
+    ) as session:
+        async with session.get("/openbmclapi/metric/rank") as resp:
+            return web.json_response(
+                await resp.json(),
+            )
 
 route.static("/assets", "./assets")
 
@@ -96,8 +125,10 @@ def record():
             tcp=len([c for c in connection if c.type == socket.SOCK_STREAM]),
             udp=len([c for c in connection if c.type == socket.SOCK_DGRAM])
         ),
-        clusters=[]
+        clusters=[],
+        qps=qps.clone()
     )
+    qps.qps -= stats.qps.qps
     counter.add(stats)
 
 async def init():

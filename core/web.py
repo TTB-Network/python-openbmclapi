@@ -8,6 +8,7 @@ from typing import Any, Optional
 from aiohttp import web
 from aiohttp.web_urldispatcher import SystemRoute
 
+from . import dashboard
 from . import units
 from . import config
 from .logger import logger
@@ -44,9 +45,15 @@ class SNIHelper:
 
 @web.middleware
 async def middleware(request: web.Request, handler: Any) -> web.Response:
+    dashboard.qps.qps += 1
     with request.match_info.set_current_app(app):
+        address = request.remote or ""
+        try:
+            address = find_origin_ip(request._transport_peername)[0]
+            setattr(request, "address", address)
+        except:
+            logger.debug(request._transport_peername, request.remote)
         start = time.monotonic_ns()
-        address = find_origin_ip(request._transport_peername)[0]
         resp = None
         try:
             resp = await handler(request)
@@ -61,7 +68,7 @@ async def middleware(request: web.Request, handler: Any) -> web.Response:
             if request.http_range.start is not None and status == 200:
                 status = 206
             end = time.monotonic_ns()
-            logger.tdebug("web.debug.request_info", time=units.format_count_time(end - start, 4).rjust(16), host=request.host, address=address.rjust(16), user_agent=request.headers.get("User-Agent"), real_path=request.raw_path, method=request.method.ljust(9), status=status)
+            logger.tdebug("web.debug.request_info", time=units.format_count_time(end - start, 4).rjust(16), host=request.host, address=(address).rjust(16), user_agent=request.headers.get("User-Agent"), real_path=request.raw_path, method=request.method.ljust(9), status=status)
 
 REQUEST_BUFFER = 4096
 IO_BUFFER = 16384

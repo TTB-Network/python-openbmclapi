@@ -20,7 +20,7 @@ defaults = {
     "advanced.check_sign": True,
     "web": {
         "port": -1,
-        "public_port": 6000
+        "public_port": 6543
     },
     "clusters": [
         {

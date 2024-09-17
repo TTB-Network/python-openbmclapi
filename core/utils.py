@@ -126,7 +126,7 @@ def check_sign(hash: str, secret: str, s: str, e: str) -> bool:
         .decode()
         .rstrip("=")
     )
-    return sign == s and time.time() < int(e, 36)
+    return sign == s and time.time() - 300 < int(e, 36)
 
 def equals_hash(origin: str, content: bytes):
     return get_hash_hexdigest(origin, content) == origin
