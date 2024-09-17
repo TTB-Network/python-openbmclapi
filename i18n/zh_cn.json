@@ -30,6 +30,6 @@
     "cluster.debug.socketio.connected": "SocketIO 已连接",
     "cluster.success.cluster.disable": "节点 [${cluster}] 已正常下线",
     "cluster.info.want_enable": "节点 [${cluster}] 正在启用中……",
-    "cluster.info.cluster.retry_enable": "节点 [${cluster}] 将在 [${delay}] 后重新启用",
-    "cluster.success.cluster.enable": "节点 [${cluster}] 已正常上线"
+    "cluster.info.cluster.retry_enable": "节点 [${id}] 将在 [${delay}] 后重新启用",
+    "cluster.success.enabled": "节点 [${cluster}] 已正常上线"
 }

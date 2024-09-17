@@ -88,6 +88,10 @@ def cancel(task_id: Optional[int] = None):
     if task_id is None:
         return
     if task_id in tasks:
-        tasks.pop(task_id).remove()
+        try:
+            tasks.pop(task_id).remove()
+        except:
+            logger.debug(f'Task {task_id} was cancelled')
+            return
         logger.debug(f'Task {task_id} canceled')
     

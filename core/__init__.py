@@ -15,7 +15,6 @@ _START_RUNTIME = time.monotonic()
 async def main():
     start = time.monotonic_ns()
     await scheduler.init()
-    await database.init()
     await web.init()
     await dashboard.init()
     await cluster.init()
@@ -29,7 +28,6 @@ async def main():
     finally:
         await cluster.unload()
         await web.unload()
-        await database.unload()
         await scheduler.unload()
 
 def init():
