@@ -1,5 +1,6 @@
 from collections import deque
 from dataclasses import dataclass
+import json
 import os
 import socket
 
@@ -105,6 +106,32 @@ async def _(request: web.Request):
             return web.json_response(
                 await resp.json(),
             )
+        
+@route.get("/api")
+async def _(request: web.Request):
+    if request.headers.get("Connection", "").lower() == "upgrade" and request.headers.get("Upgrade", "").lower() == "websocket":
+        ws = web.WebSocketResponse()
+        ws.can_prepare(request)
+        await ws.prepare(request)
+        await ws.send_json({
+            "event": "echo",
+            "data": "hello world",
+            "echo_id": None
+        })
+        while not ws.closed:
+            try:
+                raw_data = await ws.receive()
+                try:
+                    print(raw_data)
+                except:
+                    ...
+            except:
+                break
+        return ws
+    else:
+        return web.json_response({
+        })
+    
 
 route.static("/assets", "./assets")
 

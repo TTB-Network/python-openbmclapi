@@ -504,6 +504,8 @@ class Cluster:
         self.socket_io = ClusterSocketIO(self)
         self.want_enable: bool = False
         self.enabled = False
+        self.banned = False
+        self.enable_count: int = 0
         self.keepalive_task: Optional[int] = None
         self.delay_enable_task: Optional[int] = None
         self.counter = ClusterCounter()
@@ -572,29 +574,37 @@ class Cluster:
     async def enable(self):
         cert = await clusters.get_certificate()
         scheduler.cancel(self.delay_enable_task)
-        if self.want_enable:
+        if self.want_enable or self.banned:
             return
         self.want_enable = True
+        self.enable_count += 1
         logger.tinfo("cluster.info.want_enable", cluster=self.id)
-        result = await self.socket_io.emit(
-            "enable", {
-                "host": cert.host,
-                "port": config.const.public_port,
-                "byoc": True,
-                "version": API_VERSION,
-                "noFastEnable": True,
-                "flavor": {
-                    "storage": "local",
-                    "runtime": "python"
+        try:
+            result = await self.socket_io.emit(
+                "enable", {
+                    "host": cert.host,
+                    "port": config.const.public_port,
+                    "byoc": True,
+                    "version": API_VERSION,
+                    "noFastEnable": True,
+                    "flavor": {
+                        "storage": "local",
+                        "runtime": "python"
+                    }
                 }
-            }
-        )
-        self.want_enable = False
+            , 120)
+        except:
+            logger.terror("cluster.error.cluster.banned", cluster=self.id)
+            self.banned = True
+            return
+        finally:
+            self.want_enable = False
         if result.err:
             self.socketio_error("enable", result)
             self.retry()
             return
         self.enabled = True
+        self.enable_count = 0
         scheduler.cancel(self.keepalive_task)
         self.keepalive_task = scheduler.run_repeat_later(self.keepalive, 1, interval=60)
         logger.tsuccess("cluster.success.enabled", cluster=self.id)
@@ -640,8 +650,9 @@ class Cluster:
             self.retry()
 
     def retry(self):
-        self.delay_enable_task = scheduler.run_later(self.enable, 60)
-        logger.tinfo("cluster.info.cluster.retry_enable", delay=units.format_count_datetime(60))
+        delay = ((self.enable_count  + 1) ** 2) * 60
+        self.delay_enable_task = scheduler.run_later(self.enable, delay)
+        logger.tinfo("cluster.info.cluster.retry_enable", delay=units.format_count_datetime(delay))
             
 
     @property
@@ -694,6 +705,12 @@ class ClusterSocketIO:
             if isinstance(message, dict) and "message" in message:
                 message = message["message"]
             logger.tinfo("cluster.info.socketio.message", cluster=self.cluster.id, message=message)
+
+        @self.sio.on("exception") # type: ignore
+        async def _(message: Any):
+            if isinstance(message, dict) and "message" in message:
+                message = message["message"]
+            logger.terror("cluster.error.socketio.message", cluster=self.cluster.id, message=message)
 
     async def disconnect(self):
         await self.sio.disconnect()
