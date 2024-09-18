@@ -443,7 +443,7 @@ class ClusterManager:
         public_host = cert.host
 
         logger.tdebug("cluster.debug.public_host", host=public_host, port=public_port)
-        
+
         # check files
         await self.file_manager.sync()
 
@@ -592,6 +592,7 @@ class Cluster:
         self.want_enable = False
         if result.err:
             self.socketio_error("enable", result)
+            self.retry()
             return
         self.enabled = True
         scheduler.cancel(self.keepalive_task)
@@ -636,8 +637,11 @@ class Cluster:
         self.want_enable = False
         self.enabled = False
         if not exit:
-            self.delay_enable_task = scheduler.run_later(self.enable, 60)
-            logger.tinfo("cluster.info.cluster.retry_enable", delay=units.format_count_datetime(60))
+            self.retry()
+
+    def retry(self):
+        self.delay_enable_task = scheduler.run_later(self.enable, 60)
+        logger.tinfo("cluster.info.cluster.retry_enable", delay=units.format_count_datetime(60))
             
 
     @property
@@ -651,9 +655,9 @@ class Cluster:
     def socketio_error(self, type: str, result: 'SocketIOEmitResult'):
         err = result.err
         if "message" in err:
-            logger.terror("cluster.error.socketio", type=type, id=self.id, err=err["message"])
+            logger.terror("cluster.error.socketio", type=type, cluster=self.id, err=err["message"])
         else:
-            logger.terror("cluster.error.socketio", type=type, id=self.id, err=err)
+            logger.terror("cluster.error.socketio", type=type, cluster=self.id, err=err)
 
 class ClusterSocketIO:
     def __init__(self, cluster: Cluster) -> None:
@@ -788,7 +792,7 @@ async def init():
         )
         if not cluster.id:
             continue
-        logger.tsuccess("cluster.success.load_cluster", id=cluster.id)
+        logger.tsuccess("cluster.success.load_cluster", cluster=cluster.id)
         clusters.add_cluster(cluster)
     if len(clusters.clusters) == 0:
         logger.terror("cluster.error.no_cluster")
