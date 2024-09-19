@@ -652,7 +652,7 @@ class Cluster:
     def retry(self):
         delay = ((self.enable_count  + 1) ** 2) * 60
         self.delay_enable_task = scheduler.run_later(self.enable, delay)
-        logger.tinfo("cluster.info.cluster.retry_enable", delay=units.format_count_datetime(delay))
+        logger.tinfo("cluster.info.cluster.retry_enable", cluster=self.id, delay=units.format_count_datetime(delay))
             
 
     @property
@@ -711,6 +711,13 @@ class ClusterSocketIO:
             if isinstance(message, dict) and "message" in message:
                 message = message["message"]
             logger.terror("cluster.error.socketio.message", cluster=self.cluster.id, message=message)
+
+        @self.sio.on("warden-error") # type: ignore
+        async def _(message: Any):
+            if isinstance(message, dict) and "message" in message:
+                message = message["message"]
+            logger.terror("cluster.error.socketio.warden", cluster=self.cluster.id, message=message)
+
 
     async def disconnect(self):
         await self.sio.disconnect()

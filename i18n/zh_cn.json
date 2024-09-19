@@ -32,5 +32,6 @@
     "cluster.info.want_enable": "节点 [${cluster}] 正在启用中……",
     "cluster.info.cluster.retry_enable": "节点 [${cluster}] 将在 [${delay}] 后重新启用",
     "cluster.success.enabled": "节点 [${cluster}] 已正常上线",
-    "cluster.error.socketio.message": "节点 [${cluster}] 收到错误消息，原因 [${message}]"
+    "cluster.error.socketio.message": "节点 [${cluster}] 收到错误消息，原因 [${message}]",
+    "cluster.error.socketio.warden": "[Warden] 节点 [${cluster}] 收到错误消息，原因 [${message}]"
 }
