@@ -17,38 +17,71 @@ class Utils {
                 }
             }
         }
-        return uuid.join('');
+        return uuid.join('').toLocaleLowerCase();
     }
 }
 
 class Socket {
     constructor(baseurl) {
-        this._baseurl = baseurl;
         this._ws = null;
         this._wsReconnectTask = null;
+        this._clientId = Utils.uuid();
+        this._baseurl = baseurl;
+        this._url = this._baseurl + "?id=" + this._clientId
+        this._keepaliveTask = null;
+        this._echoCallbacks = {}
         this._wsConnect()
-        window.addEventListener("beforeinput", () => {
+        window.addEventListener("beforeunload", () => {
+            this.send("disconnect")
             this._ws?.close()
         })
+        setInterval(() => this._keepalive(), 5000);
+        this._keepalive();
     }
-    async _sendByFetch(event, data) {
-        var resp = await fetch({
-            "url": this._baseurl,
-            "body": JSON.stringify(
-                {
-                    "event": event,
-                    "data": data,
-                    "echo_id": Utils.uuid()
-                }
-            )
+    async _keepalive() {
+        console.log(await this.send("keepalive", {
+            "timestamp": new Date()
+        }))
+    }
+    async _sendByXHR(event, data) {
+        var xhr = new XMLHttpRequest();
+        var echo_id = Utils.uuid();
+        xhr.addEventListener("readystatechange", (event) => {
+            if (event.target.readyState == XMLHttpRequest.DONE) {
+                this._dispatchData(JSON.parse(xhr.response)); 
+            }
         })
-        return await resp.json()
+        xhr.open("POST", this._url);
+        return this._setEchoCallback(echo_id, () => {
+            xhr.send(JSON.stringify({
+                "event": event,
+                "data": data,
+                echo_id
+            }));
+            setTimeout(() => {
+                xhr.abort();
+            }, 10000)
+        });
+    }
+    _dispatchData(responses) {
+        responses.forEach(response => {
+            const { echo_id, event, data } = response;
+            console.log(echo_id, event)
+            if (echo_id == null) { // global dispatch event
+
+            } else if (echo_id in this._echoCallbacks) {
+                var { resolve, reject, timer } = this._echoCallbacks[echo_id];
+                delete this._echoCallbacks[echo_id];
+                clearTimeout(timer);
+                resolve(data);
+            }
+        });
     }
     _wsConnect() {
         clearTimeout(this._wsReconnectTask)
         this._ws?.close()
         this._ws = new WebSocket(
-            this._baseurl
+            this._url
         )
         this._ws.addEventListener("close", () => {
             console.warn("The websocket has disconnected. After 5s to reconnect.")
@@ -58,29 +91,36 @@ class Socket {
         })
         this._ws.addEventListener("message", (event) => {
             var raw_data = JSON.parse(event.data);
+            this._dispatchData(raw_data)
         })
     }
-    async _sendByWs(event, data) {
-        if (this._ws?.state != WebSocket.OPEN) return;
+    _sendByWs(event, data) {
+        if (this._ws?.readyState != WebSocket.OPEN) return;
         var echo_id = Utils.uuid();
-        this._ws.send({
-            "event": event,
-            "data": data,
-            echo_id
-        })
-        var promise = new Promise((resolve, reject) => {
-            
+        return this._setEchoCallback(echo_id, () => {
+            this._ws.send(JSON.stringify(
+                {
+                    "event": event,
+                    "data": data,
+                    echo_id
+                }
+            ))
         });
-        return promise;
+    }
+    _setEchoCallback(id, executor) {
+        return new Promise((resolve, reject) => {
+            this._echoCallbacks[id] = { resolve, reject, timer: setTimeout(() => {
+                reject("Timeout Error.")
+            }, 10000)};
+            executor();
+        })
     }
     async send(event, data) {
-        if (this._ws != null && this._ws.state == WebSocket.OPEN) {
-            return this._sendByWs(event, data)
-        } else {
-            return this._sendByFetch(event, data)
-        }
+        var handler = this._ws?.readyState == WebSocket.OPEN ? this._sendByWs : this._sendByXHR
+        return handler.bind(this)(event, data);
     }
     
 }
 
-const $socket = new Socket(window.location.origin + "/api")
+const $socket = new Socket(window.location.origin + "/api");
+$socket.send("echo", "hello world")

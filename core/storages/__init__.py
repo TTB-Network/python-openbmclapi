@@ -338,6 +338,7 @@ class AlistStorage(iStorage): # TODO: 完成 alist 存储
                         r["name"]
                     )
                     files[f"{root_id:02x}"].append(file)
+                await asyncio.sleep(0)
                 update_tqdm()
             
         return files

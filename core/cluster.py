@@ -735,12 +735,14 @@ class ClusterSocketIO:
         await self.sio.emit(
             event, data, callback=callback
         )
+        timeout_task = None
         if timeout is not None:
-            scheduler.run_later(lambda: fut.set_exception(asyncio.TimeoutError), timeout)
+            timeout_task = scheduler.run_later(lambda: not fut.done() and fut.set_exception(asyncio.TimeoutError), timeout)
         try:
             await fut
         except:
             raise
+        scheduler.cancel(timeout_task)
         return fut.result()
 
 @dataclass
@@ -785,7 +787,7 @@ class MemoryStorageFile(StorageFile):
 
 ROOT = Path(__file__).parent.parent
 
-API_VERSION = "1.11.0"
+API_VERSION = "1.12.0"
 USER_AGENT = f"openbmclapi/{API_VERSION} python-openbmclapi/3.0"
 CHECK_FILE_CONTENT = "Python OpenBMCLAPI"
 CHECK_FILE_MD5 = hashlib.md5(CHECK_FILE_CONTENT.encode("utf-8")).hexdigest()
