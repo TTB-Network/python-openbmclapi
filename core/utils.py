@@ -1,10 +1,15 @@
 import asyncio
 import base64
 from collections import deque
+from dataclasses import dataclass
 from datetime import datetime
 import hashlib
 import io
+import json
 import time
+from typing import Any, Optional
+
+from core import logger
 
 
 class CountLock:
@@ -150,3 +155,39 @@ def get_runtime():
 
 def parse_isotime_to_timestamp(iso_format: str) -> float:
     return datetime.fromisoformat(iso_format).timestamp()
+
+def is_service_error(body: Any) -> bool:
+    if isinstance(body, (bytes, str)):
+        try:
+            body = json.loads(body)
+        except:
+            return False
+    return isinstance(body, dict) and "$isServiceError" in body and body["$isServiceError"]
+
+def parse_service_error(body: Any) -> Optional['ServiceError']:
+    if isinstance(body, (bytes, str)):
+        try:
+            body = json.loads(body)
+        except:
+            return None
+    if not isinstance(body, dict) or "$isServiceError" not in body or not body["$isServiceError"]:
+        return None
+    return ServiceError(**body)
+
+def raise_service_error(body: Any) -> bool:
+    service = parse_service_error(body)
+    if service is None:
+        return False
+    logger.terror("utils.error.service_error", cause=service.cause, code=service.code, data=service.data, httpCode=service.httpCode, message=service.message, name=service.name)
+    return True
+
+
+
+@dataclass
+class ServiceError:
+    cause: Any
+    code: str
+    data: Any
+    httpCode: int
+    message: str
+    name: str

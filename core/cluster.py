@@ -255,10 +255,14 @@ class FileListManager:
                     "lastModified": str(int(self.cluster_last_modified[cluster]))
                 }
             ) as resp:
+                body = await resp.read()
+                if utils.is_service_error(body):
+                    utils.raise_service_error(body)
+                    return []
                 resp.raise_for_status()
                 if resp.status == 204:
                     return []
-                stream = utils.FileStream(zstd.decompress(await resp.read()))
+                stream = utils.FileStream(zstd.decompress(body))
                 filelist = [
                     File(
                         path=stream.read_string(),
