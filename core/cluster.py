@@ -12,7 +12,8 @@ import aiohttp.client_exceptions
 import pyzstd as zstd
 import aiohttp
 from tqdm import tqdm
-
+import subprocess
+import re
 from . import web
 from . import utils, logger, config, scheduler, units, storages, i18n
 from .storages import File as SFile
@@ -751,6 +752,34 @@ class ClusterSocketIO:
             raise
         scheduler.cancel(timeout_task)
         return fut.result()
+
+class Tunnel():
+    def __init__(self,tunnel_program: str,output_regex: str,timeout: int=30):
+        self.tunnel_program = tunnel_program
+        self.output_regex = output_regex
+        self.timeout = timeout
+        self.output_logs = []
+    async def create_tunnel(self):
+        process = subprocess.Popen(
+        [self.tunnel_program],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
+        for line in process.stdout:
+            self.output_logs.append(line.strip())
+    async def get_tunnel_info(self):
+        regex = re.compile(self.output_regex)
+        for log in self.output_logs:
+            match = regex.search(log)
+            if match:
+                host = match.group('host')
+                port = match.group('port')
+                return {'host': host, 'port': port}
+            raise ValueError("无法获取隧道信息")
+    async def get_port(self):
+        return (await self.get_tunnel_info()).get('port',1145)
+        
 
 @dataclass
 class ClusterCertificate:
