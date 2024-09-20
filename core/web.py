@@ -2,6 +2,7 @@ import asyncio
 from collections import deque
 from dataclasses import dataclass
 import io
+import os
 from pathlib import Path
 import time
 from typing import Any, Optional
@@ -75,6 +76,7 @@ async def middleware(request: web.Request, handler: Any) -> web.Response:
 REQUEST_BUFFER = 4096
 IO_BUFFER = 16384
 FINDING_FILTER = "127.0.0.1"
+CHECK_PORT_SECRET = os.urandom(8)
 ip_tables: dict[tuple[str, int], tuple[str, int]] = {}
 
 def find_origin_ip(target: tuple[str, int]):
@@ -107,6 +109,7 @@ runner: Optional[web.AppRunner] = None
 site: Optional[web.TCPSite] = None
 public_server: Optional[asyncio.Server] = None
 private_ssl_server: Optional[asyncio.Server] = None
+private_ssl: Optional[tuple[ssl.SSLContext, ssl.SSLContext]] = None
 
 async def close_writer(writer: asyncio.StreamWriter):
     if writer.is_closing():
@@ -123,7 +126,6 @@ async def get_free_port():
     await server.wait_closed()
     return port
 
-
 async def forward_data(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     while not writer.is_closing():
         data = await reader.read(IO_BUFFER)
@@ -133,7 +135,6 @@ async def forward_data(reader: asyncio.StreamReader, writer: asyncio.StreamWrite
         await writer.drain()
     writer.close()
     await writer.wait_closed()
-
 
 async def open_forward_data(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, target_ip: str, target_port: int, data: bytes = b''):
     try:
@@ -171,6 +172,10 @@ async def open_forward_data(reader: asyncio.StreamReader, writer: asyncio.Stream
 async def public_handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     try:
         data = await reader.read(REQUEST_BUFFER)
+        if data == CHECK_PORT_SECRET:
+            writer.write(data)
+            await writer.drain()
+            return
         client_ssl = False
         try:
             SNIHelper(data)
@@ -207,6 +212,24 @@ async def ssl_handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter)
     finally:
         writer.close()
 
+async def check_server():
+    global public_server
+    if public_server is None:
+        return False
+    async def _check():
+        try:
+            r, w = await asyncio.wait_for(asyncio.open_connection('127.0.0.1', public_server.sockets[0].getsockname()[1]), 5) # type: ignore
+            w.write(CHECK_PORT_SECRET)
+            await w.drain()
+            data = await r.read(REQUEST_BUFFER)
+            return data == w
+        except:
+            return False
+    if not _check():
+        await start_public_server()
+        return False
+
+
 async def init():
     global runner, site, public_server, routes, app
 
@@ -222,21 +245,37 @@ async def init():
 
     logger.tdebug("web.debug.local_port", port=site._port)
 
+    await start_public_server()
 
+async def start_public_server():
+    global public_server
+    if public_server is not None:
+        public_server.close()
+        await public_server.wait_closed()
     public_server = await asyncio.start_server(
         public_handle, host='0.0.0.0',port=config.const.public_port
     )
     logger.tsuccess("web.success.public_port", port=config.const.public_port)
 
-
 async def start_ssl_server(cert: Path, key: Path):
-    global private_ssl_server
+    global private_ssl_server, private_ssl
     context = ssl.create_default_context(
         ssl.Purpose.CLIENT_AUTH
     )
     context.load_cert_chain(cert, key)
     context.hostname_checks_common_name = False
     context.check_hostname = False
+
+    client = ssl.create_default_context(
+        ssl.Purpose.SERVER_AUTH
+    )
+    client.load_verify_locations(cert)
+    client.hostname_checks_common_name = False
+    client.check_hostname = False
+    private_ssl = (
+        context,
+        client
+    )
     
     if private_ssl_server is not None and private_ssl_server.is_serving():
         private_ssl_server.close()

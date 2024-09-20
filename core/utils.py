@@ -179,11 +179,11 @@ def parse_service_error(body: Any) -> Optional['ServiceError']:
         body["name"]
     )
 
-def raise_service_error(body: Any) -> bool:
+def raise_service_error(body: Any, key: str = "utils.error.service_error", **kwargs) -> bool:
     service = parse_service_error(body)
     if service is None:
         return False
-    logger.terror("utils.error.service_error", code=service.code, httpCode=service.httpCode, message=service.message, name=service.name)
+    logger.terror(key, code=service.code, httpCode=service.httpCode, message=service.message, name=service.name, **kwargs)
     return True
 
 
