@@ -172,7 +172,14 @@ def parse_service_error(body: Any) -> Optional['ServiceError']:
             return None
     if not isinstance(body, dict) or "$isServiceError" not in body or not body["$isServiceError"]:
         return None
-    return ServiceError(**body)
+    return ServiceError(
+        body["cause"],
+        body["code"],
+        body["data"],
+        body["httpCode"],
+        body["message"],
+        body["name"]
+    )
 
 def raise_service_error(body: Any) -> bool:
     service = parse_service_error(body)
