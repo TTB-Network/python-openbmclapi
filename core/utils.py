@@ -172,11 +172,8 @@ def parse_service_error(body: Any) -> Optional['ServiceError']:
             return None
     if not isinstance(body, dict) or "$isServiceError" not in body or not body["$isServiceError"]:
         return None
-    logger.debug(body)
     return ServiceError(
-        body["cause"],
         body["code"],
-        body["data"],
         body["httpCode"],
         body["message"],
         body["name"]
@@ -186,16 +183,14 @@ def raise_service_error(body: Any) -> bool:
     service = parse_service_error(body)
     if service is None:
         return False
-    logger.terror("utils.error.service_error", cause=service.cause, code=service.code, data=service.data, httpCode=service.httpCode, message=service.message, name=service.name)
+    logger.terror("utils.error.service_error", code=service.code, httpCode=service.httpCode, message=service.message, name=service.name)
     return True
 
 
 
 @dataclass
 class ServiceError:
-    cause: Any
     code: str
-    data: Any
     httpCode: int
     message: str
     name: str
