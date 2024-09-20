@@ -172,6 +172,7 @@ def parse_service_error(body: Any) -> Optional['ServiceError']:
             return None
     if not isinstance(body, dict) or "$isServiceError" not in body or not body["$isServiceError"]:
         return None
+    logger.debug(body)
     return ServiceError(
         body["cause"],
         body["code"],
