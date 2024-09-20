@@ -416,9 +416,12 @@ class FileListManager:
             async with session.get(
                 f"/openbmclapi/configuration"
             ) as resp:
+                body = await resp.json()
+                if utils.raise_service_error(body):
+                    return {}
                 resp.raise_for_status()
                 return {
-                    k: OpenBMCLAPIConfiguration(**v) for k, v in (await resp.json()).items()
+                    k: OpenBMCLAPIConfiguration(**v) for k, v in (body).items()
                 }
 
 class ClusterManager:
