@@ -34,5 +34,6 @@
     "cluster.success.enabled": "节点 [${cluster}] 已正常上线",
     "cluster.error.socketio.message": "节点 [${cluster}] 收到错误消息，原因 [${message}]",
     "cluster.error.socketio.warden": "[Warden] 节点 [${cluster}] 收到错误消息，原因 [${message}]",
-    "utils.error.service_error": "服务出错，状态码 [${code}(${httpCode})] 类型 [${name}] 信息 [${message}]"
+    "utils.error.service_error": "服务出错，状态码 [${code}(${httpCode})] 类型 [${name}] 信息 [${message}]",
+    "web.warning.public_port": "当前 Web 服务器在 [${port}] 端口已重新开启"
 }

@@ -9,6 +9,8 @@ from typing import Any, Optional
 from aiohttp import web
 from aiohttp.web_urldispatcher import SystemRoute
 
+from core import scheduler
+
 from . import units
 from . import config
 from .logger import logger
@@ -225,9 +227,10 @@ async def check_server():
             return data == w
         except:
             return False
-    if not _check():
-        await start_public_server()
-        return False
+    if _check():
+        return
+    await start_public_server()
+    logger.twarning("web.warning.public_port", port=config.const.public_port)
 
 
 async def init():
@@ -246,6 +249,8 @@ async def init():
     logger.tdebug("web.debug.local_port", port=site._port)
 
     await start_public_server()
+
+    scheduler.run_repeat(check_server, 5)
 
 async def start_public_server():
     global public_server
