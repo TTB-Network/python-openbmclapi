@@ -224,7 +224,7 @@ async def check_server():
             w.write(CHECK_PORT_SECRET)
             await w.drain()
             data = await r.read(REQUEST_BUFFER)
-            return data == w
+            return data == CHECK_PORT_SECRET
         except:
             return False
     if await _check():
