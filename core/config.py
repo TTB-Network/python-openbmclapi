@@ -38,6 +38,9 @@ defaults = {
     "database": {
         "type": "sqlite",
         "url": "./database.db"
+    },
+    "tunnel": {
+        "type": "none",
     }
 }
 
