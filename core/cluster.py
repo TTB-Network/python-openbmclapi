@@ -793,7 +793,7 @@ class MemoryStorageFile(StorageFile):
 
 ROOT = Path(__file__).parent.parent
 
-API_VERSION = "1.12.0"
+API_VERSION = "1.12.1"
 USER_AGENT = f"openbmclapi/{API_VERSION} python-openbmclapi/3.0"
 CHECK_FILE_CONTENT = "Python OpenBMCLAPI"
 CHECK_FILE_MD5 = hashlib.md5(CHECK_FILE_CONTENT.encode("utf-8")).hexdigest()
