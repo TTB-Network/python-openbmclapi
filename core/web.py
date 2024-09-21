@@ -250,7 +250,7 @@ async def init():
 
     await start_public_server()
 
-    scheduler.run_repeat(check_server, 5, 5)
+    scheduler.run_repeat_later(check_server, 5, 5)
 
 async def start_public_server():
     global public_server
