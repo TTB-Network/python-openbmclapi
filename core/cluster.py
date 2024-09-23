@@ -42,8 +42,8 @@ class StorageManager:
 
         self.check_available.acquire()
 
-        self.check_type_file = "exists+size"
-        self.cache_filelist: defaultdict[storages.iStorage, defaultdict[str, storages.File]] = defaultdict(defaultdict)
+        self.check_type_file = "size"
+        self.cache_filelist: defaultdict[storages.iStorage, defaultdict[str, storages.File]] = defaultdict(defaultdict) # type: ignore
 
     def init(self):
         scheduler.run_repeat(self._check_available, 120)
@@ -75,6 +75,12 @@ class StorageManager:
 
     async def get_missing_files(self, files: set[File]) -> set[File | Any]:
         function = None
+        if self.check_type_file == "exists":
+            function = self._check_exists
+        elif self.check_type_file == "size":
+            function = self._check_size
+        elif self.check_type_file == "hash":
+            function = self._check_hash
         if function is None:
             logger.twarning("cluster.warning.no_check_function")
             function = self._check_exists

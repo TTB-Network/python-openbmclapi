@@ -86,7 +86,7 @@ class Socket {
         clearTimeout(this._wsReconnectTask)
         this._ws?.close()
         this._ws = new WebSocket(
-            this._url
+            "ws" + this._url.slice(4)
         )
         this._ws.addEventListener("close", () => {
             console.warn("The websocket has disconnected. After 5s to reconnect.")
@@ -234,7 +234,7 @@ class Element {
         this._base.style[key] = value;
         return this;
     }
-    on(event, handler) {
+    addEventListener(event, handler) {
         this._base.addEventListener(event, handler);
         return this;
     }
@@ -255,6 +255,7 @@ class Element {
         } else {
             this._children.splice(this._children.indexOf(object), 1);
         }
+        this._base.removeChild(object.origin);
         return this
     }
     get firstChild() {
@@ -285,11 +286,13 @@ class Configuration {
     }
     get(key, _def) {
         console.log(localStorage.getItem(key))
-        var item = JSON.parse(localStorage.getItem(key));
+        var item = JSON.parse(localStorage.getItem(key)) || {
+            value: _def
+        };
         return item.value;
     }
     set(key, value) {
-        localStorage.setItem(key, JSON.parse({
+        localStorage.setItem(key, JSON.stringify({
             "value": value,
             "timestamp": new Date()
         }));
@@ -299,6 +302,7 @@ class Style {
     constructor() {
         this._styles = {}
         this._style_dom = document.createElement("style");
+        this._style_sheet = this._style_dom.sheet;
         this._themes = {}
         this._current_theme = null;
         this.applyTheme($configuration.get("theme", window.matchMedia("(prefers-color-scheme: dark)") ? "dark" : "light"))
@@ -325,28 +329,48 @@ class Style {
         Object.entries(this._themes[this._current_theme] || {}).forEach(([key, value]) => {
             theme[`--${key}`] = value;
         })
-        this._styles[":root"] = this._parseToString(theme);
-        const styleRule = Object.entries(this._styles).map(([name, style]) => style == null ? "" : `${name}{${style}}`).join("");
-        if (!this._sheet_render(styleRule)) {
-            while (this._style_dom.childNodes.length > 0) {
-                this._style_dom.removeChild(this._style_dom.childNodes[0]);
+        this._styles[":root"] = this._parseToString(theme); 
+        const styleRules = Object.entries(this._styles).map(([name, style]) => style == null ? "" : `${name}{${style}}`.replaceAll(/\n|\t|\r/g, "").replaceAll(/\s\s/g, " "));
+        requestAnimationFrame(() => {
+            this._clear_render();
+            styleRules.forEach(styleRule => {
+                this._sheet_render(styleRule);
+            });   
+        })
+    }
+    _clear_render() {
+        this._style_sheet = this._style_dom.sheet;
+        if (this._style_sheet) {
+            this._clear_render = () => {
+                while (this._style_sheet.cssRules.length > 0) {
+                    this._style_sheet.deleteRule(0);
+                }
             }
-            this._style_dom.appendChild(document.createTextNode(styleRule));
+        } else {
+            this._clear_render = () => {
+                while (this._style_dom.childNodes.length > 0) {
+                    this._style_dom.removeChild(this._style_dom.childNodes[0]);
+                }
+            }
         }
+        this._clear_render()
     }
     _sheet_render(styleRule) {
-        const styleSheet = this._style_dom.sheet;
-        if (styleSheet) {
-            while (styleSheet.cssRules.length > 0) {
-                styleSheet.deleteRule(0);
-            }
+        this._style_sheet = this._style_dom.sheet;
+        if (this._style_sheet) {
             try {
-                styleSheet.insertRule(this._sheet, styleSheet.cssRules.length);
-                return true;
+                var handler = (styleRule) => {
+                    this._style_sheet.insertRule(styleRule, this._style_sheet.cssRules.length);
+                }
+                handler(styleRule)
+                this._sheet_render = handler;
+                return;
             } catch (e) {
+                console.log(e)
             }
-            return false;
         }
+        this._sheet_render = (styleRule) => this._style_dom.appendChild(document.createTextNode(styleRule));
+        this._sheet_render()
     }
     applyTheme(name) {
         this._current_theme = name || Object.keys(this._themes)[0];
@@ -420,12 +444,17 @@ $style.addAll({
         flex-wrap: nowrap;
         justify-content: space-between
     `,
+    "header .content": {
+        "display": "flex",
+        "align-items": "center"
+    },
     "header svg": {
         "width": "48px",
         "height": "48px",
         "padding": "8px", 
         "cursor": "pointer"
     },
+    "h1,h2,h3,h4,h5,h6": "margin:0;color:var(--color)",
     "svg": {
         "fill": "var(--color)"
     }
@@ -435,10 +464,25 @@ function load() {
 
     const $app = createElement("div").classes("app")
     const $header = createElement("header")
-    const $header_content_left = createElement("div").append(
-        SVGContainers.menu,
-        SVGContainers.sun
-    )
+    const $theme = {
+        sun: SVGContainers.sun,
+        moon: SVGContainers.moon
+    }
+    for (const $theme_key in $theme) {
+        $theme[$theme_key].addEventListener("click", () => {
+            $header_content_left.children[0].removeChild($theme[$theme_key]);
+            $style.applyTheme($theme_key == "sun" ? "light" : "dark");
+            $header_content_left.children[0].append($theme[$theme_key == "sun" ? "moon" : "sun"]);
+            $configuration.set("theme", $theme_key == "sun" ? "light" : "dark");
+        })
+    }
+    const $header_content_left = createElement("div").classes("content").append(
+        createElement("div").append(
+            SVGContainers.menu,
+            $theme[$configuration.get("theme") == "light" ? "moon" : "sun"]
+        ),
+        createElement("h3").text("Python OpenBMCLAPI Dashboard")
+    );
     const $header_content_right = createElement("div");
     $header.append($header_content_left, $header_content_right);
     $app.append($header);
