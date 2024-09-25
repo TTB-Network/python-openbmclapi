@@ -214,13 +214,14 @@ async def ssl_handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter)
     finally:
         writer.close()
 
-async def _check_server(ip: str, port: int, ssl: Optional[ssl.SSLContext] = None):
+async def _check_server(ip: str, port: int):
     try:
-        r, w = await asyncio.wait_for(asyncio.open_connection(ip, port, ssl=ssl), 5)
+        r, w = await asyncio.wait_for(asyncio.open_connection(ip, port), 5)
         w.close()
         await w.wait_closed()
         return True
     except:
+        logger.ttraceback("web.traceback.check_server", port=port)
         return False
 
 async def check_server():
@@ -240,7 +241,7 @@ async def check_server():
             ("127.0.0.1", private_ssl_server.sockets[0].getsockname()[1], _start_ssl_server)
         )
     result = await asyncio.gather(*(
-        _check_server(*server) for server in servers
+        _check_server(server[0], server[1]) for server in servers
     ))
     for i, r in enumerate(result):
         if not r:
