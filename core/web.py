@@ -214,24 +214,49 @@ async def ssl_handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter)
     finally:
         writer.close()
 
-async def check_server():
-    global public_server
-    if public_server is None:
+async def _check_server(ip: str, port: int, ssl: Optional[ssl.SSLContext] = None):
+    try:
+        r, w = await asyncio.wait_for(asyncio.open_connection(ip, port, ssl=ssl), 5)
+        w.close()
+        await w.wait_closed()
+        return True
+    except:
         return False
-    async def _check():
-        try:
-            r, w = await asyncio.wait_for(asyncio.open_connection('127.0.0.1', public_server.sockets[0].getsockname()[1]), 5) # type: ignore
-            w.write(CHECK_PORT_SECRET)
-            await w.drain()
-            data = await r.read(REQUEST_BUFFER)
-            return data == CHECK_PORT_SECRET
-        except:
-            return False
-    if await _check():
-        return
-    await start_public_server()
-    logger.twarning("web.warning.public_port", port=config.const.public_port)
 
+async def check_server():
+    global site, public_server, private_ssl_server
+    servers = [
+    ]
+    if site is not None:
+        servers.append(
+            ("127.0.0.1", site._port, start_tcp_site)
+        )
+    if public_server is not None:
+        servers.append(
+            ("127.0.0.1", config.const.public_port, start_public_server)
+        )
+    if private_ssl_server is not None:
+        servers.append(
+            ("127.0.0.1", private_ssl_server.sockets[0].getsockname()[1], _start_ssl_server)
+        )
+    result = await asyncio.gather(*(
+        _check_server(*server) for server in servers
+    ))
+    for i, r in enumerate(result):
+        if not r:
+            await servers[i][2]()
+            logger.twarning("web.warning.server_down", server=servers[i][0], port=servers[i][1])
+
+async def start_tcp_site():
+    global site, runner
+    if runner is None:
+        return
+    port = await get_free_port()
+    if site is not None:
+        await site.stop()
+    site = web.TCPSite(runner, '127.0.0.1', port)
+    await site.start()
+    logger.tdebug("web.debug.local_port", port=site._port)
 
 async def init():
     global runner, site, public_server, routes, app
@@ -241,12 +266,7 @@ async def init():
     runner = web.AppRunner(app)
     await runner.setup()
 
-    port = await get_free_port()
-
-    site = web.TCPSite(runner, '127.0.0.1', port)
-    await site.start()
-
-    logger.tdebug("web.debug.local_port", port=site._port)
+    await start_tcp_site()
 
     await start_public_server()
 
@@ -282,6 +302,12 @@ async def start_ssl_server(cert: Path, key: Path):
         client
     )
     
+    await _start_ssl_server()
+
+async def _start_ssl_server():
+    global private_ssl_server, private_ssl
+    if not private_ssl:
+        return
     if private_ssl_server is not None and private_ssl_server.is_serving():
         private_ssl_server.close()
         await private_ssl_server.wait_closed()
@@ -290,10 +316,9 @@ async def start_ssl_server(cert: Path, key: Path):
         ssl_handle,
         '127.0.0.1',
         port,
-        ssl=context
+        ssl=private_ssl[0]
     )
     logger.tdebug("web.debug.ssl_port", port=private_ssl_server.sockets[0].getsockname()[1])
-
 
 
 async def unload():

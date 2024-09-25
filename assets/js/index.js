@@ -457,6 +457,23 @@ $style.addAll({
     "h1,h2,h3,h4,h5,h6": "margin:0;color:var(--color)",
     "svg": {
         "fill": "var(--color)"
+    },
+    "main": {
+        "position": "relative",
+        "top": "56px",
+        "display": "flex",
+        "min-height": "calc(-56px + 100vh)"
+    },
+    "aside": {
+        "z-index": "1",
+        "position": "fixed",
+        "min-width": "240px",
+        "padding": "20px",
+        "height": "100%",
+        "box-shadow": "var(--shadow) 0px 4px 10px",
+        "opacity": "1",
+        "transition": "min-width 250ms linear, width 250ms linear, padding 250ms linear, box-shadow 250ms linear, opacity 250ms linear",
+        "background": "var(--background)"
     }
 })
 function load() {
@@ -485,7 +502,10 @@ function load() {
     );
     const $header_content_right = createElement("div");
     $header.append($header_content_left, $header_content_right);
-    $app.append($header);
+
+    const $main = createElement("main");
+
+    $app.append($header, $main);
 
     $dom_body.appendBefore($app);
 }
