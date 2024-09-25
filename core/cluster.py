@@ -42,7 +42,7 @@ class StorageManager:
 
         self.check_available.acquire()
 
-        self.check_type_file = "size"
+        self.check_type_file = config.const.check_type
         self.cache_filelist: defaultdict[storages.iStorage, defaultdict[str, storages.File]] = defaultdict(defaultdict) # type: ignore
 
     def init(self):

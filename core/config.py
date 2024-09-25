@@ -18,6 +18,7 @@ defaults = {
     "advnaced.ssl_cert": "",
     "advanced.ssl_key": "",
     "advanced.check_sign": True,
+    "advanced.check_type": "size",
     "web": {
         "port": -1,
         "public_port": 6543
@@ -132,5 +133,9 @@ class Const:
     @property
     def check_sign(self):
         return Config.get("advanced.check_sign", True)
+    
+    @property
+    def check_type(self):
+        return Config.get("advanced.check_type", "size")
     
 const = Const()
