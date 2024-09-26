@@ -373,7 +373,6 @@ class FileListManager:
                     r = resp
                 self.report(file, e, r)
                 continue
-            pbar.update_success()
 
     def report(self, file: File, error: Exception, resp: Optional[aiohttp.ClientResponse] = None):
         msg = error.args
