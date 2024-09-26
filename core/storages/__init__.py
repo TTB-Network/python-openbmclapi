@@ -331,7 +331,7 @@ class AlistStorage(iStorage): # TODO: 完成 alist 存储
                             logger.terror("storage.error.alist", status=result.code, message=result.message)
                         else:
                             self.cache.set(f"listfile_{root}", result, 30)
-                for r in ((result.data or []).get("content", None) or []):
+                for r in ((result.data or {}).get("content", None) or []):
                     file = File(
                         r["name"],
                         r["size"],
