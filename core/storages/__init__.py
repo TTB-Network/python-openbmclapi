@@ -240,6 +240,7 @@ class AlistStorage(iStorage): # TODO: 完成 alist 存储
                     )
                     if result.code != 200:
                         logger.terror("storage.error.alist", status=result.code, message=result.message)
+                        logger.debug(result)
                     else:
                         self.cache.set(hash, result, 30)
                     return result
@@ -330,7 +331,7 @@ class AlistStorage(iStorage): # TODO: 完成 alist 存储
                             logger.terror("storage.error.alist", status=result.code, message=result.message)
                         else:
                             self.cache.set(f"listfile_{root}", result, 30)
-                for r in result.data["content"]:
+                for r in result.data["content"] or []:
                     file = File(
                         r["name"],
                         r["size"],
