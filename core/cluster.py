@@ -347,6 +347,7 @@ class FileListManager:
                 for session in sessions:
                     await session.close()
                 self.failed_hash.clear()
+        scheduler.run_later(self.sync, 600)
 
     async def _download(self, session: aiohttp.ClientSession, file_queues: asyncio.Queue[File], pbar: DownloadStatistics):
         while not file_queues.empty():
