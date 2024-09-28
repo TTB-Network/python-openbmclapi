@@ -165,8 +165,17 @@ class StorageManager:
                 }
             ) as session:
                 async with session.get(
-                    f"/openbmclapi/download/{hash}"
+                    f"/openbmclapi/download/{hash}",
+                    params={
+                        "noopen": str(1)
+                    }
                 ) as resp:
+                    # check hash, if hash is not mismatch.
+                    body = await resp.content.read()
+                    utils.raise_service_error(body)
+                    got_hash = utils.get_hash_hexdigest(hash, body)
+                    if got_hash != hash:
+                        logger.terror("cluster.error.download_hash", got_hash=got_hash, hash=hash, content=body.decode("utf-8", "ignore")[:64])     
                     file = MemoryStorageFile(
                         hash,
                         resp.content_length or -1,
