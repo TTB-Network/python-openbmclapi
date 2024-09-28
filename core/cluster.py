@@ -254,6 +254,7 @@ class FileListManager:
         self.cluster_last_modified: defaultdict['Cluster', int] = defaultdict(lambda: 0)
         self.sync_sem: utils.SemaphoreLock = utils.SemaphoreLock(256)
         self.download_statistics = DownloadStatistics()
+        self.failed_hash: defaultdict[str, int] = defaultdict(lambda: 0)
 
     async def _get_filelist(self, cluster: 'Cluster'):
         async with aiohttp.ClientSession(
@@ -322,7 +323,7 @@ class FileListManager:
         file_queues = asyncio.Queue()
         for file in filelist:
             await file_queues.put(file)
-        sessions = []
+        sessions: list[aiohttp.ClientSession] = []
         tasks = []
         with DownloadStatistics(
             total=total,
@@ -345,8 +346,7 @@ class FileListManager:
             finally:
                 for session in sessions:
                     await session.close()
-
-    
+                self.failed_hash.clear()
 
     async def _download(self, session: aiohttp.ClientSession, file_queues: asyncio.Queue[File], pbar: DownloadStatistics):
         while not file_queues.empty():
@@ -416,7 +416,6 @@ class FileListManager:
         hash = msg[0] if len(msg) > 0 and type == "file" else None
         logger.debug(error)
         logger.terror(f"clusters.error.downloading", type=type, file_hash=file.hash, file_size=units.format_bytes(file.size), host=host, file_path=file.path, hash=hash, responses="\n".join(("", *responses)))
-
 
     async def _get_configuration(self, cluster: 'Cluster'):
         async with aiohttp.ClientSession(
