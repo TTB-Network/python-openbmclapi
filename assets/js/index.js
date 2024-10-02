@@ -285,8 +285,7 @@ class Configuration {
         // use local storage
     }
     get(key, _def) {
-        console.log(localStorage.getItem(key))
-        var item = JSON.parse(localStorage.getItem(key)) || {
+        var item = localStorage.getItem(key) != null ? JSON.parse(localStorage.getItem(key)) : {
             value: _def
         };
         return item.value;
