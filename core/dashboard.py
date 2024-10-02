@@ -128,14 +128,14 @@ room = ClientRoom()
 counter = Counter()
 process = psutil.Process(os.getpid())
 
-@route.get('/dashboard/')
+@route.get('/dashboard')
 @route.get("/dashboard/{tail:.*}")
 async def _(request: web.Request):
     return web.FileResponse("./assets/index.html")
 
 @route.get('/')
 async def _(request: web.Request):
-    return web.HTTPFound('/dashboard/')
+    return web.FileResponse("./assets/index.html")
 
 @route.get("/favicon.ico")
 async def _(request: web.Request):

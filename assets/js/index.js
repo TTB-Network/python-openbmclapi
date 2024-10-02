@@ -379,6 +379,53 @@ class Style {
         this._themes[name] = style;
     }
 }
+class RouteEvent {
+    constructor(instance, before_route, current_route) {
+        this.instance = instance;
+        this.current_route = current_route
+        this.before_route = before_route
+    }
+}
+class Router {
+    constructor(route_prefix = "/") {
+        this._route_prefix = route_prefix.replace(/\/+$/, "")
+        this._before_handler = null
+        this._after_handler = null
+        this._current_path = this._get_current_path()
+        this._handled = null
+        window.addEventListener("popstate", () => {
+            this._popstate_handler()
+        })
+        this._popstate_handler()
+    }
+    _get_current_path() {
+        return window.location.pathname.replace(this._route_prefix, "") || "/"
+    }
+    _popstate_handler() {
+        const new_path = this._get_current_path()
+        const old_path = this._current_path
+        if (this._handled == new_path) return;
+        this._current_path = new_path
+        try {
+            this._before_handler(new RouteEvent(this, old_path, new_path))
+        } catch (e) {
+            console.log(e)
+        }
+        try {
+            this._after_handler(new RouteEvent(this, old_path, new_path))
+        } catch (e) {
+            console.log(e)
+        }
+    }
+    before_handler(handler) {
+        this._before_handler = handler
+        return this
+    }
+    after_handler(handler) {
+        this._after_handler = handler
+        return this
+    }
+}
 class SVGContainers {
     static _parse(element) {
         return new Element(document.createRange().createContextualFragment(element).childNodes[0]);
@@ -393,6 +440,39 @@ class SVGContainers {
         return SVGContainers._parse('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M6.995 12c0 2.761 2.246 5.007 5.007 5.007s5.007-2.246 5.007-5.007-2.246-5.007-5.007-5.007S6.995 9.239 6.995 12zM11 19h2v3h-2zm0-17h2v3h-2zm-9 9h3v2H2zm17 0h3v2h-3zM5.637 19.778l-1.414-1.414 2.121-2.121 1.414 1.414zM16.242 6.344l2.122-2.122 1.414 1.414-2.122 2.122zM6.344 7.759 4.223 5.637l1.415-1.414 2.12 2.122zm13.434 10.605-1.414 1.414-2.122-2.122 1.414-1.414z"></path></svg>')
     }
 }
+class SideMenu extends Element {
+    constructor() {
+        super("aside")
+        this._menus = {}
+        //
+    }
+    // split "." for submenu
+    // the submenu doesn't have a icon
+    // but the parent must contain and then can add submenu
+    add(name, icon, handler) {
+        const [main, submenu] = name.split(".", 1)
+        if (!this._menus[main]) {
+            this._menus[main] = {
+                icon: null,
+                handler: handler,
+                submenu: {}
+            }
+        }
+        if (submenu) {
+            this._menus[main].submenu[submenu] = {
+                handler: handler
+            }
+        } else {
+            this._menus[main].handler = handler
+        }
+    }
+    renderButtons() {
+        
+    }
+    clear() {
+
+    }
+}
 function createElement(object) {
     return new Element(object);
 }
@@ -401,6 +481,7 @@ const $ElementManager = new ElementManager();
 const $style = new Style();
 const $i18n = new I18NManager();
 const $socket = new Socket(window.location.origin + "/api");
+const $router = new Router("/dashboard");
 $style.setTheme("light", {
     "main-color": "#ffffff",
     "color": "#000000",
@@ -503,8 +584,11 @@ function load() {
     $header.append($header_content_left, $header_content_right);
 
     const $main = createElement("main");
+    const $aside = new SideMenu()
 
-    $app.append($header, $main);
+    $app.append($header, $main.append(
+        $aside
+    ));
 
     $dom_body.appendBefore($app);
 }
@@ -516,7 +600,7 @@ window.addEventListener("DOMContentLoaded", () => {
             element.classes("hidden");
             setTimeout(() => {
                 element.remove();
-            }, 1500)
+            }, 1000)
         })
     })
 })
