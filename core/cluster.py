@@ -56,7 +56,7 @@ class StorageManager:
                     CHECK_FILE_CONTENT.encode("utf-8"),
                     CHECK_FILE.mtime
                 )
-            if await storage.get_size(CHECK_FILE_MD5) == len(CHECK_FILE_CONTENT):
+            if await storage.get_size(CHECK_FILE_MD5) == len(CHECK_FILE_CONTENT) and storage not in self.available_storages:
                 self.available_storages.append(storage)
         if len(self.available_storages) > 0:
             self.check_available.release()
