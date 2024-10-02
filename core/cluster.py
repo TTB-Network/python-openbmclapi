@@ -890,7 +890,7 @@ async def _(request: aweb.Request):
         if not check_sign(f"/measure/{size}", s, e):
             return aweb.Response(status=403)
         cluster_id = get_cluster_id_from_sign(f"/measure/{size}", s, e)
-        """response = aweb.StreamResponse(
+        response = aweb.StreamResponse(
             status=200,
             reason="OK",
             headers={
@@ -902,10 +902,10 @@ async def _(request: aweb.Request):
         for _ in range(size):
             await response.write(b'\x00' * 1024 * 1024)
         await response.write_eof()
-        return response"""
-        return aweb.HTTPFound(
+        return response
+        """return aweb.HTTPFound(
             f"https://speedtest1.online.sh.cn:8080/download?size={size * 1024 * 1024}&r=0.7129844570865569"
-        )
+        )"""
     except:
         return aweb.Response(status=400)
     
