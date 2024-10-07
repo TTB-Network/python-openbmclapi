@@ -381,7 +381,7 @@ class FileListManager:
                             pbar.update(len(chunk))
                 # check hash
                 hash = utils.get_hash_hexdigest(file.hash, content.getvalue())
-                if hash == file.hash:
+                if hash != file.hash:
                     raise ValueError(hash)
                 if await self.clusters.storage_manager.write_file(file, content.getvalue()):
                     pbar.update_success()
