@@ -202,6 +202,22 @@ class OpenBMCLAPIConfiguration:
     source: str
     concurrency: int
 
+@dataclass
+class FileDownloadInfo:
+    urls: set[tuple['URLResponse', ...]]
+    failed: int = 0
+
+@dataclass
+class URLResponse:
+    url: str
+    status: int
+
+    def __str__(self):
+        return f"{self.status} | {self.url}"
+    
+    def __hash__(self):
+        return hash((self.url, self.status))
+
 class DownloadStatistics:
     def __init__(self, total: int = 0, size: int = 0):
         self.total_size = size
@@ -254,7 +270,8 @@ class FileListManager:
         self.cluster_last_modified: defaultdict['Cluster', int] = defaultdict(lambda: 0)
         self.sync_sem: utils.SemaphoreLock = utils.SemaphoreLock(256)
         self.download_statistics = DownloadStatistics()
-        self.failed_hash: defaultdict[str, int] = defaultdict(lambda: 0)
+        self.failed_hashs: asyncio.Queue[File] = asyncio.Queue()
+        self.failed_hash_urls: defaultdict[str, FileDownloadInfo] = defaultdict(lambda: FileDownloadInfo(set()))
 
     async def _get_filelist(self, cluster: 'Cluster'):
         async with aiohttp.ClientSession(
@@ -346,7 +363,6 @@ class FileListManager:
             finally:
                 for session in sessions:
                     await session.close()
-                self.failed_hash.clear()
         scheduler.run_later(self.sync, 600)
 
     async def _download(self, session: aiohttp.ClientSession, file_queues: asyncio.Queue[File], pbar: DownloadStatistics):
@@ -365,7 +381,7 @@ class FileListManager:
                             pbar.update(len(chunk))
                 # check hash
                 hash = utils.get_hash_hexdigest(file.hash, content.getvalue())
-                if hash != file.hash:
+                if hash == file.hash:
                     raise ValueError(hash)
                 if await self.clusters.storage_manager.write_file(file, content.getvalue()):
                     pbar.update_success()
@@ -381,10 +397,10 @@ class FileListManager:
                 r = None
                 if "resp" in locals():
                     r = resp
-                self.report(file, e, r)
+                await self.report(file, e, r)
                 continue
 
-    def report(self, file: File, error: Exception, resp: Optional[aiohttp.ClientResponse] = None):
+    async def report(self, file: File, error: Exception, resp: Optional[aiohttp.ClientResponse] = None):
         msg = error.args
         type = "unknown"
         if isinstance(error, ValueError):
@@ -405,18 +421,45 @@ class FileListManager:
             OSError
         )):
             type = "network"
-        else:
+        elif isinstance(error, FileNotFoundError):
             type = "file"
-        responses = []
+        else:
+            type = "unknown"
+            logger.error(repr(error), error)
+        responses: list[URLResponse] = []
         host = None
         if resp is not None:
             for r in resp.history:
-                responses.append(f"{r.status} | {r.url}")
-            responses.append(f"{resp.status} | {resp.url}")
+                responses.append(URLResponse(str(r.real_url), r.status))
+            responses.append(URLResponse(str(resp.real_url), resp.status))
             host = resp.host
         hash = msg[0] if len(msg) > 0 and type == "file" else None
-        logger.debug(error)
-        logger.terror(f"clusters.error.downloading", type=type, file_hash=file.hash, file_size=units.format_bytes(file.size), host=host, file_path=file.path, hash=hash, responses="\n".join(("", *responses)))
+        logger.terror(f"clusters.error.downloading", type=type, file_hash=file.hash, file_size=units.format_bytes(file.size), host=host, file_path=file.path, hash=hash, responses="\n".join(("", *(str(r) for r in responses))))
+        self.failed_hash_urls[file.hash].failed += 1
+        self.failed_hash_urls[file.hash].urls.add(tuple(responses))
+        if self.failed_hash_urls[file.hash].failed < 10:
+            return
+        logger.terror("cluster.error.download.report", file_path=file.path, file_hash=file.hash, file_size=units.format_bytes(file.size), failed=self.failed_hash_urls[file.hash].failed, urls="\n----------------------------------------------------------------\n".join(("\n".join(("", *(str(r) for r in responses))) for responses in self.failed_hash_urls[file.hash].urls)))
+        await self._report(self.failed_hash_urls[file.hash].urls)
+        self.failed_hash_urls[file.hash].failed = 0
+        self.failed_hash_urls[file.hash].urls = set()
+    async def _report(self, urls: set[tuple[URLResponse, ...]]):
+        async def _r(urls: tuple[URLResponse, ...]):
+            async with session.post(
+                "/openbmclapi/report", json={
+                    "urls": [url.url for url in urls],
+                    "error": "Network error",
+                }
+            ) as resp:
+                utils.raise_service_error(await resp.read())
+        async with aiohttp.ClientSession(
+            config.const.base_url,
+            headers={
+                "User-Agent": USER_AGENT,
+            }
+        ) as session:
+            await asyncio.gather(*[_r(urls) for urls in urls])
+
 
     async def _get_configuration(self, cluster: 'Cluster'):
         async with aiohttp.ClientSession(
@@ -524,7 +567,6 @@ class Cluster:
         self.socket_io = ClusterSocketIO(self)
         self.want_enable: bool = False
         self.enabled = False
-        self.banned = False
         self.enable_count: int = 0
         self.keepalive_task: Optional[int] = None
         self.delay_enable_task: Optional[int] = None
@@ -561,7 +603,7 @@ class Cluster:
                 signature = signature.hexdigest()
             async with session.post(
                 "/openbmclapi-agent/token",
-                data = {
+                json = {
                     "clusterId": self.id,
                     "challenge": challenge,
                     "signature": signature,
@@ -594,7 +636,7 @@ class Cluster:
     async def enable(self):
         cert = await clusters.get_certificate()
         scheduler.cancel(self.delay_enable_task)
-        if self.want_enable or self.banned:
+        if self.want_enable:
             return
         self.want_enable = True
         self.enable_count += 1
@@ -614,8 +656,6 @@ class Cluster:
                 }
             , 120)
         except:
-            logger.terror("cluster.error.cluster.banned", cluster=self.id)
-            self.banned = True
             return
         finally:
             self.want_enable = False
