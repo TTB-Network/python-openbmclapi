@@ -40,29 +40,17 @@ async def unload():
     logger.success('Background scheduler unloaded')
 
 
-def wrapper(func, args, kwargs):
-    def sync_wrapper():
-        return func(*args, **kwargs)
-
-    async def async_wrapper():
-        return await func(*args, **kwargs)
-    
-    if asyncio.iscoroutinefunction(func):
-        return async_wrapper
-    return sync_wrapper
-
-
 def run_later(func: Callable, delay: float, args = (), kwargs = {}) -> int:
     global _sync_id, _async_id
     if asyncio.iscoroutinefunction(func):
         cur_id = -(_async_id := _async_id + 1)
         tasks[cur_id] = async_background.add_job(
-            wrapper(func, args, kwargs), 'date', run_date=units.format_datetime_from_timestamp(time.time() + delay), max_instances=MAX_INSTANCES
+            func=func, args=args, kwargs=kwargs, trigger='date', run_date=units.format_datetime_from_timestamp(time.time() + delay), max_instances=MAX_INSTANCES
         )
     else:
         cur_id = (_sync_id := _sync_id + 1)
         tasks[cur_id] = background.add_job(
-            wrapper(func, args, kwargs), 'date', run_date=units.format_datetime_from_timestamp(time.time() + delay), max_instances=MAX_INSTANCES
+            func=func, args=args, kwargs=kwargs, trigger='date', run_date=units.format_datetime_from_timestamp(time.time() + delay), max_instances=MAX_INSTANCES
         )
     return cur_id
 
@@ -72,12 +60,12 @@ def run_repeat_later(func: Callable, delay: float, interval: float, args = (), k
     if asyncio.iscoroutinefunction(func):
         cur_id = -(_async_id := _async_id + 1)
         tasks[cur_id] = async_background.add_job(
-            wrapper(func, args, kwargs), 'interval', seconds=interval, start_date=units.format_datetime_from_timestamp(time.time() + delay), max_instances=MAX_INSTANCES
+            func=func, args=args, kwargs=kwargs, trigger='interval', seconds=interval, start_date=units.format_datetime_from_timestamp(time.time() + delay), max_instances=MAX_INSTANCES
         )
     else:
         cur_id = (_sync_id := _sync_id + 1)
         tasks[cur_id] = background.add_job(
-            wrapper(func, args, kwargs), 'interval', seconds=interval, start_date=units.format_datetime_from_timestamp(time.time() + delay), max_instances=MAX_INSTANCES
+            func=func, args=args, kwargs=kwargs, trigger='interval', seconds=interval, start_date=units.format_datetime_from_timestamp(time.time() + delay), max_instances=MAX_INSTANCES
         )
     return cur_id
 
