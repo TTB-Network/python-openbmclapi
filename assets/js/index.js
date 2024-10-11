@@ -444,6 +444,7 @@ class SideMenu extends Element {
     constructor() {
         super("aside")
         this._menus = {}
+        this._menuButtons = {}
         //
     }
     // split "." for submenu
@@ -467,7 +468,8 @@ class SideMenu extends Element {
         }
     }
     renderButtons() {
-        
+        const buttons = [];
+        foreach (k in this._menus)
     }
     clear() {
 
@@ -554,6 +556,34 @@ $style.addAll({
         "opacity": "1",
         "transition": "min-width 250ms linear, width 250ms linear, padding 250ms linear, box-shadow 250ms linear, opacity 250ms linear",
         "background": "var(--background)"
+    },
+    "aside .menu": {
+        "cursor": "pointer",
+        "user-select": "none",
+        "vertical-align": "middle",
+        "appearance": "none",
+        "color": "inherit",
+        "display": "flex",
+        "-webkit-box-flex": "1",
+        "-webkit-box-pack": "start",
+        "justify-content": "space-between",
+        "-webkit-box-align": "center",
+        "align-items": "center",
+        "position": "relative",
+        "min-width": "0px",
+        "box-sizing": "border-box",
+        "text-align": "left",
+        "height": "46px",
+        "outline": "0px",
+        "border-width": "0px",
+        "border-style": "initial",
+        "border-color": "initial",
+        "border-image": "initial",
+        "margin": "0px 0px 4px",
+        "text-decoration": "none",
+        "padding": "8px 16px",
+        "transition": "background-color 150ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "border-radius": "4px",
     }
 })
 function load() {
