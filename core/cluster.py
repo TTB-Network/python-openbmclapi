@@ -336,6 +336,8 @@ class FileListManager:
 
         await self.download(missing)
 
+        scheduler.run_later(self.sync, 600)
+
     async def download(self, filelist: set[File]):
         total = len(filelist)
         size = sum(f.size for f in filelist)
@@ -365,7 +367,6 @@ class FileListManager:
             finally:
                 for session in sessions:
                     await session.close()
-        scheduler.run_later(self.sync, 600)
 
     async def _download(self, session: aiohttp.ClientSession, file_queues: asyncio.Queue[File], pbar: DownloadStatistics):
         while not file_queues.empty():
@@ -563,8 +564,6 @@ class Cluster:
         self.id = id
         self.secret = secret
         self.token: Optional[Token] = None
-        self.fetch_time: float = 0
-        self.token_ttl: float = 0
         self.token_scheduler: Optional[int] = None
         self.socket_io = ClusterSocketIO(self)
         self.want_enable: bool = False
@@ -578,7 +577,7 @@ class Cluster:
         return f"Cluster(id={self.id})"
 
     async def get_token(self):
-        if self.token is None or time.time() - self.fetch_time > self.token_ttl - 300:
+        if self.token is None or time.time() - self.token.last > self.token.ttl - 300:
             await self._fetch_token()
 
         if self.token is None or self.token.last + self.token.ttl < time.time():
@@ -588,7 +587,10 @@ class Cluster:
 
     async def _fetch_token(self):
         async with aiohttp.ClientSession(
-            config.const.base_url
+            config.const.base_url,
+            headers={
+                "User-Agent": USER_AGENT
+            }
         ) as session:
             logger.tdebug("cluster.debug.fetch_token", cluster=self.id)
             async with session.get(
@@ -737,7 +739,8 @@ class ClusterSocketIO:
         self.cluster = cluster
         self.sio = socketio.AsyncClient(
             logger=True,
-            handle_sigint=False
+            handle_sigint=False,
+            engineio_logger=logger
         )
     
     async def connect(self):
