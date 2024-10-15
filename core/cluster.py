@@ -16,6 +16,9 @@ from . import web
 from . import utils, logger, config, scheduler, units, storages, i18n
 from .storages import File as SFile
 import socketio
+"""import cryptography.x509 as x509
+from cryptography.hazmat.backends import default_backend
+from cryptography.x509.oid import NameOID"""
 
 @dataclass
 class Token:
@@ -521,15 +524,26 @@ class ClusterManager:
     def get_cluster_by_id(self, id: Optional[str] = None) -> Optional['Cluster']:
         return self.cluster_id_tables.get(id or "", None)
 
+    def byoc(self):
+        if config.const.ssl_cert and config.const.ssl_key:
+            main = ClusterCertificate(
+                config.const.host,
+                Path(config.const.ssl_cert),
+                Path(config.const.ssl_key)
+            )
+            if main.is_valid:
+                return True
+        return False
 
     async def get_certificate(self):
-        main = ClusterCertificate(
-            config.const.host,
-            Path(config.const.ssl_cert),
-            Path(config.const.ssl_key)
-        )
-        if main.is_valid:
-            return main
+        if config.const.ssl_cert and config.const.ssl_key:
+            main = ClusterCertificate(
+                config.const.host,
+                Path(config.const.ssl_cert),
+                Path(config.const.ssl_key)
+            )
+            if main.is_valid:
+                return main
         await asyncio.gather(*[cluster.request_cert() for cluster in self.clusters])
         return [cluster.certificate for cluster in self.clusters][0]
     
@@ -627,6 +641,7 @@ class Cluster:
         if not ssl_dir.exists():
             ssl_dir.mkdir(parents=True, exist_ok=True)
         cert_file, key_file = ssl_dir / f"{self.id}_cert.pem", ssl_dir / f"{self.id}_key.pem"
+        logger.tinfo("cluster.info.request_certing", cluster=self.id)
         result = await self.socket_io.emit(
             "request-cert",
         )
@@ -648,9 +663,9 @@ class Cluster:
         try:
             result = await self.socket_io.emit(
                 "enable", {
-                    "host": cert.host,
+                    "host": config.const.host,
                     "port": config.const.public_port,
-                    "byoc": True,
+                    "byoc": clusters.byoc(),
                     "version": API_VERSION,
                     "noFastEnable": True,
                     "flavor": {
@@ -738,9 +753,8 @@ class ClusterSocketIO:
     def __init__(self, cluster: Cluster) -> None:
         self.cluster = cluster
         self.sio = socketio.AsyncClient(
-            logger=True,
+            logger=config.const.debug,
             handle_sigint=False,
-            engineio_logger=logger
         )
     
     async def connect(self):
@@ -819,6 +833,20 @@ class ClusterCertificate:
     @property
     def is_valid(self):
         return self.host and self.cert.exists() and self.key.exists()
+    
+    """@property
+    def get_domains(self):
+        try:
+            cert = x509.load_pem_x509_certificate(self.cert.read_bytes(), default_backend())
+            domains = []
+            for subject in cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME):
+                if isinstance(subject.value, str):
+                    domains.append(subject.value)
+                elif isinstance(subject.value, bytes):
+                    domains.append(subject.value.decode("utf-8"))
+            return domains
+        except:
+            return []"""
 
 @dataclass
 class SocketIOEmitResult:
