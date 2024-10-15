@@ -16,6 +16,7 @@ from . import web
 from . import utils, logger, config, scheduler, units, storages, i18n
 from .storages import File as SFile
 import socketio
+import urllib.parse as urlparse
 """import cryptography.x509 as x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.x509.oid import NameOID"""
@@ -1009,18 +1010,18 @@ async def _(request: aweb.Request):
         cluster.hit(size)
         # add database
         # stats
+        name = query.get("name")
+        if name is not None:
+            name = urlparse.quote(name)
+        headers = {}
+        if name:
+            headers["Content-Disposition"] = f"attachment; filename={name}"
         if isinstance(file, LocalStorageFile):
-            headers = {}
-            if query.get("name", ""):
-                headers["Content-Disposition"] = f"attachment; filename={query.get('name')}"
             resp = aweb.FileResponse(
                 file.path,
                 headers=headers,
             )
         elif isinstance(file, MemoryStorageFile):
-            headers = {}
-            if query.get("name", ""):
-                headers["Content-Disposition"] = f"attachment; filename={query.get('name')}"
             resp = aweb.Response(
                 body=file.data
             )
