@@ -1008,10 +1008,17 @@ async def _(request: aweb.Request):
         # add database
         # stats
         if isinstance(file, LocalStorageFile):
+            headers = {}
+            if query.get("name", ""):
+                headers["Content-Disposition"] = f"attachment; filename={query.get('name')}"
             resp = aweb.FileResponse(
-                file.path
+                file.path,
+                headers=headers,
             )
         elif isinstance(file, MemoryStorageFile):
+            headers = {}
+            if query.get("name", ""):
+                headers["Content-Disposition"] = f"attachment; filename={query.get('name')}"
             resp = aweb.Response(
                 body=file.data
             )
