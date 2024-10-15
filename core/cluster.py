@@ -359,6 +359,7 @@ class FileListManager:
                         config.const.base_url,
                         headers={
                             "User-Agent": USER_AGENT,
+                            "Authorization": f"Bearer {await clusters.clusters[0].get_token()}"
                         }
                     )
                     sessions.append(session)
@@ -462,6 +463,7 @@ class FileListManager:
             config.const.base_url,
             headers={
                 "User-Agent": USER_AGENT,
+                "Authorization": f"Bearer {await clusters.clusters[0].get_token()}"
             }
         ) as session:
             await asyncio.gather(*[_r(urls) for urls in urls])
