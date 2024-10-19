@@ -278,6 +278,7 @@ class FileListManager:
         self.download_statistics = DownloadStatistics()
         self.failed_hashs: asyncio.Queue[File] = asyncio.Queue()
         self.failed_hash_urls: defaultdict[str, FileDownloadInfo] = defaultdict(lambda: FileDownloadInfo(set()))
+        self.task = None
 
     async def _get_filelist(self, cluster: 'Cluster'):
         async with aiohttp.ClientSession(
@@ -311,7 +312,8 @@ class FileListManager:
                     for _ in range(stream.read_long())
                 ]
                 if filelist:
-                    self.cluster_last_modified[cluster] = max(filelist, key=lambda f: f.mtime).mtime
+                    mtime = max(filelist, key=lambda f: f.mtime).mtime
+                    self.cluster_last_modified[cluster] = max(mtime, self.cluster_last_modified[cluster])
                 return filelist
 
     async def fetch_filelist(self) -> set[File]:
@@ -320,6 +322,7 @@ class FileListManager:
         return result_filelist
 
     async def sync(self):
+        scheduler.cancel(self.task)
         result = await self.fetch_filelist()
 
         missing = await self.clusters.storage_manager.get_missing_files(result)
@@ -340,7 +343,7 @@ class FileListManager:
 
         await self.download(missing)
 
-        scheduler.run_later(self.sync, 600)
+        self.task = scheduler.run_repeat_later(self.sync, 600, 600)
 
     async def download(self, filelist: set[File]):
         total = len(filelist)
