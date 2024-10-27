@@ -18,6 +18,7 @@ from .storages import File as SFile
 import socketio
 import urllib.parse as urlparse
 from . import database as db
+import core
 
 @dataclass
 class Token:
@@ -293,7 +294,6 @@ class FileListManager:
                     "lastModified": str(int(self.cluster_last_modified[cluster]))
                 }
             ) as resp:
-                print(resp.real_url)
                 body = await resp.read()
                 if utils.is_service_error(body):
                     utils.raise_service_error(body)
@@ -955,6 +955,7 @@ def convert_file_to_storage_file(file: File) -> SFile:
     )
 
 async def init():
+    logger.tinfo("cluster.info.init", openbmclapi_version=API_VERSION, version=core.VERSION)
     # read clusters from config
     config_clusters = config.Config.get("clusters")
     for ccluster in config_clusters:

@@ -39,5 +39,7 @@
     "web.traceback.check_server": "当前 [${port}] 端口没有通过检查，原因是：",
     "cluster.error.download_hash": "通过主控下载文件出错，本来的哈希是 [${hash}]，获取到的哈希是 [${got_hash}]，内容为 [${content}]",
     "cluster.error.download.report": "上报 [${file_path} ${file_hash}(${file_size})] 错误次数 [${failed}] 地址是：${urls}",
-    "cluster.info.request_certing": "节点 [${cluster}] 正在请求证书……"
+    "cluster.info.request_certing": "节点 [${cluster}] 正在请求证书……",
+    "cluster.info.init": "当前 OpenBMCLAPI 版本为 [${openbmclapi_version}] Python OpenBMCLAPI 版本为 [${version}]",
+    "cluster.success.no_missing_files": "当前暂无更新的文件"
 }

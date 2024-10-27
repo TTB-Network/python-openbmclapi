@@ -1,4 +1,5 @@
 import asyncio
+import os
 import time
 from .logger import logger
 from . import utils
@@ -30,6 +31,10 @@ async def main():
         await web.unload()
         await scheduler.unload()
 
+def read_version():
+    with open("VERSION", "r") as f:
+        return f.read().strip()
+
 def init():
     atexit.register(main_exit)
     try:
@@ -42,3 +47,5 @@ def init():
 
 def main_exit():
     _WAITLOCK.release()
+
+VERSION = read_version()
