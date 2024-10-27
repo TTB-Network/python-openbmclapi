@@ -7,9 +7,6 @@ defaults = {
     "advanced.api_version": "1.11.0",
     "advanced.lang": "zh_cn",
     "advanced.debug": False,
-    "advanced.retry": 5,
-    "advanced.delay": 15,
-    "advanced.keep_alive": 60,
     "advanced.sync_interval": 60,
     "advanced.base_url": "https://openbmclapi.bangbang93.com",
     "advanced.threads": 128,
@@ -137,5 +134,9 @@ class Const:
     @property
     def check_type(self):
         return Config.get("advanced.check_type", "size")
+    
+    @property
+    def sync_interval(self):
+        return Config.get("advanced.sync_interval", 600)
     
 const = Const()

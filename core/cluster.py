@@ -17,9 +17,7 @@ from . import utils, logger, config, scheduler, units, storages, i18n
 from .storages import File as SFile
 import socketio
 import urllib.parse as urlparse
-"""import cryptography.x509 as x509
-from cryptography.hazmat.backends import default_backend
-from cryptography.x509.oid import NameOID"""
+from . import database as db
 
 @dataclass
 class Token:
@@ -150,6 +148,7 @@ class StorageManager:
                     hash,
                     await storage.get_size(hash),
                     await storage.get_mtime(hash),
+                    storage,
                     Path(storage.get_path(hash))
                 )
             elif isinstance(storage, storages.AlistStorage):
@@ -157,6 +156,7 @@ class StorageManager:
                     hash,
                     await storage.get_size(hash),
                     await storage.get_mtime(hash),
+                    storage,
                     await storage.get_url(hash)
                 )
                 ...
@@ -201,7 +201,6 @@ class StorageManager:
             if c_storage is not None:
                 return c_storage
             return self.get_width_storage(c_storage=c_storage or current_storage)
-
 
 @dataclass
 class OpenBMCLAPIConfiguration:
@@ -294,6 +293,7 @@ class FileListManager:
                     "lastModified": str(int(self.cluster_last_modified[cluster]))
                 }
             ) as resp:
+                print(resp.real_url)
                 body = await resp.read()
                 if utils.is_service_error(body):
                     utils.raise_service_error(body)
@@ -347,7 +347,7 @@ class FileListManager:
 
     def run_task(self):
         scheduler.cancel(self.task)
-        self.task = scheduler.run_later(self.sync, 600)
+        self.task = scheduler.run_later(self.sync, config.const.sync_interval)
 
     async def download(self, filelist: set[File]):
         total = len(filelist)
@@ -595,7 +595,8 @@ class Cluster:
         self.enable_count: int = 0
         self.keepalive_task: Optional[int] = None
         self.delay_enable_task: Optional[int] = None
-        self.counter = ClusterCounter()
+        self.counter: defaultdict[storages.iStorage, ClusterCounter] = defaultdict(ClusterCounter)
+        self.no_storage_counter = ClusterCounter()
 
     def __repr__(self):
         return f"Cluster(id={self.id})"
@@ -698,28 +699,66 @@ class Cluster:
         self.keepalive_task = scheduler.run_repeat_later(self.keepalive, 1, interval=60)
         logger.tsuccess("cluster.success.enabled", cluster=self.id)
 
-    def hit(self, bytes: int):
-        self.counter.hits += 1
-        self.counter.bytes += bytes
-
+    def hit(self, storage: Optional[storages.iStorage], bytes: int):
+        if storage is None:
+            self.no_storage_counter.hits += 1
+            self.no_storage_counter.bytes += bytes
+            return
+        self.counter[storage].hits += 1
+        self.counter[storage].bytes += bytes
 
     async def keepalive(self):
-        commit_counter = self.counter.clone()
+        commit_no_storage_counter = self.no_storage_counter.clone()
+        commit_counter = {
+            storage: counter.clone() for storage, counter in self.counter.items()
+        }
+        total_counter = ClusterCounter()
+        for counter in (
+            commit_no_storage_counter,
+            *commit_counter.values()
+        ):
+            total_counter.hits += counter.hits
+            total_counter.bytes += counter.bytes
         result = await self.socket_io.emit(
             "keep-alive", {
                 "time": int(time.time() * 1000),
-                **asdict(commit_counter)
+                **asdict(total_counter)
             }
         )
         if result.err or not result.ack:
             logger.twarning("cluster.warning.kicked_by_remote")
             await self.disable()
             return
-        self.counter -= commit_counter
+        self.no_storage_counter -= commit_no_storage_counter
+        for storage, counter in commit_counter.items():
+            self.counter[storage] -= counter
         timestamp = utils.parse_isotime_to_timestamp(result.ack)
         ping = (time.time() - timestamp) // 0.0002
-        logger.tsuccess("cluster.success.keepalive", cluster=self.id, hits=units.format_number(commit_counter.hits), bytes=units.format_bytes(commit_counter.bytes), ping=ping)
+        logger.tsuccess("cluster.success.keepalive", cluster=self.id, hits=units.format_number(total_counter.hits), bytes=units.format_bytes(total_counter.bytes), ping=ping)
         
+        storage_data = []
+        for storage, counter in self.counter.items():
+            storage_data.append(
+                db.StorageStatistics(
+                    storage=storage.unique_id,
+                    hits=counter.hits,
+                    bytes=counter.bytes,
+                )
+            )
+        storage_data.append(
+            db.StorageStatistics(
+                None,
+                commit_no_storage_counter.hits,
+                commit_no_storage_counter.bytes
+            )
+        )
+        db.add_statistics(
+            db.Statistics(
+                self.id,
+                storage_data
+            )
+        )
+
     async def disable(self, exit: bool = False):
         scheduler.cancel(self.keepalive_task)
         scheduler.cancel(self.delay_enable_task)
@@ -815,7 +854,7 @@ class ClusterSocketIO:
         if not self.sio.connected:
             await self.connect()
 
-    async def emit(self, event: str, data: Any = {}, timeout: Optional[float] = None) -> 'SocketIOEmitResult':
+    async def emit(self, event: str, data: Any = None, timeout: Optional[float] = None) -> 'SocketIOEmitResult':
         await self._check_connect()
         fut = asyncio.get_event_loop().create_future()
 
@@ -865,27 +904,28 @@ class SocketIOEmitResult:
 
 class StorageFile(metaclass=abc.ABCMeta):
     type: str = "abstract"
-    def __init__(self, hash: str, size: int, mtime: float) -> None:
+    def __init__(self, hash: str, size: int, mtime: float, storage: Optional[storages.iStorage]) -> None:
         self.hash = hash
         self.size = size
         self.mtime = int(mtime * 1000)
+        self.storage = storage
 
 class LocalStorageFile(StorageFile):
     type: str = "local"
-    def __init__(self, hash: str, size: int, mtime: float, path: Path) -> None:
-        super().__init__(hash=hash, size=size, mtime=mtime)
+    def __init__(self, hash: str, size: int, mtime: float, storage: storages.iStorage, path: Path) -> None:
+        super().__init__(hash=hash, size=size, mtime=mtime, storage=storage)
         self.path = path
 
 class URLStorageFile(StorageFile):
     type: str = "url"
-    def __init__(self, hash: str, size: int, mtime: float, url: str) -> None:
-        super().__init__(hash=hash, size=size, mtime=mtime)
+    def __init__(self, hash: str, size: int, mtime: float, storage: storages.iStorage, url: str) -> None:
+        super().__init__(hash=hash, size=size, mtime=mtime, storage=storage)
         self.url = url
 
 class MemoryStorageFile(StorageFile):
     type: str = "memory"
     def __init__(self, hash: str, size: int, mtime: float, data: bytes) -> None:
-        super().__init__(hash=hash, size=size, mtime=mtime)
+        super().__init__(hash=hash, size=size, mtime=mtime, storage=None)
         self.data = data
 
 ROOT = Path(__file__).parent.parent
@@ -902,6 +942,10 @@ CHECK_FILE = File(
 
 )
 
+routes = web.routes
+aweb = web.web
+clusters = ClusterManager()
+
 def convert_file_to_storage_file(file: File) -> SFile:
     return SFile(
         file.path,
@@ -909,7 +953,6 @@ def convert_file_to_storage_file(file: File) -> SFile:
         file.mtime / 1000.0,
         file.hash
     )
-clusters = ClusterManager()
 
 async def init():
     # read clusters from config
@@ -958,10 +1001,6 @@ def get_cluster_id_from_sign(hash: str, s: str, e: str) -> Optional[str]:
         if utils.check_sign(hash, cluster.secret, s, e):
             return cluster.id
     return None
-
-
-routes = web.routes
-aweb = web.web
 
 @routes.get("/measure/{size}")
 async def _(request: aweb.Request):
@@ -1016,7 +1055,7 @@ async def _(request: aweb.Request):
         end = request.http_range.stop or file.size
         size = end - start + 1
 
-        cluster.hit(size)
+        cluster.hit(file.storage, size)
         # add database
         # stats
         name = query.get("name")

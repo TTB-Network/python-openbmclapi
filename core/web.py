@@ -51,7 +51,9 @@ class SNIHelper:
 async def middleware(request: web.Request, handler: Any) -> web.Response:
     global qps
     qps += 1
-    with request.match_info.set_current_app(app):
+    old_app = request.match_info.current_app
+    try:
+        request.match_info.current_app = app
         address = request.remote or ""
         try:
             address = find_origin_ip(request._transport_peername)[0]
@@ -74,7 +76,8 @@ async def middleware(request: web.Request, handler: Any) -> web.Response:
                 status = 206
             end = time.monotonic_ns()
             logger.tdebug("web.debug.request_info", time=units.format_count_time(end - start, 4).rjust(16), host=request.host, address=(address).rjust(16), user_agent=request.headers.get("User-Agent"), real_path=request.raw_path, method=request.method.ljust(9), status=status)
-
+    finally:
+        request.match_info.current_app = old_app
 REQUEST_BUFFER = 4096
 IO_BUFFER = 16384
 FINDING_FILTER = "127.0.0.1"
