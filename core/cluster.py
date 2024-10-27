@@ -329,6 +329,7 @@ class FileListManager:
 
         if not missing:
             logger.tsuccess("cluster.success.no_missing_files")
+            self.run_task()
             return
 
         await self.clusters.storage_manager.available()
@@ -342,8 +343,11 @@ class FileListManager:
         self.sync_sem.set_value(configuration.concurrency)
 
         await self.download(missing)
+        self.run_task()
 
-        self.task = scheduler.run_repeat_later(self.sync, 600, 600)
+    def run_task(self):
+        scheduler.cancel(self.task)
+        self.task = scheduler.run_later(self.sync, 600)
 
     async def download(self, filelist: set[File]):
         total = len(filelist)
@@ -1006,6 +1010,8 @@ async def _(request: aweb.Request):
             return resp
 
         file = await clusters.storage_manager.get_file(hash)
+        if file is None:
+            return resp
         start = request.http_range.start or 0
         end = request.http_range.stop or file.size
         size = end - start + 1

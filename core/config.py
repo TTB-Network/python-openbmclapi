@@ -112,7 +112,7 @@ class Const:
     
     @property
     def public_port(self):
-        return Config.get("web.public_port", 6000)
+        return os.environ.get("web.public_port", Config.get("web.public_port", 6543))
     
     @property
     def ssl_dir(self):

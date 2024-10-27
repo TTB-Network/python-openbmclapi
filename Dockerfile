@@ -10,6 +10,6 @@ WORKDIR /opt/python-openbmclapi
 ADD . .
 
 RUN pip install -r requirements.txt
-ENV cluster.port=6543
+ENV web.public_port=6543
 EXPOSE 6543
 CMD ["python", "./main.py"]
