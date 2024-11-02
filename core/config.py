@@ -4,10 +4,9 @@ import yaml
 import os
 
 defaults = {
-    "advanced.api_version": "1.11.0",
     "advanced.lang": "zh_cn",
     "advanced.debug": False,
-    "advanced.sync_interval": 60,
+    "advanced.sync_interval": 600,
     "advanced.base_url": "https://openbmclapi.bangbang93.com",
     "advanced.threads": 128,
     "advanced.ssl_dir": ".ssl",
@@ -137,6 +136,6 @@ class Const:
     
     @property
     def sync_interval(self):
-        return Config.get("advanced.sync_interval", 600)
+        return max(Config.get("advanced.sync_interval", 600), 600)
     
 const = Const()

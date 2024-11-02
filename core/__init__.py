@@ -13,12 +13,27 @@ from . import database
 _WAITLOCK = utils.CountLock()
 _START_RUNTIME = time.monotonic()
 
+async def call(module, func: str):
+    try:
+        init = getattr(module, func)
+        if asyncio.iscoroutinefunction(init):
+            await init()
+        else:
+            await asyncio.get_event_loop().run_in_executor(None, init)
+    except:
+        logger.traceback()
+
 async def main():
     start = time.monotonic_ns()
-    await scheduler.init()
-    await web.init()
-    await dashboard.init()
-    await cluster.init()
+    await asyncio.gather(*[
+        call(m, "init") for m in (
+            scheduler,
+            web,
+            database,
+            dashboard,
+            cluster,
+        )
+    ])
     _WAITLOCK.acquire()
     end = time.monotonic_ns()
     logger.tsuccess("main.success.start_service_done", time=f"{((end-start) / 1e9):.2f}")
@@ -27,9 +42,14 @@ async def main():
     except:
         logger.tdebug("main.debug.service_unfinish")
     finally:
-        await cluster.unload()
-        await web.unload()
-        await scheduler.unload()
+        await asyncio.gather(*[
+            call(m, "unload") for m in (
+                scheduler,
+                web,
+                cluster,
+                database
+            )
+        ])
 
 def read_version():
     with open("VERSION", "r") as f:

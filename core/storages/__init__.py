@@ -151,10 +151,46 @@ class AlistResult:
     message: str
     data: Any
 
-class AlistStorage(iStorage): # TODO: 完成 alist 存储
+class AlistPath:
+    def __init__(self, path: str):
+        self.path = path if path.startswith("/") else f"/{path}"
+    
+    @property
+    def parent(self):
+        if self.path == "/":
+            return None
+        return AlistPath("/".join(self.path.split("/")[:-1]))
+
+    @property
+    def parents(self):
+        return [AlistPath("/".join(self.path.split("/")[:-i])) for i in range(1, len(self.path.split("/")))]
+
+    @property
+    def name(self):
+        return self.path.split("/")[-1]
+
+    def __div__(self, other: object):
+        if isinstance(other, AlistPath):
+            return AlistPath(f"{self.path}/{other.path}")
+        return AlistPath(f"{self.path}{other}")
+    
+    def __truediv__(self, other: object):
+        return self.__div__(other)
+    
+    def __add__(self, other: 'AlistPath'):
+        return AlistPath(f"{self.path}{other.path}")
+    
+    def __repr__(self):
+        return f"AlistPath({self.path})"
+    
+    def __str__(self):
+        return self.path
+
+
+class AlistStorage(iStorage): # TODO: 修复路径
     type: str = "alist"
     def __init__(self, path: str, width: int, url: str, username: Optional[str], password: Optional[str]) -> None:
-        super().__init__(path, width)
+        super().__init__(path[0:-1] if path.endswith("/") else path, width)
         self.url = url
         self.username = username
         self.password = password
@@ -210,7 +246,6 @@ class AlistStorage(iStorage): # TODO: 完成 alist 存储
                 else:
                     logger.terror("storage.error.alist.fetch_token", status=r.code, message=r.message)
                 
-
     def __str__(self) -> str:
         return f"Alist Storage: {self.path}"
 
@@ -289,14 +324,18 @@ class AlistStorage(iStorage): # TODO: 完成 alist 存储
             }
         )
         return result.code == 200
+    
     async def exists(self, file_hash: str) -> bool:
         info = await self.__info_file(file_hash)
         return info.size != -1
+    
     async def get_mtime(self, file_hash: str) -> float:
         return (await self.__info_file(file_hash)).modified
+    
     async def get_size(self, file_hash: str) -> int:
         info = await self.__info_file(file_hash)
         return max(0, info.size)
+
     async def list_files(self, pbar: Optional[tqdm] = None) -> defaultdict[str, deque[File]]:
         def update():
             pbar.update(1) # type: ignore
@@ -321,14 +360,14 @@ class AlistStorage(iStorage): # TODO: 完成 alist 存储
                     async with session.post(
                         "/api/fs/list",
                         data={
-                            "path": root
+                            "path": str(root)
                         },
                     ) as resp:
                         result = AlistResult(
                             **await resp.json()
                         )
                         if result.code != 200:
-                            logger.terror("storage.error.alist", status=result.code, message=result.message)
+                            logger.tdebug("storage.debug.error_alist", status=result.code, message=result.message)
                         else:
                             self.cache.set(f"listfile_{root}", result, 30)
                 for r in ((result.data or {}).get("content", None) or []):
@@ -343,6 +382,7 @@ class AlistStorage(iStorage): # TODO: 完成 alist 存储
                 update_tqdm()
             
         return files
+    
     async def read_file(self, file_hash: str) -> bytes:
         info = await self.__info_file(file_hash)
         if info.size == -1:

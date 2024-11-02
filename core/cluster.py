@@ -49,7 +49,7 @@ class StorageManager:
         self.cache_filelist: defaultdict[storages.iStorage, defaultdict[str, storages.File]] = defaultdict(defaultdict) # type: ignore
 
     def init(self):
-        scheduler.run_repeat(self._check_available, 120)
+        scheduler.run_repeat_later(self._check_available, 1, 120)
 
     async def _check_available(self):
         for storage in self.storages:
@@ -61,6 +61,7 @@ class StorageManager:
                 )
             if await storage.get_size(CHECK_FILE_MD5) == len(CHECK_FILE_CONTENT) and storage not in self.available_storages:
                 self.available_storages.append(storage)
+        logger.debug(f"Available storages: {len(self.available_storages)}")
         if len(self.available_storages) > 0:
             self.check_available.release()
         else:
@@ -88,6 +89,7 @@ class StorageManager:
             logger.twarning("cluster.warning.no_check_function")
             function = self._check_exists
 
+        await self.available()
         with tqdm(
             total=len(self.available_storages) * 256,
             desc="List Files",
@@ -108,7 +110,7 @@ class StorageManager:
                 waiting_files.put_nowait(file)
             
             await asyncio.gather(*(self._get_missing_file_storage(function, missing_files, waiting_files, storage, pbar) for storage in self.available_storages))
-            return missing_files or set()
+            return missing_files
     
     async def get_storage_filelist(self, storage: storages.iStorage, pbar: tqdm):
         result = await storage.list_files(pbar)
@@ -736,28 +738,28 @@ class Cluster:
         ping = (time.time() - timestamp) // 0.0002
         logger.tsuccess("cluster.success.keepalive", cluster=self.id, hits=units.format_number(total_counter.hits), bytes=units.format_bytes(total_counter.bytes), ping=ping)
         
-        storage_data = []
-        for storage, counter in self.counter.items():
-            storage_data.append(
-                db.StorageStatistics(
-                    storage=storage.unique_id,
-                    hits=counter.hits,
-                    bytes=counter.bytes,
-                )
-            )
-        storage_data.append(
-            db.StorageStatistics(
-                None,
-                commit_no_storage_counter.hits,
-                commit_no_storage_counter.bytes
-            )
-        )
-        db.add_statistics(
-            db.Statistics(
-                self.id,
-                storage_data
-            )
-        )
+        #storage_data = []
+        #for storage, counter in self.counter.items():
+        #    storage_data.append(
+        #        db.StorageStatistics(
+        #            storage=storage.unique_id,
+        #            hits=counter.hits,
+        #            bytes=counter.bytes,
+        #        )
+        #    )
+        #storage_data.append(
+        #    db.StorageStatistics(
+        #        None,
+        #        commit_no_storage_counter.hits,
+        #        commit_no_storage_counter.bytes
+        #    )
+        #)
+        #db.add_statistics(
+        #    db.Statistics(
+        #        self.id,
+        #        storage_data
+        #    )
+        #)
 
     async def disable(self, exit: bool = False):
         scheduler.cancel(self.keepalive_task)
@@ -1055,6 +1057,12 @@ async def _(request: aweb.Request):
         start = request.http_range.start or 0
         end = request.http_range.stop or file.size
         size = end - start + 1
+        storage_name = file.storage.unique_id if file.storage is not None else None
+        db.add_file(
+            cluster.id,
+            storage_name,
+            size
+        )
 
         cluster.hit(file.storage, size)
         # add database

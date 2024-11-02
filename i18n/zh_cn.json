@@ -24,6 +24,7 @@
     "cluster.error.socketio": "节点 [${cluster}] 发送 [${type}] 时出错，原因 [${err}]",
     "cluster.info.socketio.message": "节点 [${cluster}] 主控消息：${message}",
     "storage.error.alist": "Alist 返回出错，错误代码 [${status}]，原因 [${message}]",
+    "storage.debug.error_alist": "Alist 返回出错，错误代码 [${status}]，原因 [${message}]",
     "storage.error.alist.fetch_token": "Alist 获取 Token 出错，错误代码 [${status}]，原因 [${message}]",
     "cluster.success.keepalive": "节点 [${cluster}] 保活成功，已回原 [${hits}] 个文件，共计 [${bytes}] 流量，延迟为 [${ping}ms]",
     "cluster.debug.socketio.disconnected": "SocketIO 已断开连接",
