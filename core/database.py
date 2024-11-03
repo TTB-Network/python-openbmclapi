@@ -242,9 +242,6 @@ def commit():
 
     for hour, value in RESPONSE_CACHE.items():
         _commit_response(hour, value.ip_tables, value.success, value.forbidden, value.redirect, value.not_found, value.error)
-
-
-    logger.success(f'Committing {total_hits} hits and {total_bytes} bytes to database. {total_storages} storages updated')
     
     session.commit()
     old_keys = []
