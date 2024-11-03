@@ -1,12 +1,14 @@
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 import time
 from typing import Optional
+import pyzstd
 from sqlalchemy import create_engine, Column, Integer, String, LargeBinary
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-from core import logger, scheduler
+from core import logger, scheduler, utils
 
 @dataclass
 class StorageStatistics:
@@ -33,6 +35,15 @@ class FileStatistics:
     hits: int = 0
     bytes: int = 0
 
+@dataclass
+class ResponseStatistics:
+    success: int = 0
+    not_found: int = 0
+    forbidden: int = 0
+    error: int = 0
+    redirect: int = 0
+    ip_tables: defaultdict[str, int] = field(default_factory=lambda: defaultdict(int))
+
 
 
 engine = create_engine('sqlite:///database.db')
@@ -58,13 +69,19 @@ class ResponseTable(Base):
     __tablename__ = 'Responses'
     id = Column(Integer, primary_key=True)
     hour = Column(Integer, nullable=False)
-    cluster = Column(String, nullable=False)
-    storage = Column(String, nullable=False)
     success = Column(String, nullable=False)
+    forbidden = Column(String, nullable=False)
     not_found = Column(String, nullable=False)
     error = Column(String, nullable=False)
     redirect = Column(String, nullable=False)
     ip_tables = Column(LargeBinary, nullable=False)
+
+class StatusType(Enum):
+    SUCCESS = "success"
+    FORBIDDEN = "forbidden"
+    NOT_FOUND = "not_found"
+    ERROR = "error"
+    REDIRECT = "redirect"
 
 class Session:
     def __init__(self):
@@ -79,6 +96,7 @@ class Session:
     
 SESSION = Session()
 FILE_CACHE: defaultdict[FileStatisticsKey, FileStatistics] = defaultdict(lambda: FileStatistics())
+RESPONSE_CACHE: defaultdict[int, ResponseStatistics] = defaultdict(lambda: ResponseStatistics())
 
 @DeprecationWarning
 def add_statistics(data: Statistics):
@@ -115,12 +133,15 @@ def add_statistics(data: Statistics):
 
 def add_file(cluster: str, storage: Optional[str], bytes: int):
     global FILE_CACHE
-    try:
-        key = FileStatisticsKey(get_hour(), cluster, storage)
-        FILE_CACHE[key].bytes += bytes
-        FILE_CACHE[key].hits += 1
-    except:
-        logger.traceback()
+    key = FileStatisticsKey(get_hour(), cluster, storage)
+    FILE_CACHE[key].bytes += bytes
+    FILE_CACHE[key].hits += 1
+
+def add_response(ip: str, type: StatusType):
+    global RESPONSE_CACHE
+    hour = get_hour()
+    RESPONSE_CACHE[hour].ip_tables[ip] += 1
+    setattr(RESPONSE_CACHE[hour], type.value, getattr(RESPONSE_CACHE[hour], type.value) + 1)
 
 def get_hour():
     return int(time.time() // 3600)
@@ -157,6 +178,45 @@ def _commit_cluster(hour: int, cluster: str, hits: int, bytes: int):
     )
     return True
 
+def _commit_response(hour: int, ip_tables: defaultdict[str, int], success: int = 0, forbidden: int = 0, redirect: int = 0, not_found: int = 0, error: int = 0):
+    if ip_tables == {}:
+        return False
+    session = SESSION.get_session()
+    q = session.query(ResponseTable).filter_by(hour=hour)
+    r = q.first() or ResponseTable(hour=hour, ip_tables=b'', success=str(0), forbidden=str(0), redirect=str(0), not_found=str(0), error=str(0))
+    if q.count() == 0:
+        session.add(r)
+    origin_ip_tables: defaultdict[str, int] = defaultdict(lambda: 0)
+    ip_tables_data: bytes = r.ip_tables # type: ignore
+    if ip_tables_data:
+        try:
+            input = utils.DataInputStream(pyzstd.decompress(ip_tables_data))
+            for _ in range(input.read_long()):
+                ip = input.read_string()
+                count = input.read_long()
+                origin_ip_tables[ip] = count
+        except:
+            logger.ttraceback("database.error.unable.to.decompress.ip.tables", ip_tables_data)
+            origin_ip_tables.clear()
+    for ip, count in ip_tables.items():
+        origin_ip_tables[ip] += count
+    output = utils.DataOutputStream()
+    output.write_long(len(origin_ip_tables))
+    for ip, count in origin_ip_tables.items():
+        output.write_string(ip)
+        output.write_long(count)
+    q.update(
+        {
+            'ip_tables': pyzstd.compress(output.getvalue()), # type: ignore
+            'success': str(int(r.success) + success), # type: ignore
+            'forbidden': str(int(r.forbidden) + forbidden), # type: ignore
+            'redirect': str(int(r.redirect) + redirect), # type: ignore
+            'not_found': str(int(r.not_found) + not_found), # type: ignore
+            'error': str(int(r.error) + error) # type: ignore
+        }
+    )
+    return True
+
 def commit():
     global FILE_CACHE
     total_hits = 0
@@ -180,15 +240,38 @@ def commit():
     for cluster, value in clusters.items():
         _commit_cluster(cluster[0], cluster[1], value.hits, value.bytes)
 
+    for hour, value in RESPONSE_CACHE.items():
+        _commit_response(hour, value.ip_tables, value.success, value.forbidden, value.redirect, value.not_found, value.error)
+
+
     logger.success(f'Committing {total_hits} hits and {total_bytes} bytes to database. {total_storages} storages updated')
     
     session.commit()
+    old_keys = []
     for key, value in cache.items():
         FILE_CACHE[key].hits -= value.hits
         FILE_CACHE[key].bytes -= value.bytes
         if FILE_CACHE[key].hits == FILE_CACHE[key].bytes == 0:
-            del FILE_CACHE[key]
-    ...
+            old_keys.append(key)
+    for key in old_keys:
+        del FILE_CACHE[key]
+    
+    old_keys.clear()
+
+    for hour, value in RESPONSE_CACHE.items():
+        RESPONSE_CACHE[hour].success -= value.success
+        RESPONSE_CACHE[hour].forbidden -= value.forbidden
+        RESPONSE_CACHE[hour].redirect -= value.redirect
+        RESPONSE_CACHE[hour].not_found -= value.not_found
+        RESPONSE_CACHE[hour].error -= value.error
+        ip_hits = 0
+        for ip, hits in value.ip_tables.items():
+            RESPONSE_CACHE[hour].ip_tables[ip] -= hits
+            ip_hits += RESPONSE_CACHE[hour].ip_tables[ip]
+        if RESPONSE_CACHE[hour].success == RESPONSE_CACHE[hour].forbidden == RESPONSE_CACHE[hour].redirect == RESPONSE_CACHE[hour].not_found == RESPONSE_CACHE[hour].error == ip_hits == 0:
+            old_keys.append(hour)
+    for key in old_keys:
+        del RESPONSE_CACHE[key]
 
 async def init():
     Base.metadata.create_all(engine)

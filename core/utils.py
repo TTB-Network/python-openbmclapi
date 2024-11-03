@@ -100,10 +100,7 @@ class SemaphoreLock:
         return False
     
     def set_value(self, value: int):
-        self._value = value
-    
-                    
-    
+        self._value = value  
 
 class FileStream:
     def __init__(self, data: bytes) -> None:
@@ -118,9 +115,44 @@ class FileStream:
                 break
             shift += 7
         return (result >> 1) ^ -(result & 1)
+    
     def read_string(self):
         return self.data.read(self.read_long()).decode('utf-8')
     
+class DataOutputStream(io.BytesIO):
+    def write_long(self, value: int):
+        value = (value << 1) ^ (value >> 63)
+        while True:
+            byte = value & 0x7F
+            value >>= 7
+            if value == 0:
+                self.write(bytes([byte]))
+                break
+            else:
+                self.write(bytes([byte | 0x80]))
+
+    def write_string(self, value: str):
+        data = value.encode('utf-8')
+        self.write_long(len(data))
+        self.write(data)
+
+
+class DataInputStream(io.BytesIO):
+
+    def read_long(self): 
+        result, shift = 0, 0
+        while True:
+            byte = ord(self.read(1))
+            result |= (byte & 0x7F) << shift
+            if not (byte & 0x80):
+                break
+            shift += 7
+        return (result >> 1) ^ -(result & 1)
+
+    def read_string(self):
+        return self.read(self.read_long()).decode('utf-8')
+
+
 def check_sign(hash: str, secret: str, s: str, e: str) -> bool:
     if not s or not e:
         return False

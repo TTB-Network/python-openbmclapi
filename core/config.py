@@ -15,9 +15,12 @@ defaults = {
     "advanced.ssl_key": "",
     "advanced.check_sign": True,
     "advanced.check_type": "size",
+    "advanced.auto_sync_assets": True,
+    "advanced.github_token": "",
     "web": {
         "port": -1,
-        "public_port": 6543
+        "public_port": 6543,
+        "x_forwarded_for": 0
     },
     "clusters": [
         {
@@ -137,5 +140,17 @@ class Const:
     @property
     def sync_interval(self):
         return max(Config.get("advanced.sync_interval", 600), 600)
+    
+    @property
+    def xff(self):
+        return Config.get("web.x_forwarded_for", 0)
+    
+    @property
+    def auto_sync_assets(self):
+        return Config.get("advanced.auto_sync_assets", True)
+    
+    @property
+    def github_token(self):
+        return Config.get("advanced.github_token", None) or None
     
 const = Const()

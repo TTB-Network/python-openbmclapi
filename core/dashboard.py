@@ -1,14 +1,18 @@
+import asyncio
+import base64
 from collections import deque
 from dataclasses import dataclass
+import io
 import json
 import os
+from pathlib import Path
 import socket
 from typing import Any, Optional
 
 import aiohttp
 import psutil
 
-from core import cache, config
+from core import cache, cluster, config, logger
 
 from . import utils
 
@@ -36,7 +40,6 @@ class ConnectionStatistics:
 @dataclass
 class ClusterInfo:
     name: str
-
 
 @dataclass
 class SystemInfo:
@@ -78,55 +81,32 @@ class Counter:
              }} for item in self._data
         ]
     
-class ClientRoom:
-    def __init__(self) -> None:
-        self.clients = cache.MemoryStorage()
-        self.__default_data = {
-            "lastKeepalive": 0,
-            "messages": []
-        }
+@dataclass
+class GithubPath:
+    path: str
+    size: int
+    sha: Optional[str] = None
+
+    def __hash__(self) -> int:
+        return hash(self.path)
 
     @property
-    def _default_data(self):
-        return self.__default_data.copy()
+    def is_file(self):
+        return self.sha is not None
 
-    def join_ws(self, id: str):
-        self.clients.set(id, self._default_data)
-    def join_http(self, id: str):
-        self.clients.set(id, self._default_data, 600)
+    @property
+    def is_dir(self):
+        return self.sha is None
 
-    def keepalive(self, id: str):
-        client = self.clients.get(id, self._default_data)
-        client["lastKeepalive"] = utils.get_runtime()
-        self.clients.set(id, client)
+    def __repr__(self):
+        return f"{self.path} ({self.size})"
 
     
-    def exit(self, id: str):
-        self.clients.delete(f"ws-{id}")
-        self.clients.delete(f"http-{id}")
 
-    def send(self, event: str, data: Any, id: Optional[str] = None):
-        ids = [_id for _id in self.clients.get_keys() if id is None or (id is not None and _id == id)]
-        for id in ids:
-            client = self.clients.get(id, self._default_data)
-            client["messages"].append({
-                "event": event,
-                "data": data
-            })
-            self.clients.set(id, client)
-
-    def get_messages(self, id: str):
-        client = self.clients.get(id, self._default_data)
-        data: list[Any] = client["messages"].copy()
-        client["messages"].clear()
-        self.clients.set(id, client)
-        return data
-    
-    
-
-room = ClientRoom()
 counter = Counter()
 process = psutil.Process(os.getpid())
+GITHUB_BASEURL = "https://api.github.com"
+GITHUB_REPO = "TTB-Network/python-openbmclapi"
 
 @route.get('/dashboard')
 @route.get("/dashboard/{tail:.*}")
@@ -154,57 +134,6 @@ async def _(request: web.Request):
             return web.json_response(
                 await resp.json(),
             )
-        
-@route.get("/api")
-async def _(request: web.Request):
-    if request.headers.get("Connection", "").lower() == "upgrade" and request.headers.get("Upgrade", "").lower() == "websocket":
-        try:
-            ws = web.WebSocketResponse()
-            ws.can_prepare(request)
-            await ws.prepare(request)
-            id: str = request.query.get("id") # type: ignore
-            room.join_ws(id)
-            while not ws.closed:
-                try:
-                    raw_data = json.loads((await ws.receive()).data)
-                    messages = room.get_messages(id)
-                    messages.append({
-                        "echo_id": raw_data.get("echo_id"),
-                        "event": raw_data["event"],
-                        "data": raw_data
-                    })
-                    if raw_data["event"] == "keepalive":
-                        room.keepalive(id)
-                    await ws.send_json(messages)
-                except:
-                    break
-            room.exit(id)
-            return ws
-        except:
-            ...
-    return web.HTTPNotFound()
-
-@route.post("/api")
-async def _(request: web.Request):
-    try:
-        id: str = request.query.get("id") # type: ignore
-        room.join_http(id)
-        body = await request.read()
-        raw_data = json.loads(body)
-        messages = room.get_messages(id)
-        messages.append({
-            "event": raw_data["event"],
-            "echo_id": raw_data.get("echo_id"),
-            "data": raw_data
-        })
-        if raw_data["event"] == "disconnect":
-            room.exit(id)
-        if raw_data["event"] == "keepalive":
-            room.keepalive(id)
-        return web.json_response(messages)
-    except:
-        return web.HTTPInternalServerError()
-    
 
 route.static("/assets", "./assets")
 
@@ -227,3 +156,95 @@ def record():
 
 async def init():
     scheduler.run_repeat(record, 1)
+    if config.const.auto_sync_assets:
+        scheduler.run_repeat_later(
+            sync_assets,
+            5,
+            interval=86400
+        )
+
+async def sync_assets():
+
+    async def get_dir_list(path: str = "/"):
+        result = []
+        if not path.startswith("/"):
+            path = f"/{path}"
+        async with session.get(
+            f"/repos/{GITHUB_REPO}/contents{path}"
+        ) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                for item in data:
+                    if item["type"] == "file":
+                        result.append(GithubPath(
+                            path=item["path"],
+                            size=item["size"],
+                            sha=item["sha"]
+                        ))
+                    elif item["type"] == "dir":
+                        dir = GithubPath(
+                            path=item["path"],
+                            size=item["size"],
+                        )
+                        result.append(dir)
+                        for sub in await get_dir_list(dir.path):
+                            result.append(sub)
+        return result
+    
+    async def get_file(file: GithubPath):
+        async with session.get(
+            f"/repos/{GITHUB_REPO}/git/blobs/{file.sha}"
+        ) as resp:
+            if resp.status == 200:
+                json_data = await resp.json()
+                if resp.status // 100 == 2:
+                    data = io.BytesIO()
+                    content: str = json_data['content']
+                    if json_data.get("encoding") == "base64":
+                        data.write(base64.b64decode(json_data['content']))
+                    else:
+                        logger.warning(f"Unknown encoding {json_data.get('encoding', 'utf-8')}, {json_data}")
+                        data.write(content.encode("utf-8"))
+                return data
+            return io.BytesIO()
+
+    headers = {
+        "User-Agent": cluster.USER_AGENT
+    }
+    if config.const.github_token:
+        headers["Authorization"] = f"Bearer {config.const.github_token}"
+    async with aiohttp.ClientSession(
+        GITHUB_BASEURL,
+        headers=headers
+    ) as session:
+        res: list[GithubPath] = await get_dir_list("/assets")
+        if not res:
+            return
+        files: dict[GithubPath, io.BytesIO] = {
+            file: result
+            for file, result in zip(
+                [
+                    file for file in res if file.is_file
+                ],
+                await asyncio.gather(*[get_file(file) for file in res if file.is_file])
+            )
+        }
+        old_dirs: list[str] = []
+        for local_root, local_dirs, local_files in os.walk("assets"):
+            for file in local_files:
+                os.remove(os.path.join(local_root, file))
+            for dir in local_dirs:
+                old_dirs.append(os.path.join(local_root, dir))
+        for dir in old_dirs:
+            if os.path.exists(dir):
+                os.rmdir(dir)
+        
+        for file in files:
+            path = Path(file.path)
+            if file.is_dir:
+                path.mkdir(exist_ok=True, parents=True)
+                continue
+            path.parent.mkdir(exist_ok=True, parents=True)
+            with open(path, "wb") as f:
+                f.write(files[file].getvalue())
+        logger.info(f"Synced {len(files)} files")

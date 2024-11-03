@@ -17,6 +17,7 @@ from .logger import logger
 import ssl
 
 qps: int = 0
+xff: int = config.const.xff
 
 class SNIHelper:
     def __init__(self, data: bytes) -> None:
@@ -47,6 +48,13 @@ class SNIHelper:
     def get_sni(self):
         return self.sni
 
+def get_xff(x_forwarded_for: str, index: int = 1):
+    addresses = x_forwarded_for.split(",")
+    index -= 1
+    if not addresses:
+        return None
+    return addresses[min(len(addresses) - 1, index)].strip()
+
 @web.middleware
 async def middleware(request: web.Request, handler: Any) -> web.Response:
     global qps
@@ -60,6 +68,11 @@ async def middleware(request: web.Request, handler: Any) -> web.Response:
             setattr(request, "address", address)
         except:
             logger.debug(request._transport_peername, request.remote)
+        try:
+            address = get_xff(request.headers.get("X-Forwarded-For", ""), xff) or address
+        except:
+            pass
+        setattr(request, "custom_address", address)
         start = time.monotonic_ns()
         resp = None
         try:

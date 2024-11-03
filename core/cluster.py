@@ -1039,30 +1039,39 @@ async def _(request: aweb.Request):
     try:
         hash = request.match_info["hash"]
         query = request.query
+        address = request.custom_address # type: ignore
         s = query.get("s", "")
         e = query.get("e", "")
         if not check_sign(request.match_info["hash"], s, e):
+            db.add_response(
+                address,
+                db.StatusType.FORBIDDEN
+            )
             return aweb.Response(status=403)
         cluster_id = get_cluster_id_from_sign(hash, s, e)
 
         # get cluster instance
-        resp = aweb.Response(status=403)
         cluster = clusters.get_cluster_by_id(cluster_id)
         if cluster is None:
-            return resp
+            db.add_response(
+                address,
+                db.StatusType.FORBIDDEN
+            )
+            return aweb.Response(status=403)
 
         file = await clusters.storage_manager.get_file(hash)
         if file is None:
-            return resp
+            db.add_response(
+                address,
+                db.StatusType.NOT_FOUND
+            )
+            return aweb.Response(status=404)
+        
+        resp = aweb.Response(status=500)
+        
         start = request.http_range.start or 0
         end = request.http_range.stop or file.size
         size = end - start + 1
-        storage_name = file.storage.unique_id if file.storage is not None else None
-        db.add_file(
-            cluster.id,
-            storage_name,
-            size
-        )
 
         cluster.hit(file.storage, size)
         # add database
@@ -1083,9 +1092,26 @@ async def _(request: aweb.Request):
                 body=file.data
             )
         elif isinstance(file, URLStorageFile):
-            resp= aweb.HTTPFound(
+            resp = aweb.HTTPFound(
                 file.url
             )
+        type = db.StatusType.ERROR
+        if resp.status == 200:
+            type = db.StatusType.SUCCESS
+        elif resp.status == 403:
+            type = db.StatusType.FORBIDDEN
+        elif resp.status == 404:
+            type = db.StatusType.NOT_FOUND
+        elif resp.status == 302:
+            type = db.StatusType.REDIRECT
+        db.add_response(
+            address,
+            type
+        )
         return resp
     except:
-        return aweb.Response(status=400)
+        db.add_response(
+            address,
+            db.StatusType.ERROR
+        )
+        return aweb.Response(status=500)
