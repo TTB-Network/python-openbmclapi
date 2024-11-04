@@ -402,13 +402,12 @@ class FileListManager:
                 if file_queues.empty():
                     failed_file = await self.failed_hashs.get()
                     file = failed_file.file
-                    t = max(0, min(failed_file.failed_times * 30, 600) * 1e9 - (time.monotonic_ns() - failed_file.last_failed_time))
-                    logger.tdebug("cluster.debug.retry_download", start_date=failed_file.first_time, file_path=file.path, file_hash=file.hash, file_size=units.format_bytes(file.size), time=units.format_count_time(t), count=failed_file.failed_times)
-                    await asyncio.sleep(t / 1e9)
+                    t = max(0, min(failed_file.failed_times * 10, 600) - (time.monotonic() - failed_file.last_failed_time))
+                    logger.tdebug("cluster.debug.retry_download", start_date=failed_file.first_time, file_path=file.path, file_hash=file.hash, file_size=units.format_bytes(file.size), time=units.format_count_time(t * 1e9), count=failed_file.failed_times)
+                    await asyncio.sleep(t)
                 else:
                     file = await file_queues.get()
                 content = io.BytesIO()
-                raise
                 async with self.sync_sem:
                     async with session.get(
                         file.path
@@ -430,8 +429,8 @@ class FileListManager:
                 break
             except Exception as e:
                 pbar.update(-recved)
-                if failed_file is None:
-                    failed_file = FailedFile(file, 0, datetime.datetime.now(), time.monotonic_ns())
+                failed_file = failed_file or FailedFile(file, 0, datetime.datetime.now(), time.monotonic())
+                failed_file.last_failed_time = time.monotonic()
                 failed_file.failed_times += 1
                 await self.failed_hashs.put(failed_file)
                 pbar.update_failed()

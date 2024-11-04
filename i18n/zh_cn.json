@@ -43,5 +43,5 @@
     "cluster.info.request_certing": "节点 [${cluster}] 正在请求证书……",
     "cluster.info.init": "当前 OpenBMCLAPI 版本为 [${openbmclapi_version}] Python OpenBMCLAPI 版本为 [${version}]",
     "cluster.success.no_missing_files": "当前暂无更新的文件",
-    "cluster.debug.retry_download": "文件 [${file_path} ${file_hash}(${file_size})] 第 ${count} 次下载失败，将在 ${time} 重试"
+    "cluster.debug.retry_download": "文件 [${file_path} ${file_hash}(${file_size})] 在 [${start_date}] 第 [${count}] 次下载失败，将在 [${time}] 重试"
 }
