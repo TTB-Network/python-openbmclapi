@@ -154,3 +154,9 @@ class Const:
         return Config.get("advanced.github_token", None) or None
     
 const = Const()
+
+def read_version():
+    with open("VERSION", "r") as f:
+        return f.read().strip()
+
+VERSION = read_version()

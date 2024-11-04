@@ -2,6 +2,7 @@ import abc
 import asyncio
 from collections import defaultdict, deque
 from dataclasses import asdict, dataclass
+import datetime
 import hashlib
 import hmac
 import io
@@ -35,6 +36,17 @@ class File:
 
     def __hash__(self) -> int:
         return hash((self.hash, self.size, self.mtime))
+
+@dataclass
+class FailedFile:
+    file: File
+    failed_times: int
+    first_time: datetime.datetime
+    last_failed_time: float
+
+    def __hash__(self) -> int:
+        return hash(self.file)
+    
 
 class StorageManager:
     def __init__(self, clusters: 'ClusterManager'):
@@ -278,7 +290,7 @@ class FileListManager:
         self.cluster_last_modified: defaultdict['Cluster', int] = defaultdict(lambda: 0)
         self.sync_sem: utils.SemaphoreLock = utils.SemaphoreLock(256)
         self.download_statistics = DownloadStatistics()
-        self.failed_hashs: asyncio.Queue[File] = asyncio.Queue()
+        self.failed_hashs: asyncio.Queue[FailedFile] = asyncio.Queue()
         self.failed_hash_urls: defaultdict[str, FileDownloadInfo] = defaultdict(lambda: FileDownloadInfo(set()))
         self.task = None
 
@@ -383,10 +395,18 @@ class FileListManager:
                     await session.close()
 
     async def _download(self, session: aiohttp.ClientSession, file_queues: asyncio.Queue[File], pbar: DownloadStatistics):
-        while not file_queues.empty():
+        while not file_queues.empty() or not self.failed_hashs.empty():
             recved = 0
             try:
-                file = await file_queues.get()
+                failed_file = None
+                if file_queues.empty():
+                    failed_file = await self.failed_hashs.get()
+                    file = failed_file.file
+                    t = max(0, min(failed_file.failed_times * 30, 600) * 1e9 - (time.monotonic_ns() - failed_file.last_failed_time))
+                    logger.tdebug("cluster.debug.retry_download", start_date=failed_file.first_time, file_path=file.path, file_hash=file.hash, file_size=units.format_bytes(file.size), time=units.format_count_time(t), count=failed_file.failed_times)
+                    await asyncio.sleep(t)
+                else:
+                    file = await file_queues.get()
                 content = io.BytesIO()
                 async with self.sync_sem:
                     async with session.get(
@@ -409,7 +429,10 @@ class FileListManager:
                 break
             except Exception as e:
                 pbar.update(-recved)
-                await file_queues.put(file)
+                if failed_file is None:
+                    failed_file = FailedFile(file, 0, datetime.datetime.now(), time.monotonic_ns())
+                failed_file.failed_times += 1
+                await self.failed_hashs.put(failed_file)
                 pbar.update_failed()
                 r = None
                 if "resp" in locals():
@@ -933,7 +956,7 @@ class MemoryStorageFile(StorageFile):
 ROOT = Path(__file__).parent.parent
 
 API_VERSION = "1.12.1"
-USER_AGENT = f"openbmclapi/{API_VERSION} python-openbmclapi/3.0"
+USER_AGENT = f"openbmclapi/{API_VERSION} python-openbmclapi/{config.VERSION}"
 CHECK_FILE_CONTENT = "Python OpenBMCLAPI"
 CHECK_FILE_MD5 = hashlib.md5(CHECK_FILE_CONTENT.encode("utf-8")).hexdigest()
 CHECK_FILE = File(
@@ -957,7 +980,7 @@ def convert_file_to_storage_file(file: File) -> SFile:
     )
 
 async def init():
-    logger.tinfo("cluster.info.init", openbmclapi_version=API_VERSION, version=core.VERSION)
+    logger.tinfo("cluster.info.init", openbmclapi_version=API_VERSION, version=config.VERSION)
     # read clusters from config
     config_clusters = config.Config.get("clusters")
     for ccluster in config_clusters:
