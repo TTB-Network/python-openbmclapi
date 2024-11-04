@@ -404,10 +404,11 @@ class FileListManager:
                     file = failed_file.file
                     t = max(0, min(failed_file.failed_times * 30, 600) * 1e9 - (time.monotonic_ns() - failed_file.last_failed_time))
                     logger.tdebug("cluster.debug.retry_download", start_date=failed_file.first_time, file_path=file.path, file_hash=file.hash, file_size=units.format_bytes(file.size), time=units.format_count_time(t), count=failed_file.failed_times)
-                    await asyncio.sleep(t)
+                    await asyncio.sleep(t / 1e9)
                 else:
                     file = await file_queues.get()
                 content = io.BytesIO()
+                raise
                 async with self.sync_sem:
                     async with session.get(
                         file.path
