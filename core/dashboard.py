@@ -3,16 +3,15 @@ import base64
 from collections import deque
 from dataclasses import dataclass
 import io
-import json
 import os
 from pathlib import Path
 import socket
-from typing import Any, Optional
+from typing import Optional
 
 import aiohttp
 import psutil
 
-from core import cache, cluster, config, logger
+from core import cluster, config, logger
 
 from . import utils
 
@@ -22,6 +21,8 @@ from .web import (
     qps as web_qps
 )
 from aiohttp import web
+
+from . import database as db
 
 @dataclass
 class CollectionUsage:
@@ -124,6 +125,24 @@ async def _(request: web.Request):
 @route.get("/api/system_info")
 async def _(request: web.Request):
     return web.json_response(counter.get_json())
+
+@route.get("/api/count")
+async def _(request: web.Request):
+    # statistics of the cluster hits and bytes
+    session = db.SESSION.get_session()
+    current_hour = db.get_hour()
+    hour_of_day = (current_hour // 24) * 24
+    next_hour = hour_of_day + 24
+    q = session.query(db.ClusterStatisticsTable).filter(
+        db.ClusterStatisticsTable.hour >= hour_of_day,
+        db.ClusterStatisticsTable.hour < next_hour
+    ).all()
+    print(hour_of_day, next_hour)
+    return web.json_response({
+        "hits": sum([int(item.hits) for item in q]),
+        "bytes": sum([int(item.bytes) for item in q])
+    })
+    
 
 @route.get("/api/openbmclapi/rank")
 async def _(request: web.Request):
