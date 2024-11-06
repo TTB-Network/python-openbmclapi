@@ -137,7 +137,6 @@ async def _(request: web.Request):
         db.ClusterStatisticsTable.hour >= hour_of_day,
         db.ClusterStatisticsTable.hour < next_hour
     ).all()
-    print(hour_of_day, next_hour)
     return web.json_response({
         "hits": sum([int(item.hits) for item in q]),
         "bytes": sum([int(item.bytes) for item in q])

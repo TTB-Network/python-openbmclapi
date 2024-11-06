@@ -234,7 +234,7 @@ async def _check_server(ip: str, port: int):
     try:
         r, w = await asyncio.wait_for(asyncio.open_connection(ip, port), 5)
         w.close()
-        await w.wait_closed()
+        await asyncio.wait_for(w.wait_closed(), 10)
         return True
     except:
         logger.ttraceback("web.traceback.check_server", port=port)

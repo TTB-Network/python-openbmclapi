@@ -1127,6 +1127,8 @@ async def _(request: aweb.Request):
             type = db.StatusType.NOT_FOUND
         elif resp.status == 302:
             type = db.StatusType.REDIRECT
+        storage_name = file.storage.unique_id if file.storage is not None else None
+        db.add_file(cluster.id, storage_name, size)
         db.add_response(
             address,
             type
