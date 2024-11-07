@@ -873,7 +873,7 @@ class ClusterSocketIO:
                     "time": datetime.datetime.now().isoformat(),
                     "cluster": self.cluster.id,
                     "message": message,
-                }))
+                }) "\n")
             if isinstance(message, dict) and "message" in message:
                 message = message["message"]
             logger.terror("cluster.error.socketio.warden", cluster=self.cluster.id, message=message)
