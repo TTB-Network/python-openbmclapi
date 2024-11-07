@@ -4,13 +4,13 @@ from loguru import logger as Logger
 from .config import const
 
 LOGGER_FORMAT = "<green>[{time:YYYY-MM-DD HH:mm:ss}]</green> <level>[{level}] <yellow>[{name}:{function}:{line}]</yellow>: {message}</level>"
-
+LOGGER_DIR = "./logs"
 
 
 _logger = Logger.opt(depth=2)
 _logger.remove()
 _logger.add(
-    "./logs/{time:YYYY-MM-DD}.log",
+    f".{LOGGER_DIR}/{{time:YYYY-MM-DD}}.log",
     format=LOGGER_FORMAT,
     retention="90 days",
     encoding="utf-8",
@@ -26,6 +26,7 @@ from .i18n import locale
 class Loglogger:
     def __init__(self, log = _logger) -> None:
         self.log = log
+        self.dir = LOGGER_DIR
     def raw_log(self, level, message: str, *values):
         self.log.log(level, message % values)
     def _log_with_args(self, level, *args, **kwargs):

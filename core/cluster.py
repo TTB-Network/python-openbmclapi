@@ -6,6 +6,7 @@ import datetime
 import hashlib
 import hmac
 import io
+import json
 from pathlib import Path
 import time
 from typing import Any, Callable, Coroutine, Optional
@@ -867,6 +868,12 @@ class ClusterSocketIO:
 
         @self.sio.on("warden-error") # type: ignore
         async def _(message: Any):
+            with open(f"{logger.dir}/warden-error.log", "a") as f:
+                f.write(json.dumps({
+                    "time": datetime.datetime.now().isoformat(),
+                    "cluster": self.cluster.id,
+                    "message": message,
+                }))
             if isinstance(message, dict) and "message" in message:
                 message = message["message"]
             logger.terror("cluster.error.socketio.warden", cluster=self.cluster.id, message=message)
