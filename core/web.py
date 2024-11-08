@@ -231,14 +231,16 @@ async def ssl_handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter)
         writer.close()
 
 async def _check_server(ip: str, port: int):
+    res = True
     try:
         r, w = await asyncio.wait_for(asyncio.open_connection(ip, port), 5)
         w.close()
         await asyncio.wait_for(w.wait_closed(), 10)
-        return True
+        res = True
     except:
         logger.ttraceback("web.traceback.check_server", port=port)
-        return False
+        res = False
+    return res
 
 async def check_server():
     global site, public_server, private_ssl_server
@@ -293,7 +295,10 @@ async def start_public_server():
     global public_server
     if public_server is not None:
         public_server.close()
-        await public_server.wait_closed()
+        try:
+            await asyncio.wait_for(public_server.wait_closed(), 10)
+        except:
+            ...
     public_server = await asyncio.start_server(
         public_handle, host='0.0.0.0',port=config.const.public_port
     )
@@ -327,7 +332,10 @@ async def _start_ssl_server():
         return
     if private_ssl_server is not None and private_ssl_server.is_serving():
         private_ssl_server.close()
-        await private_ssl_server.wait_closed()
+        try:
+            await asyncio.wait_for(private_ssl_server.wait_closed(), 10)
+        except:
+            ...
     port = await get_free_port()
     private_ssl_server = await asyncio.start_server(
         ssl_handle,
