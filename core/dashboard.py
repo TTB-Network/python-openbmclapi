@@ -3,6 +3,7 @@ import base64
 from collections import deque
 from dataclasses import dataclass
 import io
+import json
 import os
 from pathlib import Path
 import socket
@@ -109,8 +110,8 @@ process = psutil.Process(os.getpid())
 GITHUB_BASEURL = "https://api.github.com"
 GITHUB_REPO = "TTB-Network/python-openbmclapi"
 
-@route.get('/dashboard')
-@route.get("/dashboard/{tail:.*}")
+@route.get('/pages')
+@route.get("/pages/{tail:.*}")
 async def _(request: web.Request):
     return web.FileResponse("./assets/index.html")
 
@@ -121,6 +122,20 @@ async def _(request: web.Request):
 @route.get("/favicon.ico")
 async def _(request: web.Request):
     return web.FileResponse("./assets/favicon.ico")
+
+@route.get("/assets/js/config.js")
+async def _(request: web.Request):
+    content = f'window.__CONFIG__ = {json.dumps({
+        "version": config.VERSION,
+        "support": {
+            "websocket": True,
+            "polling": True
+        },
+    })}'
+    return web.Response(
+        body=content,
+        content_type="application/javascript"
+    )
 
 @route.get("/api/system_info")
 async def _(request: web.Request):

@@ -157,7 +157,7 @@ class StorageManager:
 
     async def get_file(self, hash: str):
         file = None
-        if await self.available():
+        if not await self.available():
             storage = self.get_width_storage()
             if isinstance(storage, storages.LocalStorage) and await storage.exists(hash):
                 return LocalStorageFile(
@@ -175,35 +175,34 @@ class StorageManager:
                     storage,
                     await storage.get_url(hash)
                 )
-                ...
-        if file is None:
-            async with aiohttp.ClientSession(
+        async with aiohttp.ClientSession(
                 config.const.base_url,
             ) as session:
-                for cluster in self.clusters.clusters:
-                    async with session.get(
-                        f"/openbmclapi/download/{hash}",
-                        params={
-                            "noopen": str(1)
-                        },
-                        headers={
-                            "User-Agent": USER_AGENT,
-                            "Authorization": f"Bearer {await cluster.get_token()}"
-                        }
-                    ) as resp:
-                        # check hash, if hash is not mismatch.
-                        body = await resp.content.read()
-                        utils.raise_service_error(body)
-                        got_hash = utils.get_hash_hexdigest(hash, body)
-                        file = MemoryStorageFile(
-                            hash,
-                            resp.content_length or -1,
-                            time.time(),
-                            await resp.content.read()
-                        )
-                        if got_hash == hash:
-                            break
-                        logger.terror("cluster.error.download_hash", got_hash=got_hash, hash=hash, content=body.decode("utf-8", "ignore")[:64])  
+            for cluster in self.clusters.clusters:
+                async with session.get(
+                    f"/openbmclapi/download/{hash}",
+                    params={
+                        "noopen": str(1)
+                    },
+                    headers={
+                        "User-Agent": USER_AGENT,
+                        "Authorization": f"Bearer {await cluster.get_token()}"
+                    }
+                ) as resp:
+                    # check hash, if hash is not mismatch.
+                    body = await resp.content.read()
+                    utils.raise_service_error(body)
+                    got_hash = utils.get_hash_hexdigest(hash, body)
+                    file = MemoryStorageFile(
+                        hash,
+                        resp.content_length or -1,
+                        time.time(),
+                        body
+                    )
+                    if got_hash == hash:
+                        break
+                    logger.terror("cluster.error.download_hash", got_hash=got_hash, hash=hash, content=body.decode("utf-8", "ignore")[:64])  
+                print(file)
         return file
 
     def get_width_storage(self, c_storage: Optional[storages.iStorage] = None) -> storages.iStorage:
@@ -1112,6 +1111,7 @@ async def _(request: aweb.Request):
         headers = {}
         if name:
             headers["Content-Disposition"] = f"attachment; filename={name}"
+        headers["X-BMCLAPI-Hash"] = hash
         if isinstance(file, LocalStorageFile):
             resp = aweb.FileResponse(
                 file.path,
