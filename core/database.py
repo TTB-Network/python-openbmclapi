@@ -7,6 +7,7 @@ import pyzstd
 from sqlalchemy import create_engine, Column, Integer, String, LargeBinary
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm.decl_api import DeclarativeMeta
 
 from core import logger, scheduler, utils
 
@@ -42,13 +43,14 @@ class ResponseStatistics:
     forbidden: int = 0
     error: int = 0
     redirect: int = 0
+    partial: int = 0
     ip_tables: defaultdict[str, int] = field(default_factory=lambda: defaultdict(int))
     user_agents: defaultdict[str, int] = field(default_factory=lambda: defaultdict(int))
 
 
 
 engine = create_engine('sqlite:///database.db')
-Base = declarative_base()
+Base: DeclarativeMeta = declarative_base()
 
 class ClusterStatisticsTable(Base):
     __tablename__ = 'ClusterStatistics'
@@ -71,6 +73,7 @@ class ResponseTable(Base):
     id = Column(Integer, primary_key=True)
     hour = Column(Integer, nullable=False)
     success = Column(String, nullable=False)
+    partial = Column(String, nullable=False)
     forbidden = Column(String, nullable=False)
     not_found = Column(String, nullable=False)
     error = Column(String, nullable=False)
@@ -80,6 +83,7 @@ class ResponseTable(Base):
 
 class StatusType(Enum):
     SUCCESS = "success"
+    PARTIAL = "partial"
     FORBIDDEN = "forbidden"
     NOT_FOUND = "not_found"
     ERROR = "error"
@@ -181,12 +185,12 @@ def _commit_cluster(hour: int, cluster: str, hits: int, bytes: int):
     )
     return True
 
-def _commit_response(hour: int, ip_tables: defaultdict[str, int], user_agents: defaultdict[str, int], success: int = 0, forbidden: int = 0, redirect: int = 0, not_found: int = 0, error: int = 0):
+def _commit_response(hour: int, ip_tables: defaultdict[str, int], user_agents: defaultdict[str, int], success: int = 0, forbidden: int = 0, redirect: int = 0, not_found: int = 0, error: int = 0, partial: int = 0):
     if ip_tables == {}:
         return False
     session = SESSION.get_session()
     q = session.query(ResponseTable).filter_by(hour=hour)
-    r = q.first() or ResponseTable(hour=hour, ip_tables=b'', user_agents=b'', success=str(0), forbidden=str(0), redirect=str(0), not_found=str(0), error=str(0))
+    r = q.first() or ResponseTable(hour=hour, ip_tables=b'', user_agents=b'', success=str(0), forbidden=str(0), redirect=str(0), not_found=str(0), error=str(0), partial=str(0))
     if q.count() == 0:
         session.add(r)
     origin_ip_tables: defaultdict[str, int] = defaultdict(lambda: 0)
@@ -235,7 +239,8 @@ def _commit_response(hour: int, ip_tables: defaultdict[str, int], user_agents: d
             'forbidden': str(int(r.forbidden) + forbidden), # type: ignore
             'redirect': str(int(r.redirect) + redirect), # type: ignore
             'not_found': str(int(r.not_found) + not_found), # type: ignore
-            'error': str(int(r.error) + error) # type: ignore
+            'error': str(int(r.error) + error), # type: ignore
+            'partial': str(int(r.partial) + partial) # type: ignore
         }
     )
     return True
@@ -265,7 +270,7 @@ def commit():
         _commit_cluster(cluster[0], cluster[1], value.hits, value.bytes)
 
     for hour, value in response_cache.items():
-        _commit_response(hour, value.ip_tables, value.user_agents, value.success, value.forbidden, value.redirect, value.not_found, value.error)
+        _commit_response(hour, value.ip_tables, value.user_agents, value.success, value.forbidden, value.redirect, value.not_found, value.error, value.partial)
     
     session.commit()
     old_keys = []

@@ -157,7 +157,7 @@ class StorageManager:
 
     async def get_file(self, hash: str):
         file = None
-        if not await self.available():
+        if await self.available():
             storage = self.get_width_storage()
             if isinstance(storage, storages.LocalStorage) and await storage.exists(hash):
                 return LocalStorageFile(
@@ -1102,7 +1102,7 @@ async def _(request: aweb.Request):
         resp = aweb.Response(status=500)
         
         start = request.http_range.start or 0
-        end = request.http_range.stop or file.size
+        end = request.http_range.stop or file.size - 1
         size = end - start + 1
 
         cluster.hit(file.storage, size)
@@ -1115,39 +1115,53 @@ async def _(request: aweb.Request):
         if name:
             headers["Content-Disposition"] = f"attachment; filename={name}"
         headers["X-BMCLAPI-Hash"] = hash
+
         if isinstance(file, LocalStorageFile):
             resp = aweb.FileResponse(
                 file.path,
-                headers=headers,
+                headers=headers
             )
         elif isinstance(file, MemoryStorageFile):
             resp = aweb.Response(
-                body=file.data
+                body=file.data[start:end + 1],
+                headers={
+                    "Content-Range": f"bytes={start}-{end}/{file.size}",
+                    "Content-Length": str(size),
+                    "Content-Type": "application/octet-stream",
+                    **headers
+                }
             )
         elif isinstance(file, URLStorageFile):
             resp = aweb.HTTPFound(
-                file.url
+                file.url,
+                headers=headers
             )
-        type = db.StatusType.ERROR
+        type = None
         if resp.status == 200:
             type = db.StatusType.SUCCESS
+        elif resp.status == 206:
+            type = db.StatusType.PARTIAL
         elif resp.status == 403:
             type = db.StatusType.FORBIDDEN
         elif resp.status == 404:
             type = db.StatusType.NOT_FOUND
         elif resp.status == 302:
             type = db.StatusType.REDIRECT
+        if (type == db.StatusType.SUCCESS or type is None) and request.http_range.stop is not None:
+            type = db.StatusType.PARTIAL
         storage_name = file.storage.unique_id if file.storage is not None else None
         db.add_file(cluster.id, storage_name, size)
         db.add_response(
             address,
-            type,
+            type or db.StatusType.ERROR,
             user_agent
         )
         return resp
     except:
+        logger.traceback()
         db.add_response(
             address,
-            db.StatusType.ERROR
+            db.StatusType.ERROR,
+            user_agent
         )
         return aweb.Response(status=500)
