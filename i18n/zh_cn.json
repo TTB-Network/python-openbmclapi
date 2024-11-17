@@ -13,7 +13,7 @@
     "cluster.processbar.download_files": "下载文件",
     "i18n.prompt.failed": " 未找到 i18n 字符串",
     "cluster.warning.no_check_function": "没有找到检查函数，使用类型为 exists",
-    "clusters.error.downloading": "下载时候出错，原因 [${type}]，文件 [${file_path} ${file_hash}(${file_size})] 下载后的哈希值 [${hash}]，主机 [${host}] 下载时候的历史记录：${responses}",
+    "clusters.error.downloading": "下载时候出错，原因 [${type}] 报错 [${error}]，文件 [${file_path} ${file_hash}(${file_size})] 下载后的哈希值 [${hash}]，主机 [${host}] 下载时候的历史记录：${responses}",
     "web.debug.local_port": "内部开放端口为 [${port}]",
     "web.debug.ssl_port": "内部 SSL 开放端口为 [${port}]",
     "web.success.public_port": "当前 Web 服务器在 [${port}] 端口上开启",

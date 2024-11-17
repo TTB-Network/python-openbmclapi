@@ -202,7 +202,6 @@ class StorageManager:
                     if got_hash == hash:
                         break
                     logger.terror("cluster.error.download_hash", got_hash=got_hash, hash=hash, content=body.decode("utf-8", "ignore")[:64])  
-                print(file)
         return file
 
     def get_width_storage(self, c_storage: Optional[storages.iStorage] = None) -> storages.iStorage:
@@ -474,7 +473,7 @@ class FileListManager:
             responses.append(URLResponse(str(resp.real_url), resp.status))
             host = resp.host
         hash = msg[0] if len(msg) > 0 and type == "file" else None
-        logger.terror(f"clusters.error.downloading", type=type, file_hash=file.hash, file_size=units.format_bytes(file.size), host=host, file_path=file.path, hash=hash, responses="\n".join(("", *(str(r) for r in responses))))
+        logger.terror(f"clusters.error.downloading", type=type, error=str(error), file_hash=file.hash, file_size=units.format_bytes(file.size), host=host, file_path=file.path, hash=hash, responses="\n".join(("", *(str(r) for r in responses))))
         self.failed_hash_urls[file.hash].failed += 1
         self.failed_hash_urls[file.hash].urls.add(tuple(responses))
         if self.failed_hash_urls[file.hash].failed < 10:
@@ -1069,12 +1068,14 @@ async def _(request: aweb.Request):
         hash = request.match_info["hash"]
         query = request.query
         address = request.custom_address # type: ignore
+        user_agent = request.headers.get("User-Agent", "")
         s = query.get("s", "")
         e = query.get("e", "")
         if not check_sign(request.match_info["hash"], s, e):
             db.add_response(
                 address,
-                db.StatusType.FORBIDDEN
+                db.StatusType.FORBIDDEN,
+                user_agent
             )
             return aweb.Response(status=403)
         cluster_id = get_cluster_id_from_sign(hash, s, e)
@@ -1084,7 +1085,8 @@ async def _(request: aweb.Request):
         if cluster is None:
             db.add_response(
                 address,
-                db.StatusType.FORBIDDEN
+                db.StatusType.FORBIDDEN,
+                user_agent
             )
             return aweb.Response(status=403)
 
@@ -1092,7 +1094,8 @@ async def _(request: aweb.Request):
         if file is None:
             db.add_response(
                 address,
-                db.StatusType.NOT_FOUND
+                db.StatusType.NOT_FOUND,
+                user_agent
             )
             return aweb.Response(status=404)
         
@@ -1138,7 +1141,8 @@ async def _(request: aweb.Request):
         db.add_file(cluster.id, storage_name, size)
         db.add_response(
             address,
-            type
+            type,
+            user_agent
         )
         return resp
     except:
