@@ -186,7 +186,7 @@ def _commit_response(hour: int, ip_tables: defaultdict[str, int], user_agents: d
         return False
     session = SESSION.get_session()
     q = session.query(ResponseTable).filter_by(hour=hour)
-    r = q.first() or ResponseTable(hour=hour, ip_tables=b'', success=str(0), forbidden=str(0), redirect=str(0), not_found=str(0), error=str(0))
+    r = q.first() or ResponseTable(hour=hour, ip_tables=b'', user_agents=b'', success=str(0), forbidden=str(0), redirect=str(0), not_found=str(0), error=str(0))
     if q.count() == 0:
         session.add(r)
     origin_ip_tables: defaultdict[str, int] = defaultdict(lambda: 0)
