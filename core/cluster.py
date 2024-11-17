@@ -472,7 +472,7 @@ class FileListManager:
                 responses.append(URLResponse(str(r.real_url), r.status))
             responses.append(URLResponse(str(resp.real_url), resp.status))
             host = resp.host
-        hash = msg[0] if len(msg) > 0 and type == "file" else None
+        hash = msg[0] if len(msg) > 0 and type == "hash" else None
         logger.terror(f"clusters.error.downloading", type=type, error=str(error), file_hash=file.hash, file_size=units.format_bytes(file.size), host=host, file_path=file.path, hash=hash, responses="\n".join(("", *(str(r) for r in responses))))
         self.failed_hash_urls[file.hash].failed += 1
         self.failed_hash_urls[file.hash].urls.add(tuple(responses))
