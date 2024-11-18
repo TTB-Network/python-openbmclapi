@@ -125,13 +125,14 @@ async def _(request: web.Request):
 
 @route.get("/assets/js/config.js")
 async def _(request: web.Request):
-    content = f'window.__CONFIG__ = {json.dumps({
+    dashboard_config = json.dumps({
         "version": config.VERSION,
         "support": {
             "websocket": True,
             "polling": True
         },
-    })}'
+    })
+    content = f'window.__CONFIG__ = {dashboard_config}'
     return web.Response(
         body=content,
         content_type="application/javascript"
