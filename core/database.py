@@ -246,62 +246,65 @@ def _commit_response(hour: int, ip_tables: defaultdict[str, int], user_agents: d
     return True
 
 def commit():
-    global FILE_CACHE
-    total_hits = 0
-    total_bytes = 0
-    total_storages = 0
-    cache = FILE_CACHE.copy()
-    response_cache = RESPONSE_CACHE.copy()
-    session = SESSION.get_session()
-    clusters: defaultdict[tuple[int, str], FileStatistics] = defaultdict(lambda: FileStatistics(0, 0))
-    for key, value in cache.items():
-        hour = key.hour
-        cluster = key.cluster_id
-        storage = key.storage_id
-        hits = value.hits
-        bytes = value.bytes
-        if _commit_storage(hour, storage, hits, bytes):
-            total_hits += hits
-            total_bytes += bytes
-            total_storages += 1
-            clusters[(hour, cluster)].hits += hits
-            clusters[(hour, cluster)].bytes += bytes
-    for cluster, value in clusters.items():
-        _commit_cluster(cluster[0], cluster[1], value.hits, value.bytes)
+    try:
+        global FILE_CACHE
+        total_hits = 0
+        total_bytes = 0
+        total_storages = 0
+        cache = FILE_CACHE.copy()
+        response_cache = RESPONSE_CACHE.copy()
+        session = SESSION.get_session()
+        clusters: defaultdict[tuple[int, str], FileStatistics] = defaultdict(lambda: FileStatistics(0, 0))
+        for key, value in cache.items():
+            hour = key.hour
+            cluster = key.cluster_id
+            storage = key.storage_id
+            hits = value.hits
+            bytes = value.bytes
+            if _commit_storage(hour, storage, hits, bytes):
+                total_hits += hits
+                total_bytes += bytes
+                total_storages += 1
+                clusters[(hour, cluster)].hits += hits
+                clusters[(hour, cluster)].bytes += bytes
+        for cluster, value in clusters.items():
+            _commit_cluster(cluster[0], cluster[1], value.hits, value.bytes)
 
-    for hour, value in response_cache.items():
-        _commit_response(hour, value.ip_tables, value.user_agents, value.success, value.forbidden, value.redirect, value.not_found, value.error, value.partial)
-    
-    session.commit()
-    old_keys = []
-    for key, value in cache.items():
-        FILE_CACHE[key].hits -= value.hits
-        FILE_CACHE[key].bytes -= value.bytes
-        if FILE_CACHE[key].hits == FILE_CACHE[key].bytes == 0:
-            old_keys.append(key)
-    for key in old_keys:
-        del FILE_CACHE[key]
-    
-    old_keys.clear()
+        for hour, value in response_cache.items():
+            _commit_response(hour, value.ip_tables, value.user_agents, value.success, value.forbidden, value.redirect, value.not_found, value.error, value.partial)
 
-    for hour, value in response_cache.items():
-        RESPONSE_CACHE[hour].success -= value.success
-        RESPONSE_CACHE[hour].forbidden -= value.forbidden
-        RESPONSE_CACHE[hour].redirect -= value.redirect
-        RESPONSE_CACHE[hour].not_found -= value.not_found
-        RESPONSE_CACHE[hour].error -= value.error
-        ip_hits = 0
-        user_agent_hits = 0
-        for ip, hits in value.ip_tables.items():
-            RESPONSE_CACHE[hour].ip_tables[ip] -= hits
-            ip_hits += RESPONSE_CACHE[hour].ip_tables[ip]
-        for user_agent, hits in value.user_agents.items():
-            RESPONSE_CACHE[hour].user_agents[user_agent] -= hits
-            user_agent_hits += RESPONSE_CACHE[hour].user_agents[user_agent]
-        if RESPONSE_CACHE[hour].success == RESPONSE_CACHE[hour].forbidden == RESPONSE_CACHE[hour].redirect == RESPONSE_CACHE[hour].not_found == RESPONSE_CACHE[hour].error == ip_hits == user_agent_hits == 0:
-            old_keys.append(hour)
-    for key in old_keys:
-        del RESPONSE_CACHE[key]
+        session.commit()
+        old_keys = []
+        for key, value in cache.items():
+            FILE_CACHE[key].hits -= value.hits
+            FILE_CACHE[key].bytes -= value.bytes
+            if FILE_CACHE[key].hits == FILE_CACHE[key].bytes == 0:
+                old_keys.append(key)
+        for key in old_keys:
+            del FILE_CACHE[key]
+
+        old_keys.clear()
+
+        for hour, value in response_cache.items():
+            RESPONSE_CACHE[hour].success -= value.success
+            RESPONSE_CACHE[hour].forbidden -= value.forbidden
+            RESPONSE_CACHE[hour].redirect -= value.redirect
+            RESPONSE_CACHE[hour].not_found -= value.not_found
+            RESPONSE_CACHE[hour].error -= value.error
+            ip_hits = 0
+            user_agent_hits = 0
+            for ip, hits in value.ip_tables.items():
+                RESPONSE_CACHE[hour].ip_tables[ip] -= hits
+                ip_hits += RESPONSE_CACHE[hour].ip_tables[ip]
+            for user_agent, hits in value.user_agents.items():
+                RESPONSE_CACHE[hour].user_agents[user_agent] -= hits
+                user_agent_hits += RESPONSE_CACHE[hour].user_agents[user_agent]
+            if RESPONSE_CACHE[hour].success == RESPONSE_CACHE[hour].forbidden == RESPONSE_CACHE[hour].redirect == RESPONSE_CACHE[hour].not_found == RESPONSE_CACHE[hour].error == ip_hits == user_agent_hits == 0:
+                old_keys.append(hour)
+        for key in old_keys:
+            del RESPONSE_CACHE[key]
+    except:
+        logger.terror("database.error.write")
 
 async def init():
     Base.metadata.create_all(engine)
