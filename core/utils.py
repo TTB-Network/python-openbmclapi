@@ -132,7 +132,11 @@ class DataOutputStream(io.BytesIO):
                 self.write(bytes([byte | 0x80]))
 
     def write_string(self, value: str):
-        data = value.encode('utf-8')
+        try:
+            data = value.encode('utf-8')
+        except:
+            logger.debug(f"encode error: {repr(value)}")
+            data = value.encode('utf-8', errors='ignore')
         self.write_long(len(data))
         self.write(data)
 
