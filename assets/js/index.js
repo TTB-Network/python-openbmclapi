@@ -11,81 +11,49 @@ import {
     Modal,
     InputElement,
     Utils,
-    Progressbar,
     calcElementHeight
 } from './common.js'
-import './config.js'
 
 const $configuration = new Configuration();
 const $ElementManager = new ElementManager();
 const $style = new Style($configuration);
 const $i18n = new I18NManager();
-const $router = new Router("/pages");
+const $router = new Router("/");
 const $modal = new Modal();
 const $title = document.title
-const $progressbar = new Progressbar()
-class SideMenu extends Element {
-    constructor() {
-        super("aside")
-        this._menus = {}
-        this._menuButtons = {}
-        $style.addAll({
-            "aside": {
-                "width": "220px",
-                "height": "100%",
-                "padding-left": "20px",
-                "background": "var(--background)",
-                "overflow-y": "auto",
-                "border-right": "1px solid var(--color)",
-                "transform": "translateX(0%)",
-                "transition": "transform 150ms cubic-bezier(0.4, 0, 0.2, 1);"
-            },
-            "aside.hidden": {
-                "transform": "translateX(-100%)"
-            }
-        })
-        //
-    }
-    // split "." for submenu
-    // the submenu doesn't have a icon
-    // but the parent must contain and then can add submenu
-    add(name, icon, handler) {
-        const [main, submenu] = name.split(".", 1)
-        if (!this._menus[main]) {
-            this._menus[main] = {
-                icon: null,
-                handler: handler,
-                submenu: {}
-            }
-        }
-        if (submenu) {
-            this._menus[main].submenu[submenu] = {
-                handler: handler
-            }
-        } else {
-            this._menus[main].handler = handler
-        }
-    }
-    renderButtons() {
-        const buttons = [];
-        foreach (k in this._menus)
-    }
-    clear() {
-
-    }
-    toggle() {
-        this.hasClasses("hidden") ? this.removeClasses("hidden") : this.classes("hidden")
-    }
-}
+$i18n.addLanguageTable("zh_CN", {
+    "footer.powered_by": "由 %name% 提供服务支持",
+})
 $style.setTheme("light", {
-    "main-color": "#ffffff",
+    "main-color-r": "15",
+    "main-color-g": "198",
+    "main-color-b": "194",
+    "main-color": "rgb(15, 198, 194)",
+    "main-light-color": "rgb(23, 231, 229)",
     "color": "#000000",
-    "background": "#F5F6F8"
+    "dark-color": "#FFFFFF",
+    "background": "#F5F6F8",
+    "footer-background": "#F0F0F0",
+    "background-hover": "#F0F1F3",
+    "main-dark-color": "rgb(10, 157, 220)",
+    "main-shadow-0-2-color": "rgba(15, 198, 194, 0.2)",
+    "main-shadow-0-1-color": "rgba(15, 198, 194, 0.1)",
+    "main-button-hover": "rgb(10, 138, 135)",
 })
 $style.setTheme("dark", {
-    "main-color": "#000000",
+    "main-color-r": "244",
+    "main-color-g": "209",
+    "main-color-b": "180",
+    "main-color": "rgb(244, 209, 180)",
+    "main-light-color": "rgb(255, 239, 210)",
     "color": "#ffffff",
-    "background": "#181818"
+    "dark-color": "#000000",
+    "background": "#181818",
+    "footer-background": "#202020",
+    "background-hover": "#202020",
+    "main-dark-color": "rgb(235, 187, 151)",
+    "main-shadow-0-2-color": "rgba(244, 209, 180, 0.2)",
+    "main-shadow-0-1-color": "rgba(244, 209, 180, 0.1)"
 })
 $style.addAll({
     "::-webkit-scrollbar, html ::-webkit-scrollbar": {
@@ -98,35 +66,40 @@ $style.addAll({
         "background-color": "rgb(102, 102, 102)",
         "border-radius": "10px",
     },
-    "body,html": {
-        "margin": "0",
-        "padding": 0,
-    },
-    "*": {
-        "box-sizing": "border-box",
-        "font-family": "Segoe UI, sans-serif"
-    },
     "body": {
         "overflow": "hidden"
     },
     ".app": {
+        "display": "flex",
+        "flex-direction": "column",
+        "flex-wrap": "nowrap",
+        "justify-content": "space-between",
         "height": "100vh",
         "width": "100vw",
         "background": "var(--background)",
-        "overflow-y": "auto"
+        "overflow-y": "auto",
+        "color": "var(--color)"
+    },
+    "a": {
+        "color": "var(--color)",
+        "text-decoration": "none"
+    },
+    "a:hover": {
+        "text-decoration": "underline"
     },
     "header": `
-        background-color: var(--background);
+        background: var(--background);
         text-align: center;
         min-height: 56px;
         width: 100%;
-        padding: 8px;
-        position: fixed;
+        padding: 8px 8px 8px 8px;
         z-index: 1;
         display: flex;
         align-items: center;
         flex-wrap: nowrap;
-        justify-content: space-between
+        justify-content: space-between;
+        color: var(--color);
+        fill: var(--color);
     `,
     "header .content": {
         "display": "flex",
@@ -136,71 +109,125 @@ $style.addAll({
         "width": "48px",
         "height": "48px",
         "padding": "8px", 
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "fill": "inherit"
     },
-    "h1,h2,h3,h4,h5,h6": "margin:0;color:var(--color)",
+    "header .padding-left": {
+        "padding-left": "8px",
+    },
+    "h1,h2,h3,h4,h5,h6,p": "margin:0;color:inherit",
     "svg": {
-        "fill": "var(--color)"
-    },
-    "container": {
-        "position": "relative",
-        "top": "64px",
-        "display": "flex",
-        "flex-direction": "row",
-        "flex-wrap": "nowrap",
+        "fill": "inherit"
     },
     "main": {
-    }
+        "top": "56px",
+        //"overflow": "auto"
+    },
+    "header.hidden": {
+        "display": "none"
+    },
+    "header.hidden ~ main": {
+        "top": "0px"
+    },
+    "footer": {
+        "padding": "24px",
+        "flex-direction": "column",
+        "background": "var(--footer-background)",
+        "color": "var(--color)",
+        "display": "flex",
+        "align-items": "center",
+        "justify-content": "center"
+    },
+    "header .auth.disabled *": {
+        "cursor": "not-allowed"
+    },
 })
-function load() {
+
+async function load() {
     const $dom_body = new Element(document.body);
+    const $main = createElement("main")
 
     const $app = createElement("div").classes("app")
+
     const $header = createElement("header")
     const $theme = {
         sun: SVGContainers.sun,
         moon: SVGContainers.moon
     }
+    const $theme_change = createElement("div").append(
+        $theme[$configuration.get("theme") == "light" ? "moon" : "sun"]
+    )
+    const $header_content_left = createElement("div").classes("content", "padding-left").append(
+        createElement("h3").text($title)
+    );
+    const $header_content_right = createElement("div").classes("content").append(
+        $theme_change
+    );
+    const $footer = createElement("footer").append(
+        createElement("p").i18n(
+            "footer.powered_by"
+        ).t18n({
+            "name": createElement("a").text(
+                "tianxiu2b2t"
+            ).attributes({
+                "href": "https://github.com/tianxiu2b2t",
+                "target": "_blank"
+            })
+        })
+    )
+
+    globalThis.$app = $app;
+
     for (const $theme_key in $theme) {
         $theme[$theme_key].addEventListener("click", () => {
-            $header_content_left.children[0].removeChild($theme[$theme_key]);
+            $theme_change.removeChild($theme[$theme_key]);
             $style.applyTheme($theme_key == "sun" ? "light" : "dark");
-            $header_content_left.children[0].append($theme[$theme_key == "sun" ? "moon" : "sun"]);
+            $theme_change.append($theme[$theme_key == "sun" ? "moon" : "sun"]);
             $configuration.set("theme", $theme_key == "sun" ? "light" : "dark");
         })
     }
-    const $header_content_left = createElement("div").classes("content").append(
-        createElement("div").append(
-            SVGContainers.menu.addEventListener("click", () => {
-                $aside.toggle();
-            }),
-            $theme[$configuration.get("theme") == "light" ? "moon" : "sun"]
-        ),
-        createElement("h3").text("Python OpenBMCLAPI Dashboard")
-    );
-    const $header_content_right = createElement("div");
+
     $header.append($header_content_left, $header_content_right);
 
-    const $container = createElement("container");
-    const $main = createElement("main");
-    const $aside = new SideMenu()
-
-    $app.append($progressbar, $header, $container.append(
-        $aside,
-        $main
-    ));
+    $app.append(
+        createElement("container").append(
+            $header,
+            $main,
+        ),
+        $footer
+    );
 
     $dom_body.appendBefore($app);
 
+    $router.on("/", () => {
+        $main.append(
+            createElement("h1").append(createElement("span").text("哎哟喂！此页面还没有开发完成欸……")),
+            createElement("h1").append(createElement("span").text("或许你可以拥抱一下我们的电脑老师？"))
+        )
+    })
+
+    $router.before_handler(() => {
+        $header.removeAllClasses()
+        $main.getClasses
+        while ($main.firstChild != null) {
+            $main.removeChild($main.firstChild)
+        }
+    })
+    
+    $router.init()
     const observer = new ResizeObserver((..._) => {
         var header = calcElementHeight($header)
         var height = window.innerHeight - header
-        $container.style("height", `${height}px`)
+        $main.style("height", "auto")
+        var main = calcElementHeight($main)
+        var height = Math.max(height, main)
+        $main.style("height", `${height}px`)
     });
     observer.observe($app.origin, { childList: true, subtree: true });
+
 }
-window.addEventListener("DOMContentLoaded", () => {
-    load()
+window.addEventListener("DOMContentLoaded", async () => {
+    await load()
     Array.from(document.getElementsByClassName("preloader")).forEach(e => {
         const element = new Element(e);
         requestAnimationFrame(() => {

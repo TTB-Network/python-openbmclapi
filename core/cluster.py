@@ -1038,7 +1038,7 @@ async def init():
         if type == "local":
             storage = storages.LocalStorage(cstorage['path'], cstorage['width'])
         elif type == "alist":
-            storage = storages.AlistStorage(cstorage['path'], cstorage['width'], cstorage['url'], cstorage['username'], cstorage['password'])
+            storage = storages.AlistStorage(cstorage['path'], cstorage['width'], cstorage['url'], cstorage['username'], cstorage['password'], cstorage.get('link_cache_expires', None))
         else:
             logger.terror("cluster.error.unspported_storage", type=type, path=cstorage['path'])
             continue

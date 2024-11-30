@@ -1,5 +1,5 @@
 import asyncio
-from collections import deque
+from collections import defaultdict, deque
 from dataclasses import dataclass
 import io
 import os
@@ -11,12 +11,13 @@ from aiohttp.web_urldispatcher import SystemRoute
 
 from core import scheduler
 
+from . import utils
 from . import units
 from . import config
 from .logger import logger
 import ssl
 
-qps: int = 0
+time_qps: defaultdict[int, int] = defaultdict(int)
 xff: int = config.const.xff
 
 class SNIHelper:
@@ -57,8 +58,7 @@ def get_xff(x_forwarded_for: str, index: int = 1):
 
 @web.middleware
 async def middleware(request: web.Request, handler: Any) -> web.Response:
-    global qps
-    qps += 1
+    time_qps[int(utils.get_runtime())] += 1
     old_app = request.match_info.current_app
     try:
         request.match_info.current_app = app

@@ -6,6 +6,7 @@ from datetime import datetime
 import hashlib
 import io
 import json
+import re
 import time
 from typing import Any, Optional
 
@@ -140,7 +141,6 @@ class DataOutputStream(io.BytesIO):
         self.write_long(len(data))
         self.write(data)
 
-
 class DataInputStream(io.BytesIO):
 
     def read_long(self): 
@@ -155,6 +155,30 @@ class DataInputStream(io.BytesIO):
 
     def read_string(self):
         return self.read(self.read_long()).decode('utf-8')
+
+@dataclass
+class Time:
+    day: float = 0
+    hour: float = 0
+    minute: float = 0
+    second: float = 0
+    milisecond: float = 0
+
+    @property
+    def to_miliseconds(self):
+        return self.day * 86400000 + self.hour * 3600000 + self.minute * 60000 + self.second * 1000 + self.milisecond
+    @property
+    def to_seconds(self):
+        return self.day * 86400 + self.hour * 3600 + self.minute * 60 + self.second + self.milisecond / 1000
+    @property
+    def to_minutes(self):
+        return self.day * 1440 + self.hour * 60 + self.minute + self.second / 60 + self.milisecond / 3600000
+    @property
+    def to_hours(self):
+        return self.day * 24 + self.hour + self.minute / 60 + self.second / 3600 + self.milisecond / 3600000
+    @property
+    def to_days(self):
+        return self.day + self.hour / 24 + self.minute / 1440 + self.second / 86400 + self.milisecond / 86400000
 
 
 def check_sign(hash: str, secret: str, s: str, e: str) -> bool:
@@ -222,6 +246,21 @@ def raise_service_error(body: Any, key: str = "utils.error.service_error", **kwa
     logger.terror(key, code=service.code, httpCode=service.httpCode, message=service.message, name=service.name, **kwargs)
     return True
 
+def parse_time(time_str: str):
+    maps: dict[str, str] = {
+        "ms": "milisecond",
+        "s": "second",
+        "m": "minute",
+        "h": "hour",
+        "d": "day"
+    }
+    obj = Time()
+    parts = re.findall(r'(\d+(?:\.\d+)?)(ms|h|m|s|d)', time_str)
+    for part in parts:
+        value = float(part[0])
+        unit = part[1]
+        setattr(obj, maps[unit], value)
+    return obj
 
 
 @dataclass

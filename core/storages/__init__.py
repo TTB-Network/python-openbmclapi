@@ -9,6 +9,8 @@ import time
 from typing import Any, Optional
 
 from tqdm import tqdm
+
+from core import units
 from .. import scheduler, utils, cache
 from ..logger import logger
 import urllib.parse as urlparse
@@ -186,10 +188,27 @@ class AlistPath:
     def __str__(self):
         return self.path
 
+@dataclass
+class AlistLink:
+    url: str = ""
+    _expires: Optional[float] = None
+
+    def set_url(self, url: str, expired: Optional[float] = None):
+        self.url = url
+        if expired is None:
+            return
+        self._expires = expired + time.monotonic()
+        
+    @property
+    def expired(self):
+        return self._expires is None or self._expires > time.monotonic()
+            
+
+    
 
 class AlistStorage(iStorage): # TODO: 修复路径
     type: str = "alist"
-    def __init__(self, path: str, width: int, url: str, username: Optional[str], password: Optional[str]) -> None:
+    def __init__(self, path: str, width: int, url: str, username: Optional[str], password: Optional[str], link_cache_expires: Optional[str] = None) -> None:
         super().__init__(path[0:-1] if path.endswith("/") else path, width)
         self.url = url
         self.username = username
@@ -202,7 +221,13 @@ class AlistStorage(iStorage): # TODO: 修复路径
         self.tcp_connector = aiohttp.TCPConnector(limit=256)
         self.download_connector = aiohttp.TCPConnector(limit=256)
         self.cache = cache.MemoryStorage()
+        self.link_cache_timeout = utils.parse_time(link_cache_expires).to_seconds if link_cache_expires is not None else None
+        self.link_cache: defaultdict[str, AlistLink] = defaultdict(lambda: AlistLink())
         scheduler.run_repeat_later(self._check_token, 0, 3600)
+        if self.link_cache_timeout is not None:
+            logger.tinfo("storage.info.alist.link_cache", raw=link_cache_expires, time=units.format_count_datetime(self.link_cache_timeout))
+        else:
+            logger.tinfo("storage.info.alist.link_cache", raw=link_cache_expires, time="disabled")
 
     async def _get_token(self):
         await self.wait_token.wait()
@@ -237,7 +262,7 @@ class AlistStorage(iStorage): # TODO: 修复路径
         async with aiohttp.ClientSession(
             self.url
         ) as session:
-            if not await _check():
+            if not await _check(): # type: ignore
                 r = await _fetch()
                 if r.code == 200:
                     self.fetch_token = r.data["token"]
@@ -397,10 +422,11 @@ class AlistStorage(iStorage): # TODO: 修复路径
                 return await resp.read()
 
     async def get_url(self, file_hash: str) -> str:
-        info = await self.__info_file(file_hash)
-        if info.size == -1:
-            return ''
-        return info.raw_url
+        cache = self.link_cache[file_hash]
+        if cache.expired:
+            info = await self.__info_file(file_hash)
+            cache.set_url('' if info.size == -1 else info.raw_url, self.link_cache_timeout)
+        return cache.url
 
     async def write_file(self, file: File, content: bytes, mtime: float | None) -> bool:
         result = await self._action_data(

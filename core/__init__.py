@@ -47,7 +47,8 @@ async def main():
                 scheduler,
                 web,
                 cluster,
-                database
+                database,
+                dashboard
             )
         ])
 

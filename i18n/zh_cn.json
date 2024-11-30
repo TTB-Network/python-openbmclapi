@@ -47,5 +47,6 @@
     "cluster.debug.retry_download": "文件 [${file_path} ${file_hash}(${file_size})] 在 [${start_date}] 第 [${count}] 次下载失败，将在 [${time}] 重试",
     "database.error.write": "数据库写入出错，原因:",
     "cluster.info.enable.measure_storage": "已开启 存储 测速",
-    "cluster.error.init_measure_file": "无法初始化 测速文件，存储 [${path} (${type})] 大小 [${size}] 哈希 [${hash}]"
+    "cluster.error.init_measure_file": "无法初始化 测速文件，存储 [${path} (${type})] 大小 [${size}] 哈希 [${hash}]",
+    "storage.info.alist.link_cache": "Alist 存储 [${url}] [${path}] 链接缓存状态 [${time} (${raw})]"
 }

@@ -1,25 +1,25 @@
 import asyncio
 import base64
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 import io
 import json
 import os
 from pathlib import Path
 import socket
-from typing import Optional
+import threading
+from typing import Any, Optional
 
 import aiohttp
 import psutil
 
 from core import cluster, config, logger
-
 from . import utils
 
 from . import scheduler
 from .web import (
     routes as route,
-    qps as web_qps
+    time_qps
 )
 from aiohttp import web
 
@@ -107,8 +107,11 @@ class GithubPath:
 
 counter = Counter()
 process = psutil.Process(os.getpid())
+task: Optional[threading.Thread] = None
+running: int = 1
 GITHUB_BASEURL = "https://api.github.com"
 GITHUB_REPO = "TTB-Network/python-openbmclapi"
+websockets: deque[web.WebSocketResponse] = deque()
 
 @route.get('/pages')
 @route.get("/pages/{tail:.*}")
@@ -138,6 +141,17 @@ async def _(request: web.Request):
         content_type="application/javascript"
     )
 
+@route.get("/api")
+async def _(request: web.Request):
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+    websockets.append(ws)
+    async for msg in ws:
+        print(msg)
+    print("exit")
+    websockets.remove(ws)
+    return ws
+
 @route.get("/api/system_info")
 async def _(request: web.Request):
     return web.json_response(counter.get_json())
@@ -154,8 +168,8 @@ async def _(request: web.Request):
         db.ClusterStatisticsTable.hour < next_hour
     ).all()
     return web.json_response({
-        "hits": sum([int(item.hits) for item in q]),
-        "bytes": sum([int(item.bytes) for item in q])
+        "hits": sum([int(item.hits) for item in q]), # type: ignore
+        "bytes": sum([int(item.bytes) for item in q]) # type: ignore
     })
     
 
@@ -171,25 +185,50 @@ async def _(request: web.Request):
 
 route.static("/assets", "./assets")
 
+def parse_json(data: tuple | set | dict | Any):
+    if isinstance(data, (list, tuple, set)):
+        return [parse_json(data) for data in data]
+    elif is_dataclass(data):
+        return parse_json(asdict(data)) # type: ignore
+    elif isinstance(data, dict):
+        return {parse_json(k): parse_json(v) for k, v in data.items()}
+    return data
+
+async def api_process(type: str, data: Any):
+    ...
+
+async def trigger(type: str, data: Any = None):
+    for ws in websockets:
+        await ws.send_json({
+            'id': 0,
+            'namespace': type,
+            'data': await api_process(type, data)
+        })
+
 def record():
-    global web_qps
-    memory            = process.memory_info()
-    connection = process.connections()
-    stats = SystemInfo(
-        cpu_usage=process.cpu_percent(interval=1),
-        memory_usage=memory.vms,
-        connection=ConnectionStatistics(
-            tcp=len([c for c in connection if c.type == socket.SOCK_STREAM]),
-            udp=len([c for c in connection if c.type == socket.SOCK_DGRAM])
-        ),
-        clusters=[],
-        qps=web_qps
-    )
-    web_qps -= stats.qps
-    counter.add(stats)
+    global running
+    while running:
+        memory            = process.memory_info()
+        connection = process.net_connections()
+        stats = SystemInfo(
+            cpu_usage=process.cpu_percent(interval=1),
+            memory_usage=memory.vms,
+            connection=ConnectionStatistics(
+                tcp=len([c for c in connection if c.type == socket.SOCK_STREAM]),
+                udp=len([c for c in connection if c.type == socket.SOCK_DGRAM])
+            ),
+            clusters=[],
+            qps=0
+        )
+        current = utils.get_runtime() - 1
+        stats.qps = time_qps[int(current)]
+        del time_qps[int(current)]
+        counter.add(stats)
 
 async def init():
-    scheduler.run_repeat(record, 1)
+    global task
+    task = threading.Thread(target=record)
+    task.start()
     if config.const.auto_sync_assets:
         scheduler.run_repeat_later(
             sync_assets,
@@ -197,8 +236,11 @@ async def init():
             interval=86400
         )
 
-async def sync_assets():
+async def unload():
+    global running
+    running = 0
 
+async def sync_assets():
     async def get_dir_list(path: str = "/"):
         result = []
         if not path.startswith("/"):
