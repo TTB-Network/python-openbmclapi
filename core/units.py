@@ -66,7 +66,10 @@ def format_count_datetime(secs: float) -> str:
     ms = int(secs * 1000)
     s = int(ms / 1000) % 60
     m = int(ms / (1000 * 60)) % 60
-    h = int(ms / (1000 * 60 * 60))
+    h = int(ms / (1000 * 60 * 60)) % 24
+    d = int(ms / (1000 * 60 * 60 * 24))
+    if d > 0:
+        return f'{d:02d}:{h:02d}:{m:02d}:{s:02d}'
     if h > 0:
         return f'{h:02d}:{m:02d}:{s:02d}'
     else:

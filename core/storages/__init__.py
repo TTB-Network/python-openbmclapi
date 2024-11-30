@@ -372,17 +372,12 @@ class AlistStorage(iStorage): # TODO: 修复路径
             update_tqdm = update
     
         files: defaultdict[str, deque[File]] = defaultdict(deque)
-        async with aiohttp.ClientSession(
-            self.url,
-            headers={
-                "Authorization": await self._get_token()
-            }
-        ) as session:
-            for root_id in range(0, 256):
-                root = f"{self.path}/{root_id:02x}"
-                if f"listfile_{root}" in self.cache:
-                    result = self.cache.get(f"listfile_{root}")
-                else:
+        async def get_files(root_id: int):
+            root = f"{self.path}/{root_id:02x}"
+            if f"listfile_{root}" in self.cache:
+                result = self.cache.get(f"listfile_{root}")
+            else:
+                try:
                     async with session.post(
                         "/api/fs/list",
                         data={
@@ -395,8 +390,24 @@ class AlistStorage(iStorage): # TODO: 修复路径
                         if result.code != 200:
                             logger.tdebug("storage.debug.error_alist", status=result.code, message=result.message)
                         else:
-                            self.cache.set(f"listfile_{root}", result, 30)
-                for r in ((result.data or {}).get("content", None) or []):
+                            self.cache.set(f"listfile_{root}", result, 60)
+                except:
+                    logger.traceback()
+                    return []
+            return ((result.data or {}).get("content", None) or [])
+        async with aiohttp.ClientSession(
+            self.url,
+            headers={
+                "Authorization": await self._get_token()
+            }
+        ) as session:
+            results = await asyncio.gather(
+                *(get_files(root_id) for root_id in range(256))
+            )
+            for root_id, result in zip(
+                range(256), results
+            ):
+                for r in result:
                     file = File(
                         r["name"],
                         r["size"],

@@ -210,6 +210,7 @@ class StorageManager:
             current_storage.current_width += 1
             return current_storage
         else:
+            current_storage.current_width = 0
             self.available_storages.remove(current_storage)
             self.available_storages.append(current_storage)
             if c_storage is not None:
