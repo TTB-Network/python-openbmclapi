@@ -23,6 +23,7 @@
     "cluster.debug.public_host": "已在 [${host}:${port}] 上开放",
     "cluster.error.socketio": "节点 [${cluster}] 发送 [${type}] 时出错，原因 [${err}]",
     "cluster.info.socketio.message": "节点 [${cluster}] 主控消息：${message}",
+    "storage.error.action_alist": "Alist 返回出错，请求方式 [${method}] url [${url}] 错误代码 [${status}]，原因 [${message}]",
     "storage.error.alist": "Alist 返回出错，错误代码 [${status}]，原因 [${message}]",
     "storage.debug.error_alist": "Alist 返回出错，错误代码 [${status}]，原因 [${message}]",
     "storage.error.alist.fetch_token": "Alist 获取 Token 出错，错误代码 [${status}]，原因 [${message}]",
@@ -44,5 +45,7 @@
     "cluster.info.init": "当前 OpenBMCLAPI 版本为 [${openbmclapi_version}] Python OpenBMCLAPI 版本为 [${version}]",
     "cluster.success.no_missing_files": "当前暂无更新的文件",
     "cluster.debug.retry_download": "文件 [${file_path} ${file_hash}(${file_size})] 在 [${start_date}] 第 [${count}] 次下载失败，将在 [${time}] 重试",
-    "database.error.write": "数据库写入出错，原因:"
+    "database.error.write": "数据库写入出错，原因:",
+    "cluster.info.enable.measure_storage": "已开启 存储 测速",
+    "cluster.error.init_measure_file": "无法初始化 测速文件，存储 [${path} (${type})] 大小 [${size}] 哈希 [${hash}]"
 }

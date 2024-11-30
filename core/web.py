@@ -73,7 +73,7 @@ async def middleware(request: web.Request, handler: Any) -> web.Response:
         except:
             pass
         setattr(request, "custom_address", address)
-        start = time.monotonic_ns()
+        start = time.perf_counter_ns()
         resp = None
         try:
             resp = await handler(request)
@@ -87,7 +87,7 @@ async def middleware(request: web.Request, handler: Any) -> web.Response:
                     status = resp.status
             if request.http_range.start is not None and status == 200:
                 status = 206
-            end = time.monotonic_ns()
+            end = time.perf_counter_ns()
             logger.tdebug("web.debug.request_info", time=units.format_count_time(end - start, 4).rjust(16), host=request.host, address=(address).rjust(16), user_agent=request.headers.get("User-Agent"), real_path=request.raw_path, method=request.method.ljust(9), status=status)
     finally:
         request.match_info.current_app = old_app

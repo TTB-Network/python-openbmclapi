@@ -202,7 +202,7 @@ class AlistStorage(iStorage): # TODO: 修复路径
         self.tcp_connector = aiohttp.TCPConnector(limit=256)
         self.download_connector = aiohttp.TCPConnector(limit=256)
         self.cache = cache.MemoryStorage()
-        scheduler.run_repeat_later(self._check_token, 0, 10)
+        scheduler.run_repeat_later(self._check_token, 0, 3600)
 
     async def _get_token(self):
         await self.wait_token.wait()
@@ -274,7 +274,8 @@ class AlistStorage(iStorage): # TODO: 修复路径
                         **await resp.json()
                     )
                     if result.code != 200:
-                        logger.terror("storage.error.alist", status=result.code, message=result.message)
+                        logger.terror("storage.error.action_alist", method=action, url=url, status=result.code, message=result.message)
+                        logger.debug(data)
                         logger.debug(result)
                     else:
                         self.cache.set(hash, result, 30)

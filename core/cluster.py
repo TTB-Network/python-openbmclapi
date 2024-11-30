@@ -960,7 +960,7 @@ class MemoryStorageFile(StorageFile):
 
 ROOT = Path(__file__).parent.parent
 
-API_VERSION = "1.12.1"
+API_VERSION = "1.13.0"
 USER_AGENT = f"openbmclapi/{API_VERSION} python-openbmclapi/{config.VERSION}"
 CHECK_FILE_CONTENT = "Python OpenBMCLAPI"
 CHECK_FILE_MD5 = hashlib.md5(CHECK_FILE_CONTENT.encode("utf-8")).hexdigest()
@@ -971,6 +971,9 @@ CHECK_FILE = File(
     946684800000
 
 )
+MEASURES_HASH: dict[int, str] = {
+}
+MEASURE_BUFFER: bytes = b'\x00'
 
 routes = web.routes
 aweb = web.web
@@ -983,6 +986,34 @@ def convert_file_to_storage_file(file: File) -> SFile:
         file.mtime / 1000.0,
         file.hash
     )
+
+def init_measure_block(size: int):
+    MEASURES_HASH[size] = hashlib.md5(MEASURE_BUFFER * 1024 * 1024 * size).hexdigest()
+
+async def init_measure(maxsize: int = 50):
+    for i in range(1, maxsize, 10):
+        init_measure_block(i)
+
+async def init_measure_files():
+    for storage in clusters.storage_manager.storages:
+        for size, hash in MEASURES_HASH.items():
+            file = File(
+                hash,
+                hash,
+                size * 1024 * 1024,
+                946684800000
+            )
+            try:
+                if await storage.exists(hash) and await storage.get_size(hash) == size * 1024 * 1024:
+                    continue
+                await storage.write_file(
+                    convert_file_to_storage_file(file),
+                    MEASURE_BUFFER * 1024 * 1024 * size,
+                    file.mtime
+                )
+            except:
+                logger.terror("cluster.error.init_measure_file", storage=storage.path, type=storage.type, size=units.format_bytes(size * 1024 * 1024), hash=hash)
+                ...
 
 async def init():
     logger.tinfo("cluster.info.init", openbmclapi_version=API_VERSION, version=config.VERSION)
@@ -1012,7 +1043,8 @@ async def init():
             logger.terror("cluster.error.unspported_storage", type=type, path=cstorage['path'])
             continue
         clusters.storage_manager.add_storage(storage)
-
+    if config.const.measure_storage:
+        logger.tinfo("cluster.info.enable.measure_storage")
     scheduler.run_later(
         clusters.start, 0
     )
@@ -1043,19 +1075,35 @@ async def _(request: aweb.Request):
         if not check_sign(f"/measure/{size}", s, e):
             return aweb.Response(status=403)
         cluster_id = get_cluster_id_from_sign(f"/measure/{size}", s, e)
-        response = aweb.StreamResponse(
-            status=200,
-            reason="OK",
-            headers={
-                "Content-Length": str(size * 1024 * 1024),
-                "Content-Type": "application/octet-stream",
-            },
-        )
-        await response.prepare(request)
-        for _ in range(size):
-            await response.write(b'\x00' * 1024 * 1024)
-        await response.write_eof()
-        return response
+        if not config.const.measure_storage:
+            response = aweb.StreamResponse(
+                status=200,
+                reason="OK",
+                headers={
+                    "Content-Length": str(size * 1024 * 1024),
+                    "Content-Type": "application/octet-stream",
+                },
+            )
+            await response.prepare(request)
+            for _ in range(size):
+                await response.write(MEASURE_BUFFER * 1024 * 1024)
+            await response.write_eof()
+            return response
+        else:
+            init_measure_block(size)
+            await init_measure_files()
+            storage = clusters.storage_manager.storages[0]
+            if isinstance(storage, storages.AlistStorage):
+                url = await storage.get_url(MEASURES_HASH[size])
+                logger.debug("Requested measure url:", url)
+                return aweb.HTTPFound(url)
+            elif isinstance(storage, storages.LocalStorage):
+                return aweb.FileResponse(
+                    Path(storage.get_path(MEASURES_HASH[size]))
+                )
+        return aweb.Response(status=400)
+    
+
         """return aweb.HTTPFound(
             f"https://speedtest1.online.sh.cn:8080/download?size={size * 1024 * 1024}&r=0.7129844570865569"
         )"""

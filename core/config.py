@@ -17,6 +17,7 @@ defaults = {
     "advanced.check_type": "size",
     "advanced.auto_sync_assets": True,
     "advanced.github_token": "",
+    "advanced.measure_storage": False,
     "web": {
         "port": -1,
         "public_port": 6543,
@@ -153,6 +154,10 @@ class Const:
     def github_token(self):
         return Config.get("advanced.github_token", None) or None
     
+    @property
+    def measure_storage(self) -> bool:
+        return Config.get("advanced.measure_storage", False)
+
 const = Const()
 
 def read_version():
