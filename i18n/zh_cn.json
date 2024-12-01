@@ -48,5 +48,6 @@
     "database.error.write": "数据库写入出错，原因:",
     "cluster.info.enable.measure_storage": "已开启 存储 测速",
     "cluster.error.init_measure_file": "无法初始化 测速文件，存储 [${path} (${type})] 大小 [${size}] 哈希 [${hash}]",
-    "storage.info.alist.link_cache": "Alist 存储 [${url}] [${path}] 链接缓存状态 [${time} (${raw})]"
+    "storage.info.alist.link_cache": "Alist 存储 [${url}] [${path}] 链接缓存状态 [${time} (${raw})]",
+    "cluster.error.get_file": "获取文件 ${hash} 出错，原因："
 }

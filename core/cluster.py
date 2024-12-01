@@ -155,9 +155,9 @@ class StorageManager:
     async def _check_hash(self, file: File, storage: storages.iStorage):
         return await self._check_exists(file, storage) and utils.equals_hash(file.hash, await storage.read_file(file.hash))
 
-    async def get_file(self, hash: str):
+    async def get_file(self, hash: str, use_master: bool = False):
         file = None
-        if await self.available():
+        if await self.available() and not use_master:
             storage = self.get_width_storage()
             if isinstance(storage, storages.LocalStorage) and await storage.exists(hash):
                 return LocalStorageFile(
@@ -1051,6 +1051,9 @@ async def init():
     )
 
 async def unload():
+    for storage in clusters.storage_manager.storages:
+        if isinstance(storage, storages.AlistStorage):
+            await storage.close()
     await clusters.stop()
 
 def check_sign(hash: str, s: str, e: str):
@@ -1076,33 +1079,34 @@ async def _(request: aweb.Request):
         if not check_sign(f"/measure/{size}", s, e):
             return aweb.Response(status=403)
         cluster_id = get_cluster_id_from_sign(f"/measure/{size}", s, e)
-        if not config.const.measure_storage:
-            response = aweb.StreamResponse(
-                status=200,
-                reason="OK",
-                headers={
-                    "Content-Length": str(size * 1024 * 1024),
-                    "Content-Type": "application/octet-stream",
-                },
-            )
-            await response.prepare(request)
-            for _ in range(size):
-                await response.write(MEASURE_BUFFER * 1024 * 1024)
-            await response.write_eof()
-            return response
-        else:
+        if config.const.measure_storage:
             init_measure_block(size)
             await init_measure_files()
             storage = clusters.storage_manager.storages[0]
             if isinstance(storage, storages.AlistStorage):
                 url = await storage.get_url(MEASURES_HASH[size])
                 logger.debug("Requested measure url:", url)
-                return aweb.HTTPFound(url)
+                if url:
+                    return aweb.HTTPFound(url)
             elif isinstance(storage, storages.LocalStorage):
                 return aweb.FileResponse(
                     Path(storage.get_path(MEASURES_HASH[size]))
                 )
-        return aweb.Response(status=400)
+        if config.const.measure_storage:
+            logger.twarning("cluster.warning.measure_storage")
+        response = aweb.StreamResponse(
+            status=200,
+            reason="OK",
+            headers={
+                "Content-Length": str(size * 1024 * 1024),
+                "Content-Type": "application/octet-stream",
+            },
+        )
+        await response.prepare(request)
+        for _ in range(size):
+            await response.write(MEASURE_BUFFER * 1024 * 1024)
+        await response.write_eof()
+        return response
     
 
         """return aweb.HTTPFound(
@@ -1138,8 +1142,11 @@ async def _(request: aweb.Request):
                 user_agent
             )
             return aweb.Response(status=403)
-
-        file = await clusters.storage_manager.get_file(hash)
+        try:
+            file = await clusters.storage_manager.get_file(hash)
+        except:
+            logger.ttraceback("cluster.error.get_file", hash=hash)
+            file = await clusters.storage_manager.get_file(hash, True)
         if file is None:
             db.add_response(
                 address,

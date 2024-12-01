@@ -228,6 +228,9 @@ class AlistStorage(iStorage): # TODO: 修复路径
             logger.tinfo("storage.info.alist.link_cache", raw=link_cache_expires, time=units.format_count_datetime(self.link_cache_timeout))
         else:
             logger.tinfo("storage.info.alist.link_cache", raw=link_cache_expires, time="disabled")
+        self.session = aiohttp.ClientSession(
+            self.url
+        )
 
     async def _get_token(self):
         await self.wait_token.wait()
@@ -281,34 +284,32 @@ class AlistStorage(iStorage): # TODO: 修复路径
         hash = hashlib.sha256(f"{action},{url},{data},{headers}".encode()).hexdigest()
         if hash in self.cache:
             return self.cache.get(hash)
-        async with aiohttp.ClientSession(
-            self.url,
+        session = self.session
+        async with session.request(
+            action, url,
+            data=data,
             headers={
                 **headers,
                 **{
                     "Authorization": await self._get_token()
                 }
             }
-        ) as session:
-            async with session.request(
-                action, url,
-                data=data,
-            ) as resp:
-                try:
-                    result = AlistResult(
-                        **await resp.json()
-                    )
-                    if result.code != 200:
-                        logger.terror("storage.error.action_alist", method=action, url=url, status=result.code, message=result.message)
-                        logger.debug(data)
-                        logger.debug(result)
-                    else:
-                        self.cache.set(hash, result, 30)
-                    return result
-                except:
-                    logger.terror("storage.error.alist", status=resp.status, message=await resp.text())
-                    raise
-            
+        ) as resp:
+            try:
+                result = AlistResult(
+                    **await resp.json()
+                )
+                if result.code != 200:
+                    logger.terror("storage.error.action_alist", method=action, url=url, status=result.code, message=result.message)
+                    logger.debug(data)
+                    logger.debug(result)
+                else:
+                    self.cache.set(hash, result, 30)
+                return result
+            except:
+                logger.terror("storage.error.alist", status=resp.status, message=await resp.text())
+                raise
+
     async def __info_file(self, file_hash: str) -> AlistFileInfo:
         r = await self._action_data(
             "post",
@@ -450,4 +451,5 @@ class AlistStorage(iStorage): # TODO: 修复路径
         )
         return result.code == 200
     
-    
+    async def close(self):
+        await self.session.close()

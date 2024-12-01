@@ -10,7 +10,7 @@ LOGGER_DIR = "./logs"
 _logger = Logger.opt(depth=2)
 _logger.remove()
 _logger.add(
-    f".{LOGGER_DIR}/{{time:YYYY-MM-DD}}.log",
+    f"{LOGGER_DIR}/{{time:YYYY-MM-DD}}.log",
     format=LOGGER_FORMAT,
     retention="90 days",
     encoding="utf-8",
