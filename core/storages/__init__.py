@@ -224,10 +224,7 @@ class AlistStorage(iStorage): # TODO: 修复路径
         self.link_cache_timeout = utils.parse_time(link_cache_expires).to_seconds if link_cache_expires is not None else None
         self.link_cache: defaultdict[str, AlistLink] = defaultdict(lambda: AlistLink())
         scheduler.run_repeat_later(self._check_token, 0, 3600)
-        if self.link_cache_timeout is not None:
-            logger.tinfo("storage.info.alist.link_cache", raw=link_cache_expires, time=units.format_count_datetime(self.link_cache_timeout))
-        else:
-            logger.tinfo("storage.info.alist.link_cache", raw=link_cache_expires, time="disabled")
+        logger.tinfo("storage.info.alist.link_cache", url=self.url, path=self.path, raw=link_cache_expires, time="disabled" if self.link_cache_timeout is None else units.format_count_datetime(self.link_cache_timeout))
         self.session = aiohttp.ClientSession(
             self.url
         )

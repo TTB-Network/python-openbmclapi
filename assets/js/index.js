@@ -143,9 +143,28 @@ $style.addAll({
     },
 })
 
+class Menu extends Element {
+    constructor() {
+        super("div").classes("menu-side")
+        $style.addAll({
+            ".menu-side": {
+
+            }
+        })
+    }
+    toggle() {
+        super.toggle("hidden")
+    }
+}
+
 async function load() {
     const $dom_body = new Element(document.body);
     const $main = createElement("main")
+    const $menu = new Menu();
+    const $wrapper = createElement("wrapper").append(
+        $menu,
+        $main
+    )
 
     const $app = createElement("div").classes("app")
 
@@ -157,7 +176,10 @@ async function load() {
     const $theme_change = createElement("div").append(
         $theme[$configuration.get("theme") == "light" ? "moon" : "sun"]
     )
-    const $header_content_left = createElement("div").classes("content", "padding-left").append(
+    const $header_content_left = createElement("div").classes("content").append(
+        SVGContainers.menu.addEventListener("click", () => {
+
+        }),
         createElement("h3").text($title)
     );
     const $header_content_right = createElement("div").classes("content").append(
@@ -218,10 +240,10 @@ async function load() {
     const observer = new ResizeObserver((..._) => {
         var header = calcElementHeight($header)
         var height = window.innerHeight - header
-        $main.style("height", "auto")
-        var main = calcElementHeight($main)
-        var height = Math.max(height, main)
-        $main.style("height", `${height}px`)
+        $wrapper.style("height", "auto")
+        var wrapper = calcElementHeight($wrapper)
+        var height = Math.max(height, wrapper)
+        $wrapper.style("height", `${height}px`)
     });
     observer.observe($app.origin, { childList: true, subtree: true });
 

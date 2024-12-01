@@ -295,40 +295,45 @@ class FileListManager:
         self.task = None
 
     async def _get_filelist(self, cluster: 'Cluster'):
-        async with aiohttp.ClientSession(
-            config.const.base_url,
-            headers={
-                "User-Agent": USER_AGENT,
-                "Authorization": f"Bearer {await cluster.get_token()}"
-            }
-        ) as session:
-            async with session.get(
-                f"/openbmclapi/files",
-                params={
-                    "lastModified": str(int(self.cluster_last_modified[cluster]))
+        try:
+            async with aiohttp.ClientSession(
+                config.const.base_url,
+                headers={
+                    "User-Agent": USER_AGENT,
+                    "Authorization": f"Bearer {await cluster.get_token()}"
                 }
-            ) as resp:
-                body = await resp.read()
-                if utils.is_service_error(body):
-                    utils.raise_service_error(body)
-                    return []
-                resp.raise_for_status()
-                if resp.status == 204:
-                    return []
-                stream = utils.FileStream(zstd.decompress(body))
-                filelist = [
-                    File(
-                        path=stream.read_string(),
-                        hash=stream.read_string(),
-                        size=stream.read_long(),
-                        mtime=stream.read_long()
-                    )
-                    for _ in range(stream.read_long())
-                ]
-                if filelist:
-                    mtime = max(filelist, key=lambda f: f.mtime).mtime
-                    self.cluster_last_modified[cluster] = max(mtime, self.cluster_last_modified[cluster])
-                return filelist
+            ) as session:
+                async with session.get(
+                    f"/openbmclapi/files",
+                    params={
+                        "lastModified": str(int(self.cluster_last_modified[cluster]))
+                    }
+                ) as resp:
+                    body = await resp.read()
+                    if utils.is_service_error(body):
+                        utils.raise_service_error(body)
+                        return []
+                    resp.raise_for_status()
+                    if resp.status == 204:
+                        return []
+                    stream = utils.FileStream(zstd.decompress(body))
+                    filelist = [
+                        File(
+                            path=stream.read_string(),
+                            hash=stream.read_string(),
+                            size=stream.read_long(),
+                            mtime=stream.read_long()
+                        )
+                        for _ in range(stream.read_long())
+                    ]
+                    if filelist:
+                        mtime = max(filelist, key=lambda f: f.mtime).mtime
+                        self.cluster_last_modified[cluster] = max(mtime, self.cluster_last_modified[cluster])
+                    return filelist
+        except:
+            logger.ttraceback("cluster.error.fetch_filelist", cluster=cluster.id)
+            return []
+
 
     async def fetch_filelist(self) -> set[File]:
         result_filelist = set().union(*await asyncio.gather(*(asyncio.create_task(self._get_filelist(cluster)) for cluster in self.clusters.clusters)))
@@ -503,23 +508,27 @@ class FileListManager:
 
 
     async def _get_configuration(self, cluster: 'Cluster'):
-        async with aiohttp.ClientSession(
-            config.const.base_url,
-            headers={
-                "User-Agent": USER_AGENT,
-                "Authorization": f"Bearer {await cluster.get_token()}"
-            }
-        ) as session:
-            async with session.get(
-                f"/openbmclapi/configuration"
-            ) as resp:
-                body = await resp.json()
-                if utils.raise_service_error(body):
-                    return {}
-                resp.raise_for_status()
-                return {
-                    k: OpenBMCLAPIConfiguration(**v) for k, v in (body).items()
+        try:
+            async with aiohttp.ClientSession(
+                config.const.base_url,
+                headers={
+                    "User-Agent": USER_AGENT,
+                    "Authorization": f"Bearer {await cluster.get_token()}"
                 }
+            ) as session:
+                async with session.get(
+                    f"/openbmclapi/configuration"
+                ) as resp:
+                    body = await resp.json()
+                    if utils.raise_service_error(body):
+                        return {}
+                    resp.raise_for_status()
+                    return {
+                        k: OpenBMCLAPIConfiguration(**v) for k, v in (body).items()
+                    }
+        except:
+            logger.ttraceback("cluster.error.configuration", cluster=cluster.id)
+            return {}
 
 class ClusterManager:
     def __init__(self):
@@ -961,7 +970,7 @@ class MemoryStorageFile(StorageFile):
 
 ROOT = Path(__file__).parent.parent
 
-API_VERSION = "1.13.0"
+API_VERSION = "1.13.1"
 USER_AGENT = f"openbmclapi/{API_VERSION} python-openbmclapi/{config.VERSION}"
 CHECK_FILE_CONTENT = "Python OpenBMCLAPI"
 CHECK_FILE_MD5 = hashlib.md5(CHECK_FILE_CONTENT.encode("utf-8")).hexdigest()
