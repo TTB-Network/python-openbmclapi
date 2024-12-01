@@ -206,11 +206,11 @@ class StorageManager:
 
     def get_width_storage(self, c_storage: Optional[storages.iStorage] = None) -> storages.iStorage:
         current_storage = self.available_storages[0]
-        if current_storage.current_width > current_storage.width:
-            current_storage.current_width += 1
+        if current_storage.current_weight > current_storage.weight:
+            current_storage.current_weight += 1
             return current_storage
         else:
-            current_storage.current_width = 0
+            current_storage.current_weight = 0
             self.available_storages.remove(current_storage)
             self.available_storages.append(current_storage)
             if c_storage is not None:
@@ -1046,9 +1046,9 @@ async def init():
     for cstorage in config_storages:
         type = cstorage['type']
         if type == "local":
-            storage = storages.LocalStorage(cstorage['path'], cstorage['width'])
+            storage = storages.LocalStorage(cstorage['path'], cstorage.get("weight", 0))
         elif type == "alist":
-            storage = storages.AlistStorage(cstorage['path'], cstorage['width'], cstorage['url'], cstorage['username'], cstorage['password'], cstorage.get('link_cache_expires', None))
+            storage = storages.AlistStorage(cstorage['path'], cstorage.get("weight", 0), cstorage['url'], cstorage['username'], cstorage['password'], cstorage.get('link_cache_expires', None))
         else:
             logger.terror("cluster.error.unspported_storage", type=type, path=cstorage['path'])
             continue

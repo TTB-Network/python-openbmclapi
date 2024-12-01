@@ -7,10 +7,7 @@ import {
     Router,
     createElement,
     SVGContainers,
-    User,
     Modal,
-    InputElement,
-    Utils,
     calcElementHeight
 } from './common.js'
 
@@ -18,8 +15,7 @@ const $configuration = new Configuration();
 const $ElementManager = new ElementManager();
 const $style = new Style($configuration);
 const $i18n = new I18NManager();
-const $router = new Router("/");
-const $modal = new Modal();
+const $router = new Router("/pages");
 const $title = document.title
 $i18n.addLanguageTable("zh_CN", {
     "footer.powered_by": "由 %name% 提供服务支持",
@@ -56,6 +52,9 @@ $style.setTheme("dark", {
     "main-shadow-0-1-color": "rgba(244, 209, 180, 0.1)"
 })
 $style.addAll({
+    "*": {
+        "family": "Sego UI, Roboto, Arial, sans-serif",
+    },
     "::-webkit-scrollbar, html ::-webkit-scrollbar": {
         "width": "5px",
         "height": "5px",
@@ -121,6 +120,7 @@ $style.addAll({
     },
     "main": {
         "top": "56px",
+        "height": "100%"
         //"overflow": "auto"
     },
     "header.hidden": {
@@ -136,10 +136,8 @@ $style.addAll({
         "color": "var(--color)",
         "display": "flex",
         "align-items": "center",
-        "justify-content": "center"
-    },
-    "header .auth.disabled *": {
-        "cursor": "not-allowed"
+        "justify-content": "center",
+        "index-z": "9999"
     },
 })
 
@@ -148,27 +146,37 @@ class Menu extends Element {
         super("div").classes("menu-side")
         $style.addAll({
             ".menu-side": {
-
+                "position": "absolute",
+                "width": "200px",
+                "height": "100%",
+                "background": "var(--background)",
+                "transition": "transform 500ms cubic-bezier(0, 0, 0.2, 1)",
+                "transform": "translateX(0%)"
+            },
+            ".menu-main": {
+                "margin-left": "200px",
+                "transition": "margin-left 500ms cubic-bezier(0, 0, 0.2, 1)",
+            },
+            ".menu-side.hidden": {
+                "transform": "translateX(-100%)",
+            },
+            ".menu-side.hidden ~ .menu-main": {
+                "margin-left": "0px",
             }
         })
+        this.$menus = {}
     }
     toggle() {
         super.toggle("hidden")
+    }
+    add(type, icon, callback) {
+        var path = type.replaceAll(".", "/")
+        $router.on()
     }
 }
 
 async function load() {
     const $dom_body = new Element(document.body);
-    const $main = createElement("main")
-    const $menu = new Menu();
-    const $wrapper = createElement("wrapper").append(
-        $menu,
-        $main
-    )
-
-    const $app = createElement("div").classes("app")
-
-    const $header = createElement("header")
     const $theme = {
         sun: SVGContainers.sun,
         moon: SVGContainers.moon
@@ -176,29 +184,21 @@ async function load() {
     const $theme_change = createElement("div").append(
         $theme[$configuration.get("theme") == "light" ? "moon" : "sun"]
     )
-    const $header_content_left = createElement("div").classes("content").append(
-        SVGContainers.menu.addEventListener("click", () => {
-
-        }),
-        createElement("h3").text($title)
-    );
-    const $header_content_right = createElement("div").classes("content").append(
-        $theme_change
-    );
-    const $footer = createElement("footer").append(
-        createElement("p").i18n(
-            "footer.powered_by"
-        ).t18n({
-            "name": createElement("a").text(
-                "tianxiu2b2t"
-            ).attributes({
-                "href": "https://github.com/tianxiu2b2t",
-                "target": "_blank"
-            })
-        })
+    const $header = createElement("header").append(
+        createElement("div").classes("content").append(
+            createElement("div").append(SVGContainers.menu.addEventListener("click", () => {
+                $menu.toggle()
+            })),
+            createElement("h2").text(document.title)
+        ),
+        createElement("div").classes("content").append(
+            $theme_change
+        )
     )
-
-    globalThis.$app = $app;
+    const $app = createElement("div").classes("app")
+    const $container = createElement("div").classes("container")
+    const $main = createElement("main")
+    const $menu = new Menu()
 
     for (const $theme_key in $theme) {
         $theme[$theme_key].addEventListener("click", () => {
@@ -209,41 +209,24 @@ async function load() {
         })
     }
 
-    $header.append($header_content_left, $header_content_right);
-
     $app.append(
-        createElement("container").append(
-            $header,
-            $main,
-        ),
-        $footer
-    );
-
-    $dom_body.appendBefore($app);
-
-    $router.on("/", () => {
-        $main.append(
-            createElement("h1").append(createElement("span").text("哎哟喂！此页面还没有开发完成欸……")),
-            createElement("h1").append(createElement("span").text("或许你可以拥抱一下我们的电脑老师？"))
+        $header,
+        $container.append(
+            $menu,
+            createElement("div").classes("menu-main").append(
+                $main
+            )
         )
-    })
+    )
+    $dom_body.append($app)
 
-    $router.before_handler(() => {
-        $header.removeAllClasses()
-        $main.getClasses
-        while ($main.firstChild != null) {
-            $main.removeChild($main.firstChild)
-        }
-    })
-    
-    $router.init()
     const observer = new ResizeObserver((..._) => {
         var header = calcElementHeight($header)
         var height = window.innerHeight - header
-        $wrapper.style("height", "auto")
-        var wrapper = calcElementHeight($wrapper)
-        var height = Math.max(height, wrapper)
-        $wrapper.style("height", `${height}px`)
+        $container.style("height", "auto")
+        var container = calcElementHeight($container)
+        var height = Math.max(height, container)
+        $container.style("height", `${height}px`)
     });
     observer.observe($app.origin, { childList: true, subtree: true });
 

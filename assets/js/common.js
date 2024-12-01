@@ -63,6 +63,11 @@ class I18NManager {
             return key;
         }
         Object.entries(params || {}).forEach(([key, v]) => {
+            if (v instanceof Element) {
+                var e = document.createElement("div");
+                e.appendChild(v.origin);
+                v = e.innerHTML;
+            }
             value = value.replaceAll(`%${key}%`, v);
         })
         return value;
@@ -75,7 +80,6 @@ class I18NManager {
 class ElementManager {
     constructor() {
         this._elements = []
-        this._elements_event = {}
         globalThis.$ElementManager = this;
         window.addEventListener("langChange", (event) => {
             this._elements.forEach(element => element._render_i18n())
@@ -83,15 +87,6 @@ class ElementManager {
     }
     add(element) {
         this._elements.push(element);
-    }
-    addEventListener(event, element) {
-        if (!(event in this._elements_event)) {
-            this._elements_event[event] = []
-            window.addEventListener(event, (event) => {
-                this._elements_event[event].forEach(element => element(event))
-            })
-        }
-        this._elements_event[event].push(element)
     }
 }
 class Element {
@@ -134,7 +129,7 @@ class Element {
         if (this._i18n_key == null) {
             return;
         }
-        this.text($i18n.t(this._i18n_key, this._i18n_params))
+        this.html($i18n.t(this._i18n_key, this._i18n_params))
     }
     append(...elements) {
         elements.forEach(element => {
@@ -154,7 +149,12 @@ class Element {
         this._base.classList.remove(...classes);
         return this;
     }
+    removeAllClasses() {
+        this._base.classList = [];
+        return this
+    }
     hasClasses(...classes) {
+        console.log(classes, this._base.classList.contains(...classes), this._base.classList)
         return this._base.classList.contains(...classes);
     }
     toggle(...classes) {
@@ -273,14 +273,15 @@ class Style {
         if (Array.isArray(object)) {
             return object.map(this._parseToString).join(";");
         } else if (typeof object == "object") {
-            return Object.entries(object).map(([key, value]) => typeof value === "object" ? `${key}{${this._parseToString(value)}}` : `${key}:${this._parseToString(value)}`).join(";");
+            return Object.entries(object).map(([key, value]) => typeof value === "object" ? `${key}{${this._parseToString(value)}}` : `${key}:${this._parseToString(value)};`).join("");
         } else {
             return object.toString();
         }
     }
     add(name, style) {
         if (!name.startsWith("@")) {
-            this._styles[name] = this._parseToString(style);
+
+            this._styles[name] = (this._styles[name] || '') + ";" + this._parseToString(style);
         } else {
             if (!(name in this._medias)) this._medias[name] = []
             if (this._medias[name].indexOf(style) == -1) this._medias[name].push(this._parseToString(style));
@@ -369,6 +370,12 @@ class SVGContainers {
     }
     static get close() {
         return SVGContainers._parse('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="m16.192 6.344-4.243 4.242-4.242-4.242-1.414 1.414L10.535 12l-4.242 4.242 1.414 1.414 4.242-4.242 4.243 4.242 1.414-1.414L13.364 12l4.242-4.242z"></path></svg>')
+    }
+    static get exit() {
+        return SVGContainers._parse('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M19.002 3h-14c-1.103 0-2 .897-2 2v4h2V5h14v14h-14v-4h-2v4c0 1.103.897 2 2 2h14c1.103 0 2-.897 2-2V5c0-1.103-.898-2-2-2z"></path><path d="m11 16 5-4-5-4v3.001H3v2h8z"></path></svg>')
+    }
+    static get arrow_down() {
+        return SVGContainers._parse('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M16.293 9.293 12 13.586 7.707 9.293l-1.414 1.414L12 16.414l5.707-5.707z"></path></svg>')
     }
 }
 class Progressbar extends Element {
@@ -503,10 +510,7 @@ class Router {
             this._popstate_handler()
         })
         this._popstate_handler()
-
-        // 检测所有 a 标签的点击事件， 但捕获后来添加的 a 标签
         window.addEventListener("click", (e) => {
-            console.log(e.target.tagName)
             if (e.target.tagName == "A") {
                 const href = e.target.getAttribute("href")
                 const url = new URL(href, window.location.origin);
@@ -518,10 +522,13 @@ class Router {
             }
         })
     }
+    page(path) {
+        this._popstate_handler(path)
+    }
     _get_current_path() {
         return window.location.pathname
     }
-    _popstate_handler(path) {
+    async _popstate_handler(path) {
         const new_path = (path ?? this._get_current_path()).replace(this._route_prefix, "") || "/"
         const old_path = this._current_path
         if (this._handled == new_path) return;
@@ -534,17 +541,23 @@ class Router {
         }
         try {
             // get route
-            var route = this._routes.find(x => x.path.test(new_path))
-            if (route) {
-                // route.path.match(route.path)
-                var params = route.path.exec(new_path).slice(1).reduce((acc, cur, i) => {
-                    acc[route.params[i]] = cur
-                    return acc
-                }, {})
-                var handler = route ? route.handler : null
-                if (handler) {
-                    handler(new RouteEvent(this, old_path, new_path, params))
-                }
+            var routes = this._routes.filter(x => x.path.test(new_path))
+            if (routes) {
+                routes.forEach(route => {
+                    var params = route.path.exec(new_path).slice(1).reduce((acc, cur, i) => {
+                        acc[route.params[i]] = cur
+                        return acc
+                    }, {})
+                    var handler = route ? route.handler : null
+                    if (handler) {
+                        try {
+                            handler(new RouteEvent(this, old_path, new_path, params))
+                        } catch (e) {
+                            console.log(e)
+                        }
+                    }
+                })
+                
             }
         } catch (e) {
             console.log(e)
@@ -558,10 +571,12 @@ class Router {
     on(path, handler) {
         // path {xxx}
         // replace to like python (?P<xxx>*.+)
+        var params = (path.match(/\{((\w+)|(\:(url)\:))\}/g) || []).map(x => x.replaceAll("{", "").replaceAll("}", "").replaceAll(":", ""))
+        var regexp_path = path.replace(/\{\:(url)\:\}/g, "(.*)").replace(/\{(\w+)\}/g, "([^/]*)")
         var config = {
             raw_path: path,
-            path: new RegExp(`^${path.replace(/\{(\w+)\}/g, "([^/]*)")}$`),
-            params: (path.match(/\{(\w+)\}/g) || []).map(x => x.replace("{", "").replace("}", "")),
+            path: new RegExp(`^${regexp_path}$`),
+            params: params,
             handler
         }
         this._routes.push(config)
@@ -576,48 +591,6 @@ class Router {
     after_handler(handler) {
         this._after_handler = handler
         return this
-    }
-}
-class User {
-    constructor(baseurl) {
-        // 处理 baseurl 结尾的 /
-        this._base = baseurl.replace(/\/+$/, "")
-    }
-    async getState() {
-        if (this.refreshtoken) {
-            var payload = parseJWT(this.refreshtoken)
-            var data = JSON.parse(payload)
-            if (data.exp * 1000 > Date.now()) {
-                return true
-            }
-        }
-        try {
-            await this._refresh_token()
-            return true
-        } catch (e) {
-            return false
-        }
-    }
-    get refreshtoken() {
-        return localStorage.getItem("auth_refresh_token")
-    }
-    get accesstoken() {
-        return localStorage.getItem("auth_access_token")
-    }
-    async _refresh_token() {
-        const refreshtoken = localStorage.getItem("auth_refresh_token")
-        if (!refreshtoken) throw new ServiceError(403, "Unauthorized");
-        const resp = await fetch(`${this._base}/refresh_token`, {
-            headers: {
-                "Authorization": `Bearer ${refreshtoken}`
-            }
-        })
-        const data = await resp.json()
-        if (ServiceError.isServiceError(data)) {
-            throw ServiceError.fromJSON(data)
-        }
-        localStorage.setItem("auth_access_token", resp.headers.get("X-Access-Token"))
-        localStorage.setItem("auth_refresh_token", resp.headers.get("X-Refresh-Token"))
     }
 }
 class ServiceData {
@@ -804,7 +777,14 @@ class InputElement extends Element {
             this.classes("active")
         }), createElement("fieldset").append(
             createElement("legend").append(this.$label_span))
-        ))
+        )).addEventListener("input", () => {
+            this.classes("focus")
+            if (Utils.isEmpty(this.$input.val)) {
+                this.removeClasses("active")
+            } else {
+                this.classes("active")
+            }
+        })
     }
     label(value) {
         this.$label_span.text(value)
@@ -859,21 +839,16 @@ function ref(object, params) {
     return new Proxy(object, {
         set(target, key, value) {
             target[key] = value
-            var args = {
-                target,
-                key,
-                value
-            }
             if (timeout > 0) {
                 if (task) {
                     clearTimeout(task)
                 }
                 task = setTimeout(() => {
-                    handler(args)
+                    handler(key, value)
                     task = null
                 }, timeout)
             } else {
-                handler(args)
+                handler(key, value)
             }
             return true
         }
@@ -882,7 +857,8 @@ function ref(object, params) {
 function calcElementHeight(element) {
     var origin = element.origin;
     var rect = origin.getBoundingClientRect()
-    return rect.height   
+    return rect.height
+    
 }
 export {
     Element,
@@ -894,7 +870,6 @@ export {
     ElementManager,
     I18NManager,
     Style,
-    User,
     ServiceData,
     ServiceError,
     Modal,

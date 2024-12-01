@@ -51,5 +51,6 @@
     "storage.info.alist.link_cache": "Alist 存储 [${url}] [${path}] 链接缓存状态 [${time} (${raw})]",
     "cluster.error.get_file": "获取文件 ${hash} 出错，原因：",
     "cluster.error.fetch_filelist": "无法获取 [${id}] 文件列表，原因：",
-    "cluster.error.configuration": "无法获取 [${id}] 下载配置，原因："
+    "cluster.error.configuration": "无法获取 [${id}] 下载配置，原因：",
+    "cluster.warning.measure_storage": "尝试重定向至存储测速失败，已自动切换至本地测速"
 }

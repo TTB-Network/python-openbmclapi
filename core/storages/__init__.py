@@ -30,13 +30,13 @@ class iStorage(metaclass=abc.ABCMeta):
     type: str = "_interface"
     can_write: bool = False
 
-    def __init__(self, path: str, width: int) -> None:
+    def __init__(self, path: str, weight: int) -> None:
         if self.type == "_interface":
             raise ValueError("Cannot instantiate interface")
         self.path = path
-        self.width = width
+        self.weight = weight
         self.unique_id = hashlib.md5(f"{self.type},{self.path}".encode("utf-8")).hexdigest()
-        self.current_width = 0
+        self.current_weight = 0
         self.cache_files = cache.MemoryStorage()
 
     def __repr__(self) -> str:
@@ -71,8 +71,8 @@ class iStorage(metaclass=abc.ABCMeta):
 class LocalStorage(iStorage):
     type: str = "local"
     can_write: bool = True
-    def __init__(self, path: str, width: int) -> None:
-        super().__init__(path, width)
+    def __init__(self, path: str, weight: int) -> None:
+        super().__init__(path, weight)
 
     def __str__(self) -> str:
         return f"Local Storage: {self.path}"
@@ -206,10 +206,10 @@ class AlistLink:
 
     
 
-class AlistStorage(iStorage): # TODO: 修复路径
+class AlistStorage(iStorage):
     type: str = "alist"
-    def __init__(self, path: str, width: int, url: str, username: Optional[str], password: Optional[str], link_cache_expires: Optional[str] = None) -> None:
-        super().__init__(path[0:-1] if path.endswith("/") else path, width)
+    def __init__(self, path: str, weight: int, url: str, username: Optional[str], password: Optional[str], link_cache_expires: Optional[str] = None) -> None:
+        super().__init__(path[0:-1] if path.endswith("/") else path, weight)
         self.url = url
         self.username = username
         self.password = password
@@ -277,7 +277,7 @@ class AlistStorage(iStorage): # TODO: 修复路径
     def __repr__(self) -> str:
         return f"AlistStorage({self.path})"
 
-    async def _action_data(self, action: str, url: str, data: Any, headers: dict[str, str] = {}, session: Optional[aiohttp.ClientSession] = None) -> AlistResult:
+    async def _action_data(self, action: str, url: str, data: Any, headers: dict[str, str] = {}, session: Optional[aiohttp.ClientSession] = None, _authentication: bool = False) -> AlistResult:
         hash = hashlib.sha256(f"{action},{url},{data},{headers}".encode()).hexdigest()
         if hash in self.cache:
             return self.cache.get(hash)
@@ -296,6 +296,12 @@ class AlistStorage(iStorage): # TODO: 修复路径
                 result = AlistResult(
                     **await resp.json()
                 )
+                if result.code == 401 and not _authentication:
+                    self.fetch_token = None
+                    self.last_token = 0
+                    self.wait_token.acquire()
+                    await self.wait_token.wait()
+                    return await self._action_data(action, url, data, headers, session, True)
                 if result.code != 200:
                     logger.terror("storage.error.action_alist", method=action, url=url, status=result.code, message=result.message)
                     logger.debug(data)
