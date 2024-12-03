@@ -1061,6 +1061,10 @@ async def init():
         clusters.storage_manager.add_storage(storage)
     if config.const.measure_storage:
         logger.tinfo("cluster.info.enable.measure_storage")
+
+
+    db.init_storages_key(*clusters.storage_manager.storages)
+
     scheduler.run_later(
         clusters.start, 0
     )

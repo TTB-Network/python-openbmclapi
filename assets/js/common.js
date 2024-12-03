@@ -503,7 +503,6 @@ class Router {
         this._after_handler = null
         this._current_path = this._get_current_path()
         this._routes = []
-        this._handled = null
     }
     init() {
         window.addEventListener("popstate", () => {
@@ -531,7 +530,7 @@ class Router {
     async _popstate_handler(path) {
         const new_path = (path ?? this._get_current_path()).replace(this._route_prefix, "") || "/"
         const old_path = this._current_path
-        if (this._handled == new_path) return;
+        if (old_path == new_path) return;
         window.history.pushState(null, '', this._route_prefix + new_path)
         this._current_path = new_path
         try {

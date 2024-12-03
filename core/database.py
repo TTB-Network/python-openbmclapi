@@ -1,6 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
+import json
 import time
 from typing import Optional
 import pyzstd
@@ -9,7 +10,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.decl_api import DeclarativeMeta
 
-from core import logger, scheduler, utils
+from core import logger, scheduler, storages, utils
 
 @dataclass
 class StorageStatistics:
@@ -80,6 +81,12 @@ class ResponseTable(Base):
     redirect = Column(String, nullable=False)
     ip_tables = Column(LargeBinary, nullable=False)
     user_agents = Column(LargeBinary, nullable=False)
+
+class StorageUniqueIDTable(Base):
+    __tablename__ = 'StorageUniqueID'
+    id = Column(Integer, primary_key=True)
+    unique_id = Column(String, nullable=False)
+    data = Column(String, nullable=False)
 
 class StatusType(Enum):
     SUCCESS = "success"
@@ -305,6 +312,27 @@ def commit():
             del RESPONSE_CACHE[key]
     except:
         logger.terror("database.error.write")
+
+def init_storages_key(*storage: storages.iStorage):
+    session = SESSION.get_session()
+    for s in storage:
+        data = {
+            "type": s.type,
+            "path": s.path,
+        }
+        if isinstance(s, storages.AlistStorage):
+            data["url"] = s.url
+        content = json.dumps(data, separators=(',', ':'))
+        
+        q = session.query(StorageUniqueIDTable).filter(StorageUniqueIDTable.unique_id == s.unique_id)
+        r = q.first() or StorageUniqueIDTable(
+            unique_id = s.unique_id,
+            data = content
+        )
+        if q.count() == 0:
+            session.add(r)
+    session.commit()
+
 
 async def init():
     Base.metadata.create_all(engine)

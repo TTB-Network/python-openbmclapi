@@ -213,7 +213,7 @@ class AlistStorage(iStorage):
     type: str = "alist"
     def __init__(self, path: str, weight: int, url: str, username: Optional[str], password: Optional[str], link_cache_expires: Optional[str] = None) -> None:
         super().__init__(path[0:-1] if path.endswith("/") else path, weight)
-        self.url = url
+        self.url = url.rstrip("/")
         self.username = username
         self.password = password
         self.can_write = username is not None and password is not None

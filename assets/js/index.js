@@ -148,9 +148,10 @@ class Menu extends Element {
         $style.addAll({
             ".menu-side": {
                 "position": "absolute",
-                "width": "200px",
+                "width": "216px",
                 "height": "100%",
-                "background": "black",//"var(--background)",
+                "padding-left": "24px",
+                "background": "var(--background)",
                 "transition": "transform 500ms cubic-bezier(0, 0, 0.2, 1)",
                 "transform": "translateX(0%)"
             },
@@ -163,10 +164,52 @@ class Menu extends Element {
             },
             ".menu-side.hidden ~ .menu-main": {
                 "margin-left": "0px",
-            }
+            },
+            ".menu-button": `
+                -webkit-tap-highlight-color: transparent;
+                background-color: transparent;
+                cursor: pointer;
+                user-select: none;
+                vertical-align: middle;
+                appearance: none;
+                color: inherit;
+                display: flex;
+                -webkit-box-flex: 1;
+                -webkit-box-pack: start;
+                justify-content: flex-start;
+                -webkit-box-align: center;
+                align-items: center;
+                position: relative;
+                min-width: 0px;
+                box-sizing: border-box;
+                text-align: left;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                padding-left: 16px;
+                padding-right: 16px;
+                height: 46px;
+                outline: 0px;
+                border-width: 0px;
+                border-style: initial;
+                border-color: initial;
+                border-image: initial;
+                margin: 0px 0px 4px;
+                text-decoration: none;
+                transition: color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+                border-radius: 4px;
+            `,
+            ".menu-button:hover": `
+                color: var(--main-color);
+            `,
+            ".menu-button.active": `
+                background-color: var(--main-color);
+                color: var(--dark-color);
+                box-shadow: rgba(var(--main-color-r), var(--main-color-g), var(--main-color-b), 0.2) 0px 10px 25px 0px;
+            `
         })
         this.$menus = {}
         this._render_task = null
+        this.route_handler_lock = null;
     }
     toggle() {
         super.toggle("hidden")
@@ -191,30 +234,58 @@ class Menu extends Element {
         this._render_task = requestAnimationFrame(() => {
             this._render()
         })
+        var cur_key, cur_sub;
+        $router.before_handler(async (event) => {
+            if (this._render_task) await new Promise((resolve) => {
+                this.route_handler_lock = resolve
+            })
+            var page = event.current_route
+            var [key, sub] = page.slice(1).split("/", 2)
+            if (cur_key == key && cur_sub == sub) return;
+            for (const [$key, $val] of Object.entries(this.$menus)) {
+                if ($key.toLocaleLowerCase() != key.toLocaleLowerCase()) {
+                    $val.$dom.removeClasses("active")
+                    if ($val.$child) $val.$child.removeClasses("hidden")
+                    continue
+                }
+                $val.$dom.classes("active")
+                if ($val.$child) $val.$child.classes("hidden")
+                console.log($val)
+            }
+            cur_key = key;
+            cur_sub = sub;
+        })
     }
     _render() {
         this._render_task = null;
         const menu = this.$menus
         while (this.firstChild != null) this.removeChild(this.firstChild)
         for (const [$key, $val] of Object.entries(menu)) {
-            this.append(
-                createElement("div").append(
-                    Utils.isDOM($val.icon) || $val.icon instanceof Element ? $val.icon : createElement("div"),
-                    createElement("p").i18n(`menu.${$key}`),
-                )
-            )
+            var root = createElement("div").classes("menu-button").append(
+                Utils.isDOM($val.icon) || $val.icon instanceof Element ? $val.icon : createElement("div"),
+                createElement("p").i18n(`menu.${$key}`),
+            ).addEventListener("click", () => {
+                $router.page(`/${$key}`)
+            })
+            this.append(root)
+            menu[$key].$dom = root
             if ($val.children.length == 0) continue
             var child = createElement("div")
             for (const $child of $val.children) {
+                var children = createElement("div").append(
+                    createElement("span"),
+                    createElement("p").i18n(`menu.${$key}.${$child.type}`)
+                )
+                menu[$key].children[$child.type].$dom = children
                 child.append(
-                    createElement("div").append(
-                        createElement("span"),
-                        createElement("p").i18n(`menu.${$key}.${$child.type}`)
-                    )
+                    children
                 )
             }
             this.append(child)
+            root.append(SVGContainers.arrow_down)
+            menu[$key].$child = child
         }
+        this.route_handler_lock?.()
     }
 }
 
