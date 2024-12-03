@@ -8,7 +8,8 @@ import {
     createElement,
     SVGContainers,
     Modal,
-    calcElementHeight
+    calcElementHeight,
+    Utils
 } from './common.js'
 
 const $configuration = new Configuration();
@@ -149,7 +150,7 @@ class Menu extends Element {
                 "position": "absolute",
                 "width": "200px",
                 "height": "100%",
-                "background": "var(--background)",
+                "background": "black",//"var(--background)",
                 "transition": "transform 500ms cubic-bezier(0, 0, 0.2, 1)",
                 "transform": "translateX(0%)"
             },
@@ -165,13 +166,55 @@ class Menu extends Element {
             }
         })
         this.$menus = {}
+        this._render_task = null
     }
     toggle() {
         super.toggle("hidden")
     }
     add(type, icon, callback) {
         var path = type.replaceAll(".", "/")
-        $router.on()
+        $router.on(`/${path}`, callback)
+        var [main, sub] = type.split(".", 1)
+        if (!this.$menus[main]) {
+            this.$menus[main] = {
+                icon: icon,
+                children: []
+            }
+        }
+        this.$menus[main].icon = icon ? icon : this.$menus[main].icon
+        if (sub) {
+            this.$menus[main].children.push({
+                type: sub
+            })   
+        }
+        if (this._render_task) return;
+        this._render_task = requestAnimationFrame(() => {
+            this._render()
+        })
+    }
+    _render() {
+        this._render_task = null;
+        const menu = this.$menus
+        while (this.firstChild != null) this.removeChild(this.firstChild)
+        for (const [$key, $val] of Object.entries(menu)) {
+            this.append(
+                createElement("div").append(
+                    Utils.isDOM($val.icon) || $val.icon instanceof Element ? $val.icon : createElement("div"),
+                    createElement("p").i18n(`menu.${$key}`),
+                )
+            )
+            if ($val.children.length == 0) continue
+            var child = createElement("div")
+            for (const $child of $val.children) {
+                child.append(
+                    createElement("div").append(
+                        createElement("span"),
+                        createElement("p").i18n(`menu.${$key}.${$child.type}`)
+                    )
+                )
+            }
+            this.append(child)
+        }
     }
 }
 
@@ -199,6 +242,10 @@ async function load() {
     const $container = createElement("div").classes("container")
     const $main = createElement("main")
     const $menu = new Menu()
+
+    $menu.add("dashboard", "a", (...args) => {
+        console.log("a")
+    })
 
     for (const $theme_key in $theme) {
         $theme[$theme_key].addEventListener("click", () => {
@@ -229,6 +276,8 @@ async function load() {
         $container.style("height", `${height}px`)
     });
     observer.observe($app.origin, { childList: true, subtree: true });
+
+    $router.init()
 
 }
 window.addEventListener("DOMContentLoaded", async () => {

@@ -35,9 +35,12 @@ class iStorage(metaclass=abc.ABCMeta):
             raise ValueError("Cannot instantiate interface")
         self.path = path
         self.weight = weight
-        self.unique_id = hashlib.md5(f"{self.type},{self.path}".encode("utf-8")).hexdigest()
         self.current_weight = 0
         self.cache_files = cache.MemoryStorage()
+
+    @property
+    def unique_id(self) -> str:
+        return hashlib.md5(f"{self.type},{self.path}".encode("utf-8")).hexdigest()
 
     def __repr__(self) -> str:
         return f"{self.type}({self.path})"
@@ -228,6 +231,10 @@ class AlistStorage(iStorage):
         self.session = aiohttp.ClientSession(
             self.url
         )
+
+    @property
+    def unique_id(self) -> str:
+        return hashlib.md5(f"{self.type},{self.url},{self.path}".encode("utf-8")).hexdigest()
 
     async def _get_token(self):
         await self.wait_token.wait()

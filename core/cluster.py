@@ -1004,26 +1004,32 @@ async def init_measure(maxsize: int = 50):
     for i in range(1, maxsize, 10):
         init_measure_block(i)
 
+async def init_measure_file(
+    storage: storages.iStorage,
+    size: int,
+    hash: str
+):
+    file = File(
+        hash,
+        hash,
+        size * 1024 * 1024,
+        946684800000
+    )
+    try:
+        if await storage.exists(hash) and await storage.get_size(hash) == size * 1024 * 1024:
+            return True
+        await storage.write_file(
+            convert_file_to_storage_file(file),
+            MEASURE_BUFFER * 1024 * 1024 * size,
+            file.mtime
+        )
+        return True
+    except:
+        logger.terror("cluster.error.init_measure_file", storage=storage.path, type=storage.type, size=units.format_bytes(size * 1024 * 1024), hash=hash)
+    return False
 async def init_measure_files():
-    for storage in clusters.storage_manager.storages:
-        for size, hash in MEASURES_HASH.items():
-            file = File(
-                hash,
-                hash,
-                size * 1024 * 1024,
-                946684800000
-            )
-            try:
-                if await storage.exists(hash) and await storage.get_size(hash) == size * 1024 * 1024:
-                    continue
-                await storage.write_file(
-                    convert_file_to_storage_file(file),
-                    MEASURE_BUFFER * 1024 * 1024 * size,
-                    file.mtime
-                )
-            except:
-                logger.terror("cluster.error.init_measure_file", storage=storage.path, type=storage.type, size=units.format_bytes(size * 1024 * 1024), hash=hash)
-                ...
+    results = await asyncio.gather(*[init_measure_file(storage, size, MEASURES_HASH[size]) for storage in clusters.storage_manager.storages for size in MEASURES_HASH])
+    logger.debug(results)
 
 async def init():
     logger.tinfo("cluster.info.init", openbmclapi_version=API_VERSION, version=config.VERSION)
@@ -1074,7 +1080,7 @@ def check_sign(hash: str, s: str, e: str):
 
 def get_cluster_id_from_sign(hash: str, s: str, e: str) -> Optional[str]:
     for cluster in clusters.clusters:
-        if utils.check_sign(hash, cluster.secret, s, e):
+        if utils.check_sign_without_time(hash, cluster.secret, s, e):
             return cluster.id
     return None
 

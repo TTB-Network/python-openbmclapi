@@ -182,6 +182,9 @@ class Time:
 
 
 def check_sign(hash: str, secret: str, s: str, e: str) -> bool:
+    return check_sign(hash, secret, s, e) and time.time() - 300 < int(e, 36)
+
+def check_sign_without_time(hash: str, secret: str, s: str, e: str):
     if not s or not e:
         return False
     sign = (
@@ -191,7 +194,7 @@ def check_sign(hash: str, secret: str, s: str, e: str) -> bool:
         .decode()
         .rstrip("=")
     )
-    return sign == s and time.time() - 300 < int(e, 36)
+    return sign == s
 
 def equals_hash(origin: str, content: bytes):
     return get_hash_hexdigest(origin, content) == origin

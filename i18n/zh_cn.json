@@ -27,7 +27,7 @@
     "storage.error.alist": "Alist 返回出错，错误代码 [${status}]，原因 [${message}]",
     "storage.debug.error_alist": "Alist 返回出错，错误代码 [${status}]，原因 [${message}]",
     "storage.error.alist.fetch_token": "Alist 获取 Token 出错，错误代码 [${status}]，原因 [${message}]",
-    "cluster.success.keepalive": "节点 [${cluster}] 保活成功，已回原 [${hits}] 个文件，共计 [${bytes}] 流量，延迟为 [${ping}ms]",
+    "cluster.success.keepalive": "节点 [${cluster}] 保活成功，已回源 [${hits}] 个文件，共计 [${bytes}] 流量，延迟为 [${ping}ms]",
     "cluster.debug.socketio.disconnected": "SocketIO 已断开连接",
     "cluster.debug.socketio.connected": "SocketIO 已连接",
     "cluster.success.cluster.disable": "节点 [${cluster}] 已正常下线",
