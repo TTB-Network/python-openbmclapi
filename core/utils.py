@@ -3,6 +3,7 @@ import base64
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
+import functools
 import hashlib
 import io
 import json
@@ -264,6 +265,11 @@ def parse_time(time_str: str):
         unit = part[1]
         setattr(obj, maps[unit], value)
     return obj
+
+
+async def run_sync(func, *args, **kwargs):
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, func, *args, **kwargs)
 
 
 @dataclass

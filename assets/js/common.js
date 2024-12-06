@@ -859,6 +859,153 @@ function calcElementHeight(element) {
     return rect.height
     
 }
+class Lock {
+    _lock = false;
+    _waitList = [];
+    async acquire() {
+        if (this._lock) {
+            await new Promise((resolve) => {
+                this._waitList.push(resolve);
+            });
+        }
+        this._lock = true;
+    }
+    release() {
+        this._lock = false;
+        if (this._waitList.length > 0) {
+            let resolve = this._waitList.shift();
+            resolve && resolve();
+        }
+    }
+}
+const process_pid = Math.floor(Math.random() * 0xFFFFFF)
+class ObjectID {
+    static _pid = process_pid;
+    static _inc = Math.floor(Math.random() * 0xFFFFFF);
+    static _inc_lock = new Lock();
+    static _type_marker = 7;
+    static _MAX_COUNTER_VALUE = 0xFFFFFF;
+    static __random = ObjectID._randomBytes();
+    __id;
+    constructor(oid) {
+        if (oid instanceof ArrayBuffer) {
+            if (oid.byteLength != 12)
+                ObjectID.raise(oid);
+            this.__id = oid;
+        }
+        else if (oid instanceof ObjectID || typeof oid === "string") {
+            this._validate(oid);
+        }
+        else {
+            ObjectID.raise(oid);
+        }
+    }
+    static _random() {
+        if (ObjectID._pid != process_pid) {
+            ObjectID._pid = process_pid;
+            ObjectID.__random = ObjectID._randomBytes();
+        }
+        return ObjectID.__random; // 4 bytes current time, 5 bytes random, 3 bytes inc.
+    }
+    static async create() {
+        await ObjectID._inc_lock.acquire();
+        var inc = ObjectID._inc;
+        ObjectID._inc = (inc + 1) % ObjectID._MAX_COUNTER_VALUE;
+        var res_id = [ObjectID.PACKINT_RANDOM((new Date()).getTime() / 1000, ObjectID._random()), ObjectID.PACKINT(inc).slice(1, 4)];
+        ObjectID._inc_lock.release();
+        var res = new ArrayBuffer(res_id[0].byteLength + res_id[1].byteLength);
+        var offset = 0;
+        for (let r of res_id) {
+            const view = new Uint8Array(r);
+            for (let i = 0; i < view.length; i++) {
+                res[i + offset] = view[i];
+            }
+            offset += view.length;
+        }
+        return new ObjectID(res);
+    }
+    _validate(oid) {
+        if (oid instanceof ObjectID) {
+            this.__id = oid.__id;
+        }
+        else if (typeof oid == "string" && oid.length == 24) {
+            this.__id = Buffer.from(oid, "hex").buffer;
+        }
+        else {
+            ObjectID.raise(oid);
+        }
+    }
+    static raise(oid) {
+        throw new Error(oid + " is not a valid ObjectId, it must be a 12-byte input or a 24-character hex string");
+    }
+    static _randomBytes() {
+        var buf = new Uint8Array(5);
+        for (let i = 0; i < 5; i++) {
+            buf[i] = Math.floor(Math.random() * 256);
+        }
+        return buf.buffer;
+    }
+    static PACKINT(int) {
+        const buf = new ArrayBuffer(4);
+        const view = new DataView(buf);
+        view.setInt32(0, int, false);
+        return buf;
+    }
+    static UNPACKINT(buf) {
+        return new DataView(buf).getInt32(0);
+    }
+    static PACKINT_RANDOM(int, random) {
+        const int_buf = new ArrayBuffer(4);
+        const intView = new DataView(int_buf);
+        intView.setInt32(0, int, false);
+
+        const res = new ArrayBuffer(int_buf.byteLength + random.byteLength);
+        const resView = new DataView(res);
+
+        // 复制整数部分数据
+        for (let i = 0; i < int_buf.byteLength; i++) {
+            resView.setUint8(i, intView.getUint8(i));
+        }
+
+        // 复制随机字节部分数据
+        const randomUint8 = new Uint8Array(random);
+        for (let i = 0; i < random.byteLength; i++) {
+            resView.setUint8(int_buf.byteLength + i, randomUint8[i]);
+        }
+
+        return res;
+    }
+    toString() {
+        if (this.__id == undefined) {
+            return "";
+        }
+        var res = "";
+        for (let i = 0; i < this.__id.byteLength; i++) {
+            res += ("0" + this.__id[i].toString(16)).slice(-2);
+        }
+        return res;
+    }
+    get generationTime() {
+        if (this.__id == undefined) {
+            return new Date(0);
+        }
+        return new Date(ObjectID.UNPACKINT(this.__id.slice(0, 4)) * 1000);
+    }
+    static fromDate(date) {
+        var res_id = [ObjectID.PACKINT_RANDOM(date.getTime() / 1000, ObjectID._randomBytes()), ObjectID.PACKINT(0).slice(1, 4)];
+        var res = new ArrayBuffer(res_id[0].byteLength + res_id[1].byteLength);
+        var offset = 0;
+        for (let r of res_id) {
+            const view = new Uint8Array(r);
+            for (let i = 0; i < view.length; i++) {
+                res.writeUInt8(view[i], i + offset);
+            }
+            offset += view.length;
+        }
+        return new ObjectID(res);
+        //return new ObjectID(ObjectID.PACKINT_RANDOM(date.getTime() / 1000, ObjectID._randomBytes()));
+    }
+}
 export {
     Element,
     SVGContainers,
@@ -875,5 +1022,6 @@ export {
     InputElement,
     Utils,
     ref,
-    calcElementHeight
+    calcElementHeight,
+    ObjectID
 }

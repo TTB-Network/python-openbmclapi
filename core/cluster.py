@@ -1025,7 +1025,7 @@ async def init_measure_file(
         )
         return True
     except:
-        logger.terror("cluster.error.init_measure_file", storage=storage.path, type=storage.type, size=units.format_bytes(size * 1024 * 1024), hash=hash)
+        logger.ttraceback("cluster.error.init_measure_file", path=storage.path, type=storage.type, size=units.format_bytes(size * 1024 * 1024), hash=hash)
     return False
 async def init_measure_files():
     results = await asyncio.gather(*[init_measure_file(storage, size, MEASURES_HASH[size]) for storage in clusters.storage_manager.storages for size in MEASURES_HASH])

@@ -7,140 +7,12 @@ import {
     Router,
     createElement,
     SVGContainers,
-    Modal,
     calcElementHeight,
-    Utils
+    Utils,
+    ObjectID
 } from './common.js'
 
-const $configuration = new Configuration();
-const $ElementManager = new ElementManager();
-const $style = new Style($configuration);
-const $i18n = new I18NManager();
-const $router = new Router("/pages");
-const $title = document.title
-$i18n.addLanguageTable("zh_CN", {
-    "footer.powered_by": "由 %name% 提供服务支持",
-})
-$style.setTheme("light", {
-    "main-color-r": "15",
-    "main-color-g": "198",
-    "main-color-b": "194",
-    "main-color": "rgb(15, 198, 194)",
-    "main-light-color": "rgb(23, 231, 229)",
-    "color": "#000000",
-    "dark-color": "#FFFFFF",
-    "background": "#F5F6F8",
-    "footer-background": "#F0F0F0",
-    "background-hover": "#F0F1F3",
-    "main-dark-color": "rgb(10, 157, 220)",
-    "main-shadow-0-2-color": "rgba(15, 198, 194, 0.2)",
-    "main-shadow-0-1-color": "rgba(15, 198, 194, 0.1)",
-    "main-button-hover": "rgb(10, 138, 135)",
-})
-$style.setTheme("dark", {
-    "main-color-r": "244",
-    "main-color-g": "209",
-    "main-color-b": "180",
-    "main-color": "rgb(244, 209, 180)",
-    "main-light-color": "rgb(255, 239, 210)",
-    "color": "#ffffff",
-    "dark-color": "#000000",
-    "background": "#181818",
-    "footer-background": "#202020",
-    "background-hover": "#202020",
-    "main-dark-color": "rgb(235, 187, 151)",
-    "main-shadow-0-2-color": "rgba(244, 209, 180, 0.2)",
-    "main-shadow-0-1-color": "rgba(244, 209, 180, 0.1)"
-})
-$style.addAll({
-    "*": {
-        "family": "Sego UI, Roboto, Arial, sans-serif",
-    },
-    "::-webkit-scrollbar, html ::-webkit-scrollbar": {
-        "width": "5px",
-        "height": "5px",
-        "border-radius": "10px"
-    },
-    "::-webkit-scrollbar-thumb, html ::-webkit-scrollbar-thumb": {
-        "box-shadow": "rgba(0, 0, 0, 0) 0px 0px 6px inset",
-        "background-color": "rgb(102, 102, 102)",
-        "border-radius": "10px",
-    },
-    "body": {
-        "overflow": "hidden"
-    },
-    ".app": {
-        "display": "flex",
-        "flex-direction": "column",
-        "flex-wrap": "nowrap",
-        "justify-content": "space-between",
-        "height": "100vh",
-        "width": "100vw",
-        "background": "var(--background)",
-        "overflow-y": "auto",
-        "color": "var(--color)"
-    },
-    "a": {
-        "color": "var(--color)",
-        "text-decoration": "none"
-    },
-    "a:hover": {
-        "text-decoration": "underline"
-    },
-    "header": `
-        background: var(--background);
-        text-align: center;
-        min-height: 56px;
-        width: 100%;
-        padding: 8px 8px 8px 8px;
-        z-index: 1;
-        display: flex;
-        align-items: center;
-        flex-wrap: nowrap;
-        justify-content: space-between;
-        color: var(--color);
-        fill: var(--color);
-    `,
-    "header .content": {
-        "display": "flex",
-        "align-items": "center"
-    },
-    "header svg": {
-        "width": "48px",
-        "height": "48px",
-        "padding": "8px", 
-        "cursor": "pointer",
-        "fill": "inherit"
-    },
-    "header .padding-left": {
-        "padding-left": "8px",
-    },
-    "h1,h2,h3,h4,h5,h6,p": "margin:0;color:inherit",
-    "svg": {
-        "fill": "inherit"
-    },
-    "main": {
-        "top": "56px",
-        "height": "100%"
-        //"overflow": "auto"
-    },
-    "header.hidden": {
-        "display": "none"
-    },
-    "header.hidden ~ main": {
-        "top": "0px"
-    },
-    "footer": {
-        "padding": "24px",
-        "flex-direction": "column",
-        "background": "var(--footer-background)",
-        "color": "var(--color)",
-        "display": "flex",
-        "align-items": "center",
-        "justify-content": "center",
-        "index-z": "9999"
-    },
-})
+import './config.js'
 
 class Menu extends Element {
     constructor() {
@@ -152,8 +24,10 @@ class Menu extends Element {
                 "height": "100%",
                 "padding-left": "24px",
                 "background": "var(--background)",
-                "transition": "transform 500ms cubic-bezier(0, 0, 0.2, 1)",
-                "transform": "translateX(0%)"
+                "transition": "transform 500ms cubic-bezier(0, 0, 0.2, 1), opacity 500ms cubic-bezier(0, 0, 0.2, 1)",
+                "transform": "translateX(0%)",
+                "opacity": "1",
+                "z-index": "999"
             },
             ".menu-main": {
                 "margin-left": "200px",
@@ -161,6 +35,7 @@ class Menu extends Element {
             },
             ".menu-side.hidden": {
                 "transform": "translateX(-100%)",
+                "opacity": "0"
             },
             ".menu-side.hidden ~ .menu-main": {
                 "margin-left": "0px",
@@ -288,6 +163,237 @@ class Menu extends Element {
         this.route_handler_lock?.()
     }
 }
+
+class Channel {
+    constructor() {
+        this.url = window.location.protocol + "//" + window.location.host + "/api";
+        this._http_process = {
+            total: 0,
+            current: 0,
+        };
+        if (!this.support_websocket) return;
+        this._ws_init();
+        this._ws_initizalized = false;
+        this._ws_callbacks = {};
+
+        this._ws_send("echo", "cnm").then(e => console.log(e))
+    }
+    // websocket
+    _ws_init() {
+        this._ws = new WebSocket("ws" + this.url.slice(4));
+        this._ws.onopen = () => {
+            this._ws_initizalized = true;
+        }
+        this._ws.onmessage = (event) => {
+            var data = JSON.parse(event.data);
+            if (data.echo_id) {
+                this._ws_callbacks[data.echo_id].resolve(data.data);
+                delete this._ws_callbacks[data.echo_id];
+                return;
+            }
+            console.log(data)
+        }
+        this._ws.onclose = () => {
+            this._ws_initizalized = false;
+            this._Ws_reconnect();
+        }
+        this._ws.onerror = (event) => {
+            console.log("websocket error", event)
+        }
+    }
+    _Ws_reconnect() {
+        if (this._ws_reconnect_task) return;
+        this._ws_reconnect_task = setTimeout(() => {
+            this._ws_init();
+            this._ws_reconnect_task = null;
+        }, 5000)
+    }
+
+    async _ws_send(event, data) {
+        if (!this._ws_initizalized) return this._http_send(event, data);
+        return new Promise(async (resolve, reject) => {
+            var echo_id = (await ObjectID.create()).toString();
+            this._ws_callbacks[echo_id] = { resolve, reject }
+            this._ws.send(JSON.stringify({
+                event,
+                data,
+                echo_id
+            }))
+        })
+    }
+
+    async _http_send(event, data) {
+        return new Promise((resolve, reject) => {
+            var pushed = false;
+            var loaded = 0;
+            var current_load = 0;
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", this.url);
+            xhr.addEventListener("progress", (event) => {
+                if (event.lengthComputable) {
+                    if (!pushed) return;
+                    this._http_process.current -= loaded;
+                    this._http_process.total -= event.total;
+                    return;
+                }
+                var diff = event.loaded - current_load;
+                loaded += diff;
+                current_load = event.loaded;
+                this._http_process.current += diff;
+                if (pushed) return;
+                pushed = true;
+                this._http_process.total += event.total;
+            })
+            xhr.addEventListener("readystatechange", (event) => {
+                if (xhr.readyState == 4) {
+                    if (xhr.statusText == "OK") {
+                        resolve(JSON.parse(xhr.responseText)[0].data)
+                    } else {
+                        reject(xhr.statusText)
+                    }
+                }
+            })
+            xhr.send(JSON.stringify({
+                event,
+                data: data
+            }))
+        })
+    }
+
+    get support_websocket() {
+        return window.__CONFIG__.support.websocket;
+    }
+}
+
+const $configuration = new Configuration();
+const $ElementManager = new ElementManager();
+const $style = new Style($configuration);
+const $i18n = new I18NManager();
+const $router = new Router("/pages");
+globalThis.$channel = new Channel();
+$i18n.addLanguageTable("zh_CN", {
+    "footer.powered_by": "由 %name% 提供服务支持",
+})
+$style.setTheme("light", {
+    "main-color-r": "15",
+    "main-color-g": "198",
+    "main-color-b": "194",
+    "main-color": "rgb(15, 198, 194)",
+    "main-light-color": "rgb(23, 231, 229)",
+    "color": "#000000",
+    "dark-color": "#FFFFFF",
+    "background": "#F5F6F8",
+    "footer-background": "#F0F0F0",
+    "background-hover": "#F0F1F3",
+    "main-dark-color": "rgb(10, 157, 220)",
+    "main-shadow-0-2-color": "rgba(15, 198, 194, 0.2)",
+    "main-shadow-0-1-color": "rgba(15, 198, 194, 0.1)",
+    "main-button-hover": "rgb(10, 138, 135)",
+})
+$style.setTheme("dark", {
+    "main-color-r": "244",
+    "main-color-g": "209",
+    "main-color-b": "180",
+    "main-color": "rgb(244, 209, 180)",
+    "main-light-color": "rgb(255, 239, 210)",
+    "color": "#ffffff",
+    "dark-color": "#000000",
+    "background": "#181818",
+    "footer-background": "#202020",
+    "background-hover": "#202020",
+    "main-dark-color": "rgb(235, 187, 151)",
+    "main-shadow-0-2-color": "rgba(244, 209, 180, 0.2)",
+    "main-shadow-0-1-color": "rgba(244, 209, 180, 0.1)"
+})
+$style.addAll({
+    "*": {
+        "family": "Sego UI, Roboto, Arial, sans-serif",
+    },
+    "::-webkit-scrollbar, html ::-webkit-scrollbar": {
+        "width": "5px",
+        "height": "5px",
+        "border-radius": "10px"
+    },
+    "::-webkit-scrollbar-thumb, html ::-webkit-scrollbar-thumb": {
+        "box-shadow": "rgba(0, 0, 0, 0) 0px 0px 6px inset",
+        "background-color": "rgb(102, 102, 102)",
+        "border-radius": "10px",
+    },
+    "body": {
+        "overflow": "hidden"
+    },
+    ".app": {
+        "display": "flex",
+        "flex-direction": "column",
+        "flex-wrap": "nowrap",
+        "justify-content": "space-between",
+        "height": "100vh",
+        "width": "100vw",
+        "background": "var(--background)",
+        "overflow-y": "auto",
+        "color": "var(--color)"
+    },
+    "a": {
+        "color": "var(--color)",
+        "text-decoration": "none"
+    },
+    "a:hover": {
+        "text-decoration": "underline"
+    },
+    "header": `
+        background: var(--background);
+        text-align: center;
+        min-height: 56px;
+        width: 100%;
+        padding: 8px 8px 8px 8px;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        flex-wrap: nowrap;
+        justify-content: space-between;
+        color: var(--color);
+        fill: var(--color);
+    `,
+    "header .content": {
+        "display": "flex",
+        "align-items": "center"
+    },
+    "header svg": {
+        "width": "48px",
+        "height": "48px",
+        "padding": "8px", 
+        "cursor": "pointer",
+        "fill": "inherit"
+    },
+    "header .padding-left": {
+        "padding-left": "8px",
+    },
+    "h1,h2,h3,h4,h5,h6,p": "margin:0;color:inherit",
+    "svg": {
+        "fill": "inherit"
+    },
+    "main": {
+        "top": "56px",
+        "height": "100%"
+        //"overflow": "auto"
+    },
+    "header.hidden": {
+        "display": "none"
+    },
+    "header.hidden ~ main": {
+        "top": "0px"
+    },
+    "footer": {
+        "padding": "24px",
+        "flex-direction": "column",
+        "background": "var(--footer-background)",
+        "color": "var(--color)",
+        "display": "flex",
+        "align-items": "center",
+        "justify-content": "center",
+        "index-z": "9999"
+    },
+})
 
 async function load() {
     const $dom_body = new Element(document.body);

@@ -78,3 +78,9 @@ def format_count_datetime(secs: float) -> str:
 
 def format_datetime_from_timestamp(seconds: float):
     return datetime.fromtimestamp(seconds).strftime('%Y-%m-%d %H:%M:%S')
+
+def format_time(seconds: float):
+    return datetime.fromtimestamp(seconds).strftime('%H:%M:%S')
+
+def format_date(seconds: float):
+    return datetime.fromtimestamp(seconds).strftime('%Y-%m-%d')

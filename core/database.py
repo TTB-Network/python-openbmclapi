@@ -111,39 +111,6 @@ SESSION = Session()
 FILE_CACHE: defaultdict[FileStatisticsKey, FileStatistics] = defaultdict(lambda: FileStatistics())
 RESPONSE_CACHE: defaultdict[int, ResponseStatistics] = defaultdict(lambda: ResponseStatistics())
 
-@DeprecationWarning
-def add_statistics(data: Statistics):
-    return
-    session = SESSION.get_session()
-    hits, bytes = 0, 0
-    hour = get_hour()
-    for storage in data.storages:
-        if storage.hits == storage.bytes == 0:
-            continue
-        q = session.query(StorageStatisticsTable).filter_by(hour=hour, storage=storage.storage)
-        r = q.first() or StorageStatisticsTable(hour=hour, storage=storage.storage, hits=str(0), bytes=str(0))
-        if q.count() == 0:
-            session.add(r)
-        q.update(
-            {
-                'hits': str(int(r.hits) + storage.hits), # type: ignore
-                'bytes': str(int(r.bytes) + storage.bytes) # type: ignore
-            }
-        )
-        hits += storage.hits
-        bytes += storage.bytes
-    q = session.query(ClusterStatisticsTable).filter_by(hour=hour, cluster=data.cluster_id)
-    r = q.first() or ClusterStatisticsTable(hour=hour, cluster=data.cluster_id, hits=str(0), bytes=str(0))
-    if q.count() == 0:
-        session.add(r)
-    q.update(
-        {
-            'hits': str(int(r.hits) + hits), # type: ignore
-            'bytes': str(int(r.bytes) + bytes) # type: ignore
-        }
-    )
-    session.commit()
-
 def add_file(cluster: str, storage: Optional[str], bytes: int):
     global FILE_CACHE
     key = FileStatisticsKey(get_hour(), cluster, storage)
@@ -200,48 +167,17 @@ def _commit_response(hour: int, ip_tables: defaultdict[str, int], user_agents: d
     r = q.first() or ResponseTable(hour=hour, ip_tables=b'', user_agents=b'', success=str(0), forbidden=str(0), redirect=str(0), not_found=str(0), error=str(0), partial=str(0))
     if q.count() == 0:
         session.add(r)
-    origin_ip_tables: defaultdict[str, int] = defaultdict(lambda: 0)
-    origin_user_agents: defaultdict[str, int] = defaultdict(lambda: 0)
-    ip_tables_data: bytes = r.ip_tables # type: ignore
-    user_agents_data: bytes = r.user_agents # type: ignore
-    if ip_tables_data:
-        try:
-            input = utils.DataInputStream(pyzstd.decompress(ip_tables_data))
-            for _ in range(input.read_long()):
-                ip = input.read_string()
-                count = input.read_long()
-                origin_ip_tables[ip] = count
-        except:
-            logger.ttraceback("database.error.unable.to.decompress.ip.tables", ip_tables_data)
-            origin_ip_tables.clear()
-    if user_agents_data:
-        try:
-            input = utils.DataInputStream(pyzstd.decompress(user_agents_data))
-            for _ in range(input.read_long()):
-                user_agent = input.read_string()
-                count = input.read_long()
-                origin_user_agents[user_agent] = count
-        except:
-            logger.ttraceback("database.error.unable.to.decompress.user.agents", user_agents_data)
+    origin_ip_tables: defaultdict[str, int] = decompress(r.ip_tables) # type: ignore
+    origin_user_agents: defaultdict[str, int] = decompress(r.user_agents) # type: ignore
     for ip, count in ip_tables.items():
         origin_ip_tables[ip] += count
     
     for user_agent, count in user_agents.items():
         origin_user_agents[user_agent] += count
-    ip_tables_output = utils.DataOutputStream()
-    ip_tables_output.write_long(len(origin_ip_tables))
-    for ip, count in origin_ip_tables.items():
-        ip_tables_output.write_string(ip)
-        ip_tables_output.write_long(count)
-    user_agents_output = utils.DataOutputStream()
-    user_agents_output.write_long(len(origin_user_agents))
-    for user_agent, count in origin_user_agents.items():
-        user_agents_output.write_string(user_agent)
-        user_agents_output.write_long(count)
     q.update(
         {
-            'ip_tables': pyzstd.compress(ip_tables_output.getvalue()), # type: ignore
-            'user_agents': pyzstd.compress(user_agents_output.getvalue()), # type: ignore
+            'ip_tables': compress(origin_ip_tables), # type: ignore
+            'user_agents': compress(origin_user_agents), # type: ignore
             'success': str(int(r.success) + success), # type: ignore
             'forbidden': str(int(r.forbidden) + forbidden), # type: ignore
             'redirect': str(int(r.redirect) + redirect), # type: ignore
@@ -251,6 +187,30 @@ def _commit_response(hour: int, ip_tables: defaultdict[str, int], user_agents: d
         }
     )
     return True
+
+def compress(data: defaultdict[str, int]) -> bytes:
+    output = utils.DataOutputStream()
+    output.write_long(len(data))
+    for key, val in data.items():
+        output.write_string(key)
+        output.write_long(val)
+    return pyzstd.compress(output.getvalue())
+
+def decompress(data: bytes) -> defaultdict[str, int]:
+    if not data:
+        return defaultdict(lambda: 0)
+    try:
+        input = utils.DataInputStream(pyzstd.decompress(data))
+        result = defaultdict(lambda: 0)
+        for _ in range(input.read_long()):
+            key = input.read_string()
+            val = input.read_long()
+            result[key] += val
+        return result
+    except:
+        logger.ttraceback("database.error.unable.to.decompress", data=data)
+        return defaultdict(lambda: 0)
+
 
 def commit():
     try:

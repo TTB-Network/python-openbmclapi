@@ -18,13 +18,15 @@ import urllib.parse as urlparse
 import aiofiles
 import aiohttp
 
+import aiowebdav.client as webdav3_client
+import aiowebdav.exceptions as webdav3_exceptions
+
 @dataclass
 class File:
     name: str
     size: int
     mtime: float
     hash: str
-
 
 class iStorage(metaclass=abc.ABCMeta):
     type: str = "_interface"
@@ -69,7 +71,6 @@ class iStorage(metaclass=abc.ABCMeta):
     
     def get_path(self, file_hash: str) -> str:
         return f"{self.path}/{file_hash[:2]}/{file_hash}"
-
 
 class LocalStorage(iStorage):
     type: str = "local"
@@ -139,7 +140,6 @@ class LocalStorage(iStorage):
     async def get_mtime(self, file_hash: str) -> float:
         return os.path.getmtime(f"{self.path}/{file_hash[:2]}/{file_hash}")
 
-
 @dataclass
 class AlistFileInfo:
     name: str
@@ -206,9 +206,6 @@ class AlistLink:
     def expired(self):
         return self._expires is None or self._expires > time.monotonic()
             
-
-    
-
 class AlistStorage(iStorage):
     type: str = "alist"
     def __init__(self, path: str, weight: int, url: str, username: Optional[str], password: Optional[str], link_cache_expires: Optional[str] = None) -> None:
@@ -463,3 +460,16 @@ class AlistStorage(iStorage):
     
     async def close(self):
         await self.session.close()
+
+class WebDavStorage(iStorage):
+    type: str = "webdav"
+    def __init__(self, path: str, weight: int, url: str, username: str, password: str):
+        super().__init__(path, weight)
+        self.url = url
+        self.username = username
+        self.password = password
+
+    @property
+    def unique_id(self) -> str:
+        return hashlib.md5(f"{self.type},{self.url},{self.path}".encode()).hexdigest()
+    
