@@ -20,7 +20,7 @@
     "web.error.any": "Web 服务器出错 ${e}",
     "web.debug.request_info": "${host} | ${time} | ${address} | ${method} ${status} | ${real_path} - ${user_agent}",
     "cluster.error.socketio.request_cert": "节点 [${cluster}] 请求证书失败，原因 [${err}]",
-    "cluster.debug.public_host": "已在 [${host}:${port}] 上开放",
+    "cluster.debug.public_host": "已在 [${host}:${port}] 上开放，节点地址 [https://${domain}:${port}]",
     "cluster.error.socketio": "节点 [${cluster}] 发送 [${type}] 时出错，原因 [${err}]",
     "cluster.info.socketio.message": "节点 [${cluster}] 主控消息：${message}",
     "storage.error.action_alist": "Alist 返回出错，请求方式 [${method}] url [${url}] 错误代码 [${status}]，原因 [${message}]",

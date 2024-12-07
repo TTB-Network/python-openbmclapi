@@ -206,7 +206,7 @@ async def _(request: web.Request):
     dashboard_config = json.dumps({
         "version": config.VERSION,
         "api_version": config.API_VERSION,
-        "python_version": ".".join(map(str, (sys.version_info.major, sys.version_info.minor, sys.version_info.micro))),
+        "python_version": config.PYTHON_VERSION,
         "support": {
             "websocket": True,
             "polling": True

@@ -22,6 +22,10 @@ import urllib.parse as urlparse
 from . import database as db
 from .config import USER_AGENT, API_VERSION
 
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
+from cryptography.x509.oid import NameOID
+
 @dataclass
 class Token:
     last: float
@@ -66,6 +70,7 @@ class StorageManager:
 
     async def _check_available(self):
         for storage in self.storages:
+            res = False
             try:
                 res = await asyncio.wait_for(self.__check_available(storage), 10)
             except asyncio.TimeoutError:
@@ -73,6 +78,7 @@ class StorageManager:
                     self.available_storages.remove(storage)
             except:
                 logger.ttraceback("storage.error.check_available", type=storage.type, path=storage.path, url=getattr(storage, "url", None))
+                self.available_storages.remove(storage)
             if res:
                 if storage not in self.available_storages:
                     self.available_storages.append(storage)
@@ -188,6 +194,25 @@ class StorageManager:
                     storage,
                     await storage.get_url(hash)
                 )
+            elif isinstance(storage, storages.WebDavStorage):
+                storage_file = await storage.get_file(
+                    hash
+                )
+                if storage_file.data_size() == 0 and storage_file.url:
+                    return URLStorageFile(
+                        hash,
+                        await storage.get_size(hash),
+                        await storage.get_mtime(hash),
+                        storage,
+                        storage_file.url
+                    )
+                if storage_file.data_size() > 0:
+                    return MemoryStorageFile(
+                        hash,
+                        await storage.get_size(hash),
+                        await storage.get_mtime(hash),
+                        storage_file.data.getvalue()
+                    )
         async with aiohttp.ClientSession(
                 config.const.base_url,
             ) as session:
@@ -568,7 +593,7 @@ class ClusterManager:
         public_port = config.const.public_port
         public_host = cert.host
 
-        logger.tdebug("cluster.debug.public_host", host=public_host, port=public_port)
+        logger.tdebug("cluster.debug.public_host", host=public_host, port=public_port, domain=cert.domain)
 
         # check files
         await self.file_manager.sync()
@@ -728,7 +753,7 @@ class Cluster:
                     "noFastEnable": True,
                     "flavor": {
                         "storage": "local",
-                        "runtime": "python"
+                        "runtime": f"python/{config.PYTHON_VERSION}"
                     }
                 }
             , 120)
@@ -779,7 +804,7 @@ class Cluster:
         self.no_storage_counter -= commit_no_storage_counter
         for storage, counter in commit_counter.items():
             self.counter[storage] -= counter
-        timestamp = utils.parse_isotime_to_timestamp(result.ack)
+        timestamp = result.ack / 1000.0 if isinstance(result.ack, int) else utils.parse_isotime_to_timestamp(result.ack)
         ping = (time.time() - timestamp) // 0.0002
         logger.tsuccess("cluster.success.keepalive", cluster=self.id, hits=units.format_number(total_counter.hits), bytes=units.format_bytes(total_counter.bytes), ping=ping)
 
@@ -913,8 +938,14 @@ class ClusterCertificate:
     def is_valid(self):
         return self.host and self.cert.exists() and self.key.exists()
     
-    """@property
-    def get_domains(self):
+    @property
+    def domain(self):
+        domains = self.domains
+        domains.sort(key=lambda x: x.count("*"))
+        return domains[0] if domains else self.host
+
+    @property
+    def domains(self):
         try:
             cert = x509.load_pem_x509_certificate(self.cert.read_bytes(), default_backend())
             domains = []
@@ -925,7 +956,7 @@ class ClusterCertificate:
                     domains.append(subject.value.decode("utf-8"))
             return domains
         except:
-            return []"""
+            return []
 
 @dataclass
 class SocketIOEmitResult:
@@ -954,8 +985,8 @@ class URLStorageFile(StorageFile):
 
 class MemoryStorageFile(StorageFile):
     type: str = "memory"
-    def __init__(self, hash: str, size: int, mtime: float, data: bytes) -> None:
-        super().__init__(hash=hash, size=size, mtime=mtime, storage=None)
+    def __init__(self, hash: str, size: int, mtime: float, data: bytes, storage: Optional[storages.iStorage] = None) -> None:
+        super().__init__(hash=hash, size=size, mtime=mtime, storage=storage)
         self.data = data
 
 ROOT = Path(__file__).parent.parent

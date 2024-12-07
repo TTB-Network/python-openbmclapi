@@ -1,4 +1,5 @@
 from pathlib import Path
+import sys
 from typing import Any
 import yaml
 import os
@@ -160,6 +161,7 @@ class Const:
 
 const = Const()
 
-VERSION = "3.1.0"
+VERSION = "3.2.0"
 API_VERSION = "1.13.1"
 USER_AGENT = f"openbmclapi/{API_VERSION} python-openbmclapi/{VERSION}"
+PYTHON_VERSION = ".".join(map(str, (sys.version_info.major, sys.version_info.minor, sys.version_info.micro)))

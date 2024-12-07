@@ -1,7 +1,7 @@
 import abc
 import asyncio
 from collections import defaultdict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 import io
 import os
@@ -470,11 +470,33 @@ class WebDavFileInfo:
     name: str
     size: int
 
+@dataclass
+class WebDavFile:
+    hash: str
+    size: int
+    url: str = ""
+    data: io.BytesIO = field(default_factory=io.BytesIO)
+    headers: dict[str, Any] = field(default_factory=dict)
+
+    def set_expires(self, value: float):
+        self._expires = value + time.monotonic()
+
+    @property
+    def expired(self) -> bool:
+        if hasattr(self, "_expires"):
+            return self._expires < time.monotonic()
+        return True
+    
+    def data_size(self) -> int:
+        return len(self.data.getbuffer())
+    
+
+
 class WebDavStorage(iStorage):
     type: str = "webdav"
     def __init__(self, path: str, weight: int, url: str, username: str, password: str):
         super().__init__(path, weight)
-        self.url = url
+        self.url = url.rstrip("/")
         self.username = username
         self.password = password
         self.client = webdav3_client.Client({
@@ -485,6 +507,15 @@ class WebDavStorage(iStorage):
         })
         self.client_lock = asyncio.Lock()
         self.cache = cache.MemoryStorage()
+        self.session = aiohttp.ClientSession(
+            auth=aiohttp.BasicAuth(
+                self.username,
+                self.password
+            ),
+            headers={
+                "User-Agent": config.USER_AGENT
+            }
+        )
 
 
     @property
@@ -502,7 +533,7 @@ class WebDavStorage(iStorage):
     
         files: defaultdict[str, deque[File]] = defaultdict(deque)
         async def get_files(root_id: int):
-            root = f"{self.path}/{root_id:02x}"
+            root = f"{self.path}/{root_id:02x}/"
             if f"listfile_{root}" in self.cache:
                 result = self.cache.get(f"listfile_{root}")
                 return result
@@ -527,13 +558,8 @@ class WebDavStorage(iStorage):
                 finally:
                     update_tqdm()
                 return res
-        results = await asyncio.gather(
-            *(get_files(root_id) for root_id in range(256))
-        )
-        for root_id, result in zip(
-            range(256), results
-        ):
-            for r in result:
+        for root_id in range(256):
+            for r in await get_files(root_id):
                 files[f"{root_id:02x}"].append(File(
                     name=r.name,
                     hash=r.name,
@@ -576,7 +602,7 @@ class WebDavStorage(iStorage):
         if (await self._info_file(file_hash)).size == -1:
             return b""
         data = io.BytesIO()
-        res = await self.client.download_from(data, self.get_path(file_hash))
+        await self.client.download_from(data, self.get_path(file_hash))
         return data.getvalue()
 
     async def write_file(self, file: File, content: bytes, mtime: float | None) -> bool:
@@ -596,7 +622,24 @@ class WebDavStorage(iStorage):
             d = ""
             for x in dir.split("/"):
                 d += x
-                await self.client.mkdir(d)
+                if d:
+                    await self.client.mkdir(d)
                 d += "/"
-        
+    
+    async def get_file(self, file_hash: str) -> WebDavFile:
+        async with self.session.get(
+            f"{self.url}{self.get_path(file_hash)}",
+            allow_redirects=False
+        ) as resp:
+            file = WebDavFile(
+                file_hash,
+                resp.content_length or 0,
+            )
+            if resp.status == 200:
+                file.data = io.BytesIO(await resp.read())
+            elif resp.status // 100 == 3:
+                file.url = resp.headers["Location"]
+            else:
+                file.size = -1
+        return file
     
