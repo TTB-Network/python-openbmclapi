@@ -132,7 +132,6 @@ class Menu extends Element {
                 }
                 $val.$dom.classes("active")
                 if ($val.$child) $val.$child.classes("hidden")
-                console.log($val)
             }
             cur_key = key;
             cur_sub = sub;
@@ -418,7 +417,8 @@ class FlexElement extends Element {
         $style.addAll({
             ".flex-container": {
                 "display": "flex",
-                "flex-wrap": "wrap"
+                "flex-wrap": "wrap",
+                "align-items": "flex-start",
             }
         })
         this._render_task = null;
@@ -431,20 +431,28 @@ class FlexElement extends Element {
         })
         this.$child = null;
         this.$minwidth = null;
+        this.$autoheight = false;
         this.observer.observe(this.origin)
     }
     _render() {
         if (!this.$child) return;
         const container_width = calcElementWidth(this);
+        const container_height = calcElementHeight(this);
         var handler = null;
+        var heightHandler = null;
         if (this.$minwidth && this.$minwidth > container_width) {
             handler = (child) => container_width
+            heightHandler = (child) => container_height
         } else {
             handler = (child) => this._render_calc_child_width(this.children.length, this.children.indexOf(child), container_width)
+            heightHandler = (child) => calcElementHeight(child)
         }
         for (const child of this.children) {
             var res = handler(child);
             child.style("width", `${res}px`)
+            if (this.$autoheight) {
+                child.style("height", `${heightHandler(child)}px`)
+            }
         }
     }
     _render_calc_child_width(total_child, index, container_width) {
@@ -479,6 +487,10 @@ class FlexElement extends Element {
     }
     minWidth(value) {
         this.$minwidth = value;
+        return this;
+    }
+    autoHeight(value) {
+        this.$autoheight = value;
         return this;
     }
 }
@@ -633,17 +645,24 @@ $style.addAll({
         "background": "var(--panel-color)",
         "border-radius": "4px",
         "box-shadow": "var(--panel-box-shadow)",
-        "padding": "24px"
+        "padding": "24px",
+        //"margin-left": "16px",
+        //"margin-bottom": "24px"
+    },
+    ".pre-panel": {
+        "padding-left": "16px",
+        "padding-bottom": "24px"
     },
     ".pre-switch-container": {
         "background": "var(--panel-color)",
         "border-radius": "4px",
         "box-shadow": "var(--panel-box-shadow)",
         "padding": "9px",
-        "margin-bottom": "8px",
+        "margin-bottom": "24px",
+        "margin-left": "16px",
     },
     "main": {
-        "padding": "32px",
+        "padding": "32px 32px 32px 16px",
         "overflow": "auto",
         "height": "calc(100% - var(--height))"
     },
@@ -663,10 +682,7 @@ $style.addAll({
         line-height: 1.5;
         color: var(--value-color);
         font-size: 24px;
-    `,
-    ".panel-bottom": {
-        "margin-bottom": "16px"
-    }
+    `
 })
 class Tools {
     static formatTime(seconds) {
@@ -717,8 +733,16 @@ class Tools {
             }
         })
     }
-    static createPanel() {
-        return createElement("div").classes("panel")
+    static createPanel(handler = () => { }) {
+        var panel = createElement("div").classes("panel")
+        var pre = createElement("div").classes("pre-panel").append(
+            panel
+        )
+        handler({
+            panel,
+            pre
+        })
+        return pre
     }
     static createFlexElement() {
         return new FlexElement()
@@ -759,7 +783,6 @@ class Tools {
             bytes /= un
             i += 1
         }
-        console.log(i)
         return `${bytes.toFixed(2)}${Object.keys(Tools._BYTES)[i]}`
     }
 }
@@ -799,36 +822,38 @@ async function load() {
             $dashboard_locals.advanced = [];
             // info
             (() => {
-                $dashboard_locals.info = Tools.createPanel().append(
-                    Tools.createFlexElement().append(
-                        Tools.createTextWithRef({
-                            title_i18n: "dashboard.title.runtime",
-                            value_i18n: "dashboard.value.runtime",
-                            value_variable: (obj) => {
-                                $dashboard_locals.runtime = obj
-                            },
-                            i18n: {
-                                "zh_CN": {
-                                    "dashboard.title.runtime": "运行时间",
-                                    "dashboard.value.runtime": "%time%",
+                $dashboard_locals.info = Tools.createPanel(({ pre, panel }) => {
+                    panel.append(
+                        Tools.createFlexElement().append(
+                            Tools.createTextWithRef({
+                                title_i18n: "dashboard.title.runtime",
+                                value_i18n: "dashboard.value.runtime",
+                                value_variable: (obj) => {
+                                    $dashboard_locals.runtime = obj
+                                },
+                                i18n: {
+                                    "zh_CN": {
+                                        "dashboard.title.runtime": "运行时间",
+                                        "dashboard.value.runtime": "%time%",
+                                    }
                                 }
-                            }
-                        }),
-                        Tools.createTextWithRef({
-                            title_i18n: "dashboard.title.status",
-                            value_i18n: "dashboard.value.status",
-                            value_variable: (obj) => {
-                                $dashboard_locals.status = obj
-                            },
-                            i18n: {
-                                "zh_CN": {
-                                    "dashboard.title.status": "当前状态",
-                                    "dashboard.value.status": "正常……？"
+                            }),
+                            Tools.createTextWithRef({
+                                title_i18n: "dashboard.title.status",
+                                value_i18n: "dashboard.value.status",
+                                value_variable: (obj) => {
+                                    $dashboard_locals.status = obj
+                                },
+                                i18n: {
+                                    "zh_CN": {
+                                        "dashboard.title.status": "当前状态",
+                                        "dashboard.value.status": "正常……？"
+                                    }
                                 }
-                            }
-                        }),
-                    ).child(2).minWidth(680)
-                ).classes("panel-bottom")
+                            }),
+                        ).child(2).minWidth(680).autoHeight(true)
+                    )
+                })
                 $dashboard_locals.info_runtime = ref({}, {
                     handler: (args) => {
                         const object = args.object;
@@ -859,64 +884,143 @@ async function load() {
             // basic
             (() => {
                 const basic = $dashboard_locals.basic;
-                $dashboard_locals.files_info = Tools.createPanel().append(
-                    Tools.createFlexElement().append(
-                        Tools.createTextWithRef({
-                            title_i18n: "dashboard.title.today.hits",
-                            value_i18n: "dashboard.value.today.hits",
-                            value_variable: (obj) => {
-                                $dashboard_locals.files_info_today_hits = obj;
-                            },
-                            i18n: {
-                                "zh_CN": {
-                                    "dashboard.title.today.hits": "今日下载数",
-                                    "dashboard.value.today.hits": "%value%"
+                $dashboard_locals.files_info = Tools.createPanel(({pre, panel}) => {
+                    panel.append(
+                        Tools.createFlexElement().append(
+                            Tools.createTextWithRef({
+                                title_i18n: "dashboard.title.today.hits",
+                                value_i18n: "dashboard.value.today.hits",
+                                value_variable: (obj) => {
+                                    $dashboard_locals.files_info_today_hits = obj;
+                                },
+                                i18n: {
+                                    "zh_CN": {
+                                        "dashboard.title.today.hits": "今日下载数",
+                                        "dashboard.value.today.hits": "%value%"
+                                    }
                                 }
-                            }
-                        }),
-                        Tools.createTextWithRef({
-                            title_i18n: "dashboard.title.today.bytes",
-                            value_i18n: "dashboard.value.today.bytes",
-                            value_variable: (obj) => {
-                                $dashboard_locals.files_info_today_bytes = obj;
-                            },
-                            i18n: {
-                                "zh_CN": {
-                                    "dashboard.title.today.bytes": "今日下载量",
-                                    "dashboard.value.today.bytes": "%value%"
+                            }),
+                            Tools.createTextWithRef({
+                                title_i18n: "dashboard.title.today.bytes",
+                                value_i18n: "dashboard.value.today.bytes",
+                                value_variable: (obj) => {
+                                    $dashboard_locals.files_info_today_bytes = obj;
+                                },
+                                i18n: {
+                                    "zh_CN": {
+                                        "dashboard.title.today.bytes": "今日下载量",
+                                        "dashboard.value.today.bytes": "%value%"
+                                    }
                                 }
-                            }
-                        }),
-                        Tools.createTextWithRef({
-                            title_i18n: "dashboard.title.30days.hits",
-                            value_i18n: "dashboard.value.30days.hits",
-                            value_variable: (obj) => {
-                                $dashboard_locals.files_info_30days_hits = obj;
-                            },
-                            i18n: {
-                                "zh_CN": {
-                                    "dashboard.title.30days.hits": "30 天下载数",
-                                    "dashboard.value.30days.hits": "%value%"
+                            }),
+                            Tools.createTextWithRef({
+                                title_i18n: "dashboard.title.30days.hits",
+                                value_i18n: "dashboard.value.30days.hits",
+                                value_variable: (obj) => {
+                                    $dashboard_locals.files_info_30days_hits = obj;
+                                },
+                                i18n: {
+                                    "zh_CN": {
+                                        "dashboard.title.30days.hits": "30 天下载数",
+                                        "dashboard.value.30days.hits": "%value%"
+                                    }
                                 }
-                            }
-                        }),
-                        Tools.createTextWithRef({
-                            title_i18n: "dashboard.title.30days.bytes",
-                            value_i18n: "dashboard.value.30days.bytes",
-                            value_variable: (obj) => {
-                                $dashboard_locals.files_info_30days_bytes = obj;
-                            },
-                            i18n: {
-                                "zh_CN": {
-                                    "dashboard.title.30days.bytes": "30 天下载量",
-                                    "dashboard.value.30days.bytes": "%value%"
+                            }),
+                            Tools.createTextWithRef({
+                                title_i18n: "dashboard.title.30days.bytes",
+                                value_i18n: "dashboard.value.30days.bytes",
+                                value_variable: (obj) => {
+                                    $dashboard_locals.files_info_30days_bytes = obj;
+                                },
+                                i18n: {
+                                    "zh_CN": {
+                                        "dashboard.title.30days.bytes": "30 天下载量",
+                                        "dashboard.value.30days.bytes": "%value%"
+                                    }
                                 }
-                            }
-                        }),
-                    ).child(4).minWidth(600)
+                            }),
+                        ).child(4).minWidth(600)
+                    )
+                })
+                $dashboard_locals.system_info = Tools.createPanel(({ panel }) => {
+                    panel.append(
+                        Tools.createFlexElement().append(
+                            Tools.createTextWithRef({
+                                title_i18n: "dashboard.title.connection",
+                                value_i18n: "dashboard.value.connection",
+                                value_variable: (obj) => {
+                                    $dashboard_locals.system_info_connection = obj;
+                                },
+                                i18n: {
+                                    "zh_CN": {
+                                        "dashboard.title.connection": "连接数",
+                                        "dashboard.value.connection": "%value%"
+                                    }
+                                }
+                            }),
+                            Tools.createTextWithRef({
+                                title_i18n: "dashboard.title.memory",
+                                value_i18n: "dashboard.value.memory",
+                                value_variable: (obj) => {
+                                    $dashboard_locals.system_info_memory = obj;
+                                },
+                                i18n: {
+                                    "zh_CN": {
+                                        "dashboard.title.memory": "内存使用",
+                                        "dashboard.value.memory": "%value%"
+                                    }
+                                }
+                            }),
+                            Tools.createTextWithRef({
+                                title_i18n: "dashboard.title.cpu",
+                                value_i18n: "dashboard.value.cpu",
+                                value_variable: (obj) => {
+                                    $dashboard_locals.system_info_cpu = obj;
+                                },
+                                i18n: {
+                                    "zh_CN": {
+                                        "dashboard.title.cpu": "处理器使用",
+                                        "dashboard.value.cpu": "%value%"
+                                    }
+                                }
+                            }),
+                            Tools.createTextWithRef({
+                                title_i18n: "dashboard.title.cpu_load",
+                                value_i18n: "dashboard.value.cpu_load",
+                                value_variable: (obj) => {
+                                    $dashboard_locals.system_info_cpu_load = obj;
+                                },
+                                i18n: {
+                                    "zh_CN": {
+                                        "dashboard.title.cpu_load": "处理器 5 分钟负载",
+                                        "dashboard.value.cpu_load": "%value%"
+                                    }
+                                }
+                            })
+                        ).child(4).minWidth(600)
+                    )
+                })
+                const info_collection = createElement("div").append(
+                    $dashboard_locals.files_info,
+                    $dashboard_locals.system_info
                 )
+                $dashboard_locals.basic_qps = Tools.createPanel(({ pre, panel }) => {
+                    var task = null;
+                    var observer = new ResizeObserver(() => {
+                        clearTimeout(task)
+                        task = setTimeout(() => {
+                            pre.style("height", `${calcElementHeight(info_collection)}px`)
+                            panel.style("height", "100%")
+                            clearTimeout(task)
+                        }, 250)
+                    })
+                    observer.observe(info_collection.origin)
+                })
                 basic.push(
-                    $dashboard_locals.files_info
+                    Tools.createFlexElement().append(
+                        info_collection,
+                        $dashboard_locals.basic_qps
+                    ).child('60%', '40%').minWidth(1280)
                 )
             })();
 
@@ -925,16 +1029,28 @@ async function load() {
                 $dashboard_locals.qps = createElement("div").classes("qps-container").append
             });
 
+            const reset_display = () => {
+                $dashboard_locals.info_runtime.value = Tools.formatTime(0)
+                $dashboard_locals.files_info_30days_bytes.value = Tools.formatBytes(0)
+                $dashboard_locals.files_info_30days_hits.value = Tools.formatSimpleNumber(0)
+                $dashboard_locals.files_info_today_bytes.value = Tools.formatBytes(0)
+                $dashboard_locals.files_info_today_hits.value = Tools.formatSimpleNumber(0)
+            }
+
+            reset_display()
+
             $dashboard_locals.pre_switch = createElement("div").classes("pre-switch-container").append(
                 new SwitchElement().addButtons("switch.dashboard.basic", "switch.dashboard.advanced").addEventListener("change", (event) => {
                     while ($dashboard_locals.container.firstChild != null) {
                         $dashboard_locals.container.removeChild($dashboard_locals.container.firstChild)
                     }
                     clearDashboardTask()
+                    reset_display()
                     if (event.detail.index == 0) {
                         $dashboard_locals.container.append(
                             ...$dashboard_locals.basic
                         )
+                        clearInterval($dashboard_locals.basic_task_file_info)
                         $dashboard_locals.basic_task_file_info = Tools.runTask(setInterval, async () => {
                             var hourly = await $channel.send("cluster_statistics_hourly")
                             var daily = await $channel.send("cluster_statistics_daily")
@@ -949,7 +1065,6 @@ async function load() {
                             })) {
                                 rdata[key] = Object.values(val[1]).map((obj) => obj.reduce((a, b) => a + b[val[0]], 0)).reduce((a, b) => a + b, 0)
                             }
-                            console.log(rdata)
                             // first hits
                             for (const {
                                 handler, obj, data
@@ -979,7 +1094,11 @@ async function load() {
                                 obj.value = formatted
                             }
                             
-                        }, 60000)
+                        }, 10000)
+                        $dashboard_locals.basic_task_system_info = Tools.runTask(setInterval, async () => {
+                            var resp = await $channel.send("systeminfo_loads")
+                            console.log(resp)
+                        }, 1000)
 
                     } else {
                         $dashboard_locals.container.append(

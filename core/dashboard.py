@@ -368,22 +368,33 @@ async def handle_api(
         }
     if event == "systeminfo":
         val = counter.last()
-        if val is None:
-            return CounterSystemInfo(
-                utils.get_runtime(),
-                0,
-                0,
-                ConnectionStatistics(
-                    0,
-                    0
-                )
+        ret_data = {
+            "cpu": 0,
+            "memory": 0,
+            "connection": {
+                "tcp": 0,
+                "udp": 0
+            },
+            "loads": 0
+        }
+        if val is not None:
+            CounterSystemInfo(
+                val._,
+                val.value.cpu_usage,
+                val.value.memory_usage,
+                val.value.connection
             )
-        return CounterSystemInfo(
-            val._,
-            val.value.cpu_usage,
-            val.value.memory_usage,
-            val.value.connection
-        )
+            ret_data["memory"] = val.value.memory_usage
+            ret_data["connections"]["tcp"] = val.value.connection.tcp
+            ret_data["connections"]["udp"] = val.value.connection.udp
+            c = int(val._) if val is not None else 0
+            c -= 300
+            loads = [
+                i.cpu for i in counter.all_system_info
+                if i._ > c
+            ]
+            ret_data["loads"] = sum(loads) / len(loads) if loads else 0
+        return ret_data
     if event == "systeminfo_loads":
         info = counter.last()
         c = int(info._) if info is not None else 0
@@ -639,7 +650,7 @@ async def init():
         scheduler.run_repeat_later(
             sync_assets,
             5,
-            interval=86400
+            interval=3600
         )
 
 async def unload():
