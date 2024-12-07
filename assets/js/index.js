@@ -1096,7 +1096,7 @@ async function load() {
                             
                         }, 10000)
                         $dashboard_locals.basic_task_system_info = Tools.runTask(setInterval, async () => {
-                            var resp = await $channel.send("systeminfo_loads")
+                            var resp = await $channel.send("systeminfo")
                             console.log(resp)
                         }, 1000)
 

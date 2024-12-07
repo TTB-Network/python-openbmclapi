@@ -385,8 +385,8 @@ async def handle_api(
                 val.value.connection
             )
             ret_data["memory"] = val.value.memory_usage
-            ret_data["connections"]["tcp"] = val.value.connection.tcp
-            ret_data["connections"]["udp"] = val.value.connection.udp
+            ret_data["connection"]["tcp"] = val.value.connection.tcp
+            ret_data["connection"]["udp"] = val.value.connection.udp
             c = int(val._) if val is not None else 0
             c -= 300
             loads = [
