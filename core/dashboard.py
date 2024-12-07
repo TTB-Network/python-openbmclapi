@@ -339,6 +339,13 @@ async def handle_api(
         if isinstance(req_data, (int, float)):
             data["browser"] = req_data
         return data
+    if event == "status":
+        return {
+            "clusters": len(cluster.clusters.clusters),
+            "storages": len(cluster.clusters.storage_manager.storages),
+            "online_clusters": len(list(filter(lambda x: x.enabled, cluster.clusters.clusters))),
+            "online_storages": len(cluster.clusters.storage_manager.available_storages)
+        }
     if event == "qps":
         config = APIQPSConfig()
         if isinstance(req_data, dict) and "count" in req_data and "interval" in req_data:

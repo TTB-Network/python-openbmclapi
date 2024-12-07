@@ -101,6 +101,7 @@ class Element {
         this._i18n_key = null;
         this._i18n_params = {};
         this._children = []
+        this._styles = {}
         globalThis.$ElementManager.add(this);
     }
     get origin() {
@@ -163,6 +164,10 @@ class Element {
     }
     style(key, value) {
         this._base.style[key] = value;
+        return this;
+    }
+    styleProperty(key, value) {
+        this._base.style.setProperty(key, value);
         return this;
     }
     value(value) {

@@ -21,7 +21,7 @@ class Menu extends Element {
         super("div").classes("menu-side")
         $style.addAll({
             ".menu-side": {
-                "position": "absolute",
+                "position": "fixed", 
                 "width": "232px",
                 "height": "100%",
                 "padding": "16px 16px 0px 24px",
@@ -494,10 +494,8 @@ $i18n.addLanguageTable("zh_CN", {
     "switch.dashboard.basic": "基础统计",
     "switch.dashboard.advanced": "高级统计",
     "menu.dashboard": "数据统计",
-    "dashboard.title.runtime": "运行时间",
-    "dashboard.value.runtime": "%time%",
     "format.count_time": "%hour% 时 %minute% 分 %second% 秒",
-    "format.count_time.day": "%day% 天 %hour% 时 %minute% 分 %second% 秒",
+    "format.count_time.days": "%day% 天 %hour% 时 %minute% 分 %second% 秒",
 })
 $style.setTheme("light", {
     "main-color-r": "15",
@@ -576,6 +574,7 @@ $style.addAll({
         "text-decoration": "underline"
     },
     "header": `
+        position: fixed;
         background: var(--background);
         text-align: center;
         min-height: 56px;
@@ -644,7 +643,9 @@ $style.addAll({
         "margin-bottom": "8px",
     },
     "main": {
-        "margin": "0px 16px"
+        "padding": "32px",
+        "overflow": "auto",
+        "height": "calc(100% - var(--height))"
     },
     ".label-text .title": `
         display: flex;
@@ -662,75 +663,105 @@ $style.addAll({
         line-height: 1.5;
         color: var(--value-color);
         font-size: 24px;
-    `
+    `,
+    ".panel-bottom": {
+        "margin-bottom": "16px"
+    }
 })
-function createPanel() {
-    return createElement("div").classes("panel")
-}
-function createFlexElement() {
-    return new FlexElement()
-}
-function createText(handler) {
-    var title = createElement("p").classes("title")
-    var value = createElement("p").classes("value")
-    handler({
-        title,
-        value
-    })
-    return createElement("div").classes("label-text").append(
-        title,
-        value
-    )
-}
-function createTextWithRef(params = {
-    title_i18n: "",
-    value_i18n: "",
-    title_variable: () => { },
-    value_variable: () => { }
-}) {
-    return createText((label) => {
-        for (const key of [
-            "title", 
-            "value"
-        ]) {
-            label[key].i18n(params[key + "_i18n"])
-            var obj = ref({}, {
-                handler: (args) => {
-                    label[key].t18n(args.object)
-                }
-            })
-            var handler = params[key + "_variable"]
-            if (!handler) continue;
-            try {
-                handler(obj)
-            } catch (e) {
-                console.error(e)
-            }
-        }
-    })
-}
-function runTask(executor, handler, interval) {
-    handler()
-    return executor(handler, interval)
-}
-function formatTime(seconds) {
-    var s = Math.floor(seconds % 60)
-    var m = Math.floor(seconds / 60 % 60)
-    var h = Math.floor(seconds / 3600 % 24)
-    var d = Math.floor(seconds / 86400)
-    if (d > 0) {
-        return $i18n.t("format.count_time_days", {
+class Tools {
+    static formatTime(seconds) {
+        var s = Math.floor(seconds % 60)
+        var m = Math.floor(seconds / 60 % 60)
+        var h = Math.floor(seconds / 3600 % 24)
+        var d = Math.floor(seconds / 86400)
+        return $i18n.t("format.count_time.days", {
             day: d.toString().padStart(2, "0"),
             hour: h.toString().padStart(2, "0"),
             minute: m.toString().padStart(2, "0"),
             second: s.toString().padStart(2, "0"),
         })
     }
-    return $i18n.t("format.count_time", {
-        hour: h.toString().padStart(2, "0"),
-        minute: m.toString().padStart(2, "0"),
-        second: s.toString().padStart(2, "0"),
-    })
+    static runTask(executor, handler, interval) {
+        handler()
+        return executor(handler, interval)
+    }
+    static createTextWithRef(params = {
+        title_i18n: "",
+        value_i18n: "",
+        title_variable: () => { },
+        value_variable: () => { },
+        i18n: {}
+    }) {
+        var i18n = params.i18n || {};
+        for (const [lang, val] of Object.entries(i18n)) {
+            $i18n.addLanguageTable(lang, val)
+        }
+        return Tools.createText((label) => {
+            for (const key of [
+                "title", 
+                "value"
+            ]) {
+                label[key].i18n(params[key + "_i18n"])
+                var obj = ref({}, {
+                    handler: (args) => {
+                        label[key].t18n(args.object)
+                    }
+                })
+                var handler = params[key + "_variable"]
+                if (!handler) continue;
+                try {
+                    handler(obj)
+                } catch (e) {
+                    console.error(e)
+                }
+            }
+        })
+    }
+    static createPanel() {
+        return createElement("div").classes("panel")
+    }
+    static createFlexElement() {
+        return new FlexElement()
+    }
+    static createText(handler) {
+        var title = createElement("p").classes("title")
+        var value = createElement("p").classes("value")
+        handler({
+            title,
+            value
+        })
+        return createElement("div").classes("label-text").append(
+            title,
+            value
+        )
+    }
+    static formatSimpleNumber(number) {
+        // convert number to belike: 100,000, if 100000.0, we are 100,000.0
+        return number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+    }
+    static _BYTES = {
+        "iB": 1,
+        "KiB": 1024,
+        "MiB": 1024,
+        "GiB": 1024,
+        "TiB": 1024,
+        "PiB": 1024,
+        "EiB": 1024,
+        "ZiB": 1024,
+        "YiB": 1024
+    }
+    static formatBytes(bytes) {
+        var i = 0
+        for (const [u, un] of Object.entries(Tools._BYTES).slice(1)) {
+            if (bytes / un < 1) {
+                break
+            }
+            bytes /= un
+            i += 1
+        }
+        console.log(i)
+        return `${bytes.toFixed(2)}${Object.keys(Tools._BYTES)[i]}`
+    }
 }
 async function load() {
     const $dom_body = new Element(document.body);
@@ -768,37 +799,49 @@ async function load() {
             $dashboard_locals.advanced = [];
             // info
             (() => {
-                $dashboard_locals.info = createPanel().append(
-                    createFlexElement().append(
-                        createTextWithRef({
+                $dashboard_locals.info = Tools.createPanel().append(
+                    Tools.createFlexElement().append(
+                        Tools.createTextWithRef({
                             title_i18n: "dashboard.title.runtime",
                             value_i18n: "dashboard.value.runtime",
                             value_variable: (obj) => {
                                 $dashboard_locals.runtime = obj
+                            },
+                            i18n: {
+                                "zh_CN": {
+                                    "dashboard.title.runtime": "运行时间",
+                                    "dashboard.value.runtime": "%time%",
+                                }
                             }
                         }),
-                        createTextWithRef({
+                        Tools.createTextWithRef({
                             title_i18n: "dashboard.title.status",
                             value_i18n: "dashboard.value.status",
                             value_variable: (obj) => {
                                 $dashboard_locals.status = obj
+                            },
+                            i18n: {
+                                "zh_CN": {
+                                    "dashboard.title.status": "当前状态",
+                                    "dashboard.value.status": "正常……？"
+                                }
                             }
                         }),
                     ).child(2).minWidth(680)
-                )
+                ).classes("panel-bottom")
                 $dashboard_locals.info_runtime = ref({}, {
                     handler: (args) => {
                         const object = args.object;
                         if (!object.finish) return;
                         object.finish = false;
                         clearInterval($dashboard_locals.info_runtime_task)
-                        $dashboard_locals.info_runtime_task = runTask(setInterval, () => {
+                        $dashboard_locals.info_runtime_task = Tools.runTask(setInterval, () => {
                             const runtime = object.current_time - object.start_time - object.diff / 1000.0 + (+new Date() - object.resp_timestamp) / 1000.0;
-                            $dashboard_locals.runtime.time = formatTime(runtime);
+                            $dashboard_locals.runtime.time = Tools.formatTime(runtime);
                         }, 1000)
                     }
                 })
-                $dashboard_locals.info_task = runTask(setInterval, async () => {
+                $dashboard_locals.info_task = Tools.runTask(setInterval, async () => {
                     var resp = await $channel.send("runtime", +new Date())
                     var start_time = resp.timestamp - resp.runtime;
                     // time fixed
@@ -816,19 +859,128 @@ async function load() {
             // basic
             (() => {
                 const basic = $dashboard_locals.basic;
+                $dashboard_locals.files_info = Tools.createPanel().append(
+                    Tools.createFlexElement().append(
+                        Tools.createTextWithRef({
+                            title_i18n: "dashboard.title.today.hits",
+                            value_i18n: "dashboard.value.today.hits",
+                            value_variable: (obj) => {
+                                $dashboard_locals.files_info_today_hits = obj;
+                            },
+                            i18n: {
+                                "zh_CN": {
+                                    "dashboard.title.today.hits": "今日下载数",
+                                    "dashboard.value.today.hits": "%value%"
+                                }
+                            }
+                        }),
+                        Tools.createTextWithRef({
+                            title_i18n: "dashboard.title.today.bytes",
+                            value_i18n: "dashboard.value.today.bytes",
+                            value_variable: (obj) => {
+                                $dashboard_locals.files_info_today_bytes = obj;
+                            },
+                            i18n: {
+                                "zh_CN": {
+                                    "dashboard.title.today.bytes": "今日下载量",
+                                    "dashboard.value.today.bytes": "%value%"
+                                }
+                            }
+                        }),
+                        Tools.createTextWithRef({
+                            title_i18n: "dashboard.title.30days.hits",
+                            value_i18n: "dashboard.value.30days.hits",
+                            value_variable: (obj) => {
+                                $dashboard_locals.files_info_30days_hits = obj;
+                            },
+                            i18n: {
+                                "zh_CN": {
+                                    "dashboard.title.30days.hits": "30 天下载数",
+                                    "dashboard.value.30days.hits": "%value%"
+                                }
+                            }
+                        }),
+                        Tools.createTextWithRef({
+                            title_i18n: "dashboard.title.30days.bytes",
+                            value_i18n: "dashboard.value.30days.bytes",
+                            value_variable: (obj) => {
+                                $dashboard_locals.files_info_30days_bytes = obj;
+                            },
+                            i18n: {
+                                "zh_CN": {
+                                    "dashboard.title.30days.bytes": "30 天下载量",
+                                    "dashboard.value.30days.bytes": "%value%"
+                                }
+                            }
+                        }),
+                    ).child(4).minWidth(600)
+                )
                 basic.push(
+                    $dashboard_locals.files_info
                 )
             })();
+
+            // share 
+            (() => {
+                $dashboard_locals.qps = createElement("div").classes("qps-container").append
+            });
 
             $dashboard_locals.pre_switch = createElement("div").classes("pre-switch-container").append(
                 new SwitchElement().addButtons("switch.dashboard.basic", "switch.dashboard.advanced").addEventListener("change", (event) => {
                     while ($dashboard_locals.container.firstChild != null) {
                         $dashboard_locals.container.removeChild($dashboard_locals.container.firstChild)
                     }
+                    clearDashboardTask()
                     if (event.detail.index == 0) {
                         $dashboard_locals.container.append(
                             ...$dashboard_locals.basic
                         )
+                        $dashboard_locals.basic_task_file_info = Tools.runTask(setInterval, async () => {
+                            var hourly = await $channel.send("cluster_statistics_hourly")
+                            var daily = await $channel.send("cluster_statistics_daily")
+                            var rdata = {}
+                            for (const [
+                                key, val
+                            ] of Object.entries({
+                                "hourly_hits": ["hits", hourly],
+                                "hourly_bytes": ["bytes", hourly],
+                                "daily_hits": ["hits", daily],
+                                "daily_bytes": ["bytes", daily],
+                            })) {
+                                rdata[key] = Object.values(val[1]).map((obj) => obj.reduce((a, b) => a + b[val[0]], 0)).reduce((a, b) => a + b, 0)
+                            }
+                            console.log(rdata)
+                            // first hits
+                            for (const {
+                                handler, obj, data
+                             } of [
+                                {
+                                     handler: Tools.formatSimpleNumber,
+                                     obj: $dashboard_locals.files_info_today_hits,
+                                     data: rdata.hourly_hits
+                                },
+                                {
+                                     handler: Tools.formatSimpleNumber,
+                                     obj: $dashboard_locals.files_info_30days_hits,
+                                     data: rdata.daily_hits
+                                },
+                                {
+                                     handler: Tools.formatBytes,
+                                     obj: $dashboard_locals.files_info_today_bytes,
+                                     data: rdata.hourly_bytes
+                                },
+                                {
+                                    handler: Tools.formatBytes,
+                                    obj: $dashboard_locals.files_info_30days_bytes,
+                                    data: rdata.daily_bytes
+                                }
+                            ]) {
+                                var formatted = handler(data)
+                                obj.value = formatted
+                            }
+                            
+                        }, 60000)
+
                     } else {
                         $dashboard_locals.container.append(
                             ...$dashboard_locals.advanced
@@ -844,10 +996,19 @@ async function load() {
         )
     })
 
+    const clearDashboardTask = (all = false) => {
+        const $dashboard_locals = $menu_variables;
+        if ($dashboard_locals) return;
+        clearInterval($dashboard_locals.basic_task_file_info)
+        if (!all) return;
+        clearInterval($dashboard_locals.info_runtime_task)
+    }
+
     $router.before_handler(() => {
         while ($main.firstChild != null) {
             $main.removeChild($main.firstChild)
         }
+        clearDashboardTask(true)
     })
 
     for (const $theme_key in $theme) {
@@ -877,6 +1038,9 @@ async function load() {
         var container = calcElementHeight($container)
         var height = Math.max(height, container)
         $container.style("height", `${height}px`)
+        $menu.style("top", `${header}px`)
+        $main.style("margin-top", `${header}px`)
+        $main.styleProperty("--height", `${header}px`)
     });
     observer.observe($app.origin, { childList: true, subtree: true });
 
