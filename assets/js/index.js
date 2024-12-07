@@ -1097,7 +1097,10 @@ async function load() {
                         }, 10000)
                         $dashboard_locals.basic_task_system_info = Tools.runTask(setInterval, async () => {
                             var resp = await $channel.send("systeminfo")
-                            console.log(resp)
+                            $dashboard_locals.system_info_connection.value = resp.connection.tcp + resp.connection.udp
+                            $dashboard_locals.system_info_memory.value = Tools.formatBytes(resp.memory)
+                            $dashboard_locals.system_info_cpu.value = resp.cpu.toFixed(1) + "%"
+                            $dashboard_locals.system_info_cpu_load.value = resp.loads.toFixed(1) + "%"
                         }, 1000)
 
                     } else {

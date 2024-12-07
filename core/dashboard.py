@@ -378,12 +378,7 @@ async def handle_api(
             "loads": 0
         }
         if val is not None:
-            CounterSystemInfo(
-                val._,
-                val.value.cpu_usage,
-                val.value.memory_usage,
-                val.value.connection
-            )
+            ret_data["cpu"] = val.value.cpu_usage
             ret_data["memory"] = val.value.memory_usage
             ret_data["connection"]["tcp"] = val.value.connection.tcp
             ret_data["connection"]["udp"] = val.value.connection.udp
