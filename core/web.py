@@ -76,7 +76,7 @@ async def middleware(request: web.Request, handler: Any) -> web.Response:
         start = time.perf_counter_ns()
         resp = None
         try:
-            resp = await handler(request)
+            resp = await asyncio.create_task(handler(request))
             return resp
         finally:
             status = 500

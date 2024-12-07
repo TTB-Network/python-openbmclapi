@@ -220,6 +220,9 @@ def get_runtime():
 def parse_isotime_to_timestamp(iso_format: str) -> float:
     return datetime.fromisoformat(iso_format).timestamp()
 
+def parse_gmttime_to_timestamp(gmt_format: str) -> float:
+    return datetime.strptime(gmt_format, "%a, %d %b %Y %H:%M:%S %Z").timestamp()
+
 def is_service_error(body: Any) -> bool:
     if isinstance(body, (bytes, str)):
         try:

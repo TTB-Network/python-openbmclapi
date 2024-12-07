@@ -499,8 +499,8 @@ class RouteEvent {
 class Router {
     constructor(route_prefix = "/") {
         this._route_prefix = route_prefix.replace(/\/+$/, "")
-        this._before_handler = null
-        this._after_handler = null
+        this._before_handlers = []
+        this._after_handlers = []
         this._current_path = this._get_current_path()
         this._routes = []
     }
@@ -533,11 +533,13 @@ class Router {
         if (old_path == new_path) return;
         window.history.pushState(null, '', this._route_prefix + new_path)
         this._current_path = new_path
-        try {
-            this._before_handler(new RouteEvent(this, old_path, new_path))
-        } catch (e) {
-            console.log(e)
-        }
+        this._before_handlers.forEach(handler => {
+            try {
+                handler(new RouteEvent(this, old_path, new_path))
+            } catch (e) {
+                console.log(e)
+            }
+        })
         try {
             // get route
             var routes = this._routes.filter(x => x.path.test(new_path))
@@ -561,11 +563,13 @@ class Router {
         } catch (e) {
             console.log(e)
         }
-        try {
-            this._after_handler(new RouteEvent(this, old_path, new_path))
-        } catch (e) {
-            console.log(e)
-        }
+        this._after_handlers.forEach(handler => {
+            try {
+                handler(new RouteEvent(this, old_path, new_path))
+            } catch (e) {
+                console.log(e)
+            }
+        })
     }
     on(path, handler) {
         // path {xxx}
@@ -584,11 +588,13 @@ class Router {
         return this
     }
     before_handler(handler) {
-        this._before_handler = handler
+        if (handler == null) this;
+        this._before_handlers.push(handler)
         return this
     }
     after_handler(handler) {
-        this._after_handler = handler
+        if (handler == null) this;
+        this._after_handlers.push(handler)
         return this
     }
 }
@@ -843,11 +849,19 @@ function ref(object, params) {
                     clearTimeout(task)
                 }
                 task = setTimeout(() => {
-                    handler(key, value)
+                    handler({
+                        key,
+                        value,
+                        object
+                    })
                     task = null
                 }, timeout)
             } else {
-                handler(key, value)
+                handler({
+                    key,
+                    value,
+                    object
+                })
             }
             return true
         }
@@ -857,7 +871,11 @@ function calcElementHeight(element) {
     var origin = element.origin;
     var rect = origin.getBoundingClientRect()
     return rect.height
-    
+}
+function calcElementWidth(element) {
+    var origin = element.origin;
+    var rect = origin.getBoundingClientRect()
+    return rect.width
 }
 class Lock {
     _lock = false;
@@ -1023,5 +1041,6 @@ export {
     Utils,
     ref,
     calcElementHeight,
+    calcElementWidth,
     ObjectID
 }

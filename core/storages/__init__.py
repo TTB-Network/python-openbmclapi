@@ -3,6 +3,7 @@ import asyncio
 from collections import defaultdict, deque
 from dataclasses import dataclass
 import hashlib
+import io
 import os
 from pathlib import Path
 import time
@@ -10,7 +11,7 @@ from typing import Any, Optional
 
 from tqdm import tqdm
 
-from core import units
+from core import config, units
 from .. import scheduler, utils, cache
 from ..logger import logger
 import urllib.parse as urlparse
@@ -402,6 +403,8 @@ class AlistStorage(iStorage):
                 except:
                     logger.traceback()
                     return []
+                finally:
+                    update_tqdm()
             return ((result.data or {}).get("content", None) or [])
         async with aiohttp.ClientSession(
             self.url,
@@ -424,7 +427,6 @@ class AlistStorage(iStorage):
                     )
                     files[f"{root_id:02x}"].append(file)
                 await asyncio.sleep(0)
-                update_tqdm()
             
         return files
     
@@ -461,6 +463,13 @@ class AlistStorage(iStorage):
     async def close(self):
         await self.session.close()
 
+@dataclass
+class WebDavFileInfo:
+    created: float
+    modified: float
+    name: str
+    size: int
+
 class WebDavStorage(iStorage):
     type: str = "webdav"
     def __init__(self, path: str, weight: int, url: str, username: str, password: str):
@@ -468,8 +477,126 @@ class WebDavStorage(iStorage):
         self.url = url
         self.username = username
         self.password = password
+        self.client = webdav3_client.Client({
+            "webdav_hostname": url,
+            "webdav_login": username,
+            "webdav_password": password,
+            "User-Agent": config.USER_AGENT
+        })
+        self.client_lock = asyncio.Lock()
+        self.cache = cache.MemoryStorage()
+
 
     @property
     def unique_id(self) -> str:
         return hashlib.md5(f"{self.type},{self.url},{self.path}".encode()).hexdigest()
+    
+    async def list_files(self, pbar: Optional[tqdm] = None) -> defaultdict[str, deque[File]]:
+        def update():
+            pbar.update(1) # type: ignore
+        def empty():
+            ...
+        update_tqdm = empty
+        if pbar is not None:
+            update_tqdm = update
+    
+        files: defaultdict[str, deque[File]] = defaultdict(deque)
+        async def get_files(root_id: int):
+            root = f"{self.path}/{root_id:02x}"
+            if f"listfile_{root}" in self.cache:
+                result = self.cache.get(f"listfile_{root}")
+                return result
+            else:
+                try:
+                    result = await self.client.list(
+                        root,
+                        True
+                    )
+                    res = [WebDavFileInfo(
+                        created=utils.parse_isotime_to_timestamp(r["created"]),
+                        modified=utils.parse_gmttime_to_timestamp(r["modified"]),
+                        name=r["name"],
+                        size=int(r["size"])
+                    ) for r in result if not r["isdir"]]
+                    self.cache.set(f"listfile_{root}", res, 60)
+                except webdav3_exceptions.RemoteResourceNotFound:
+                    return []
+                except:
+                    logger.traceback()
+                    return []
+                finally:
+                    update_tqdm()
+                return res
+        results = await asyncio.gather(
+            *(get_files(root_id) for root_id in range(256))
+        )
+        for root_id, result in zip(
+            range(256), results
+        ):
+            for r in result:
+                files[f"{root_id:02x}"].append(File(
+                    name=r.name,
+                    hash=r.name,
+                    size=r.size,
+                    mtime=r.modified,
+                ))
+        return files
+    
+    async def delete_file(self, file_hash: str) -> bool:
+        await self.client.unpublish(self.get_path(file_hash))
+        return True
+    
+    async def exists(self, file_hash: str) -> bool:
+        return (await self._info_file(file_hash)).size != -1
+    
+    async def get_mtime(self, file_hash: str) -> float:
+        return (await self._info_file(file_hash)).modified
+    
+    async def _info_file(self, file_hash: str) -> WebDavFileInfo:
+        try:
+            res = await self.client.info(self.get_path(file_hash))
+        except:
+            return WebDavFileInfo(
+                created=0,
+                modified=0,
+                name=file_hash,
+                size=-1
+            )
+        return WebDavFileInfo(
+            created=utils.parse_isotime_to_timestamp(res["created"]),
+            modified=utils.parse_gmttime_to_timestamp(res["modified"]),
+            name=res["name"],
+            size=int(res["size"])
+        )
+
+    async def get_size(self, file_hash: str) -> int:
+        return (await self._info_file(file_hash)).size
+    
+    async def read_file(self, file_hash: str) -> bytes:
+        if (await self._info_file(file_hash)).size == -1:
+            return b""
+        data = io.BytesIO()
+        res = await self.client.download_from(data, self.get_path(file_hash))
+        return data.getvalue()
+
+    async def write_file(self, file: File, content: bytes, mtime: float | None) -> bool:
+        await self._mkdir(self.get_path(file.hash).rsplit("/", 1)[0])
+        try:
+            await self.client.upload_to(
+                io.BytesIO(content),
+                self.get_path(file.hash),
+            )
+        except:
+            logger.traceback()
+            return False
+        return True
+    
+    async def _mkdir(self, dir: str):
+        async with self.client_lock:
+            d = ""
+            for x in dir.split("/"):
+                d += x
+                await self.client.mkdir(d)
+                d += "/"
+        
     

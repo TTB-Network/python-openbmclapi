@@ -20,7 +20,7 @@ from .storages import File as SFile
 import socketio
 import urllib.parse as urlparse
 from . import database as db
-import core
+from .config import USER_AGENT, API_VERSION
 
 @dataclass
 class Token:
@@ -66,19 +66,32 @@ class StorageManager:
 
     async def _check_available(self):
         for storage in self.storages:
-            if not await storage.exists(CHECK_FILE_MD5):
-                await storage.write_file(
-                    convert_file_to_storage_file(CHECK_FILE),
-                    CHECK_FILE_CONTENT.encode("utf-8"),
-                    CHECK_FILE.mtime
-                )
-            if await storage.get_size(CHECK_FILE_MD5) == len(CHECK_FILE_CONTENT) and storage not in self.available_storages:
-                self.available_storages.append(storage)
+            try:
+                res = await asyncio.wait_for(self.__check_available(storage), 10)
+            except asyncio.TimeoutError:
+                if storage in self.available_storages:
+                    self.available_storages.remove(storage)
+            except:
+                logger.ttraceback("storage.error.check_available", type=storage.type, path=storage.path, url=getattr(storage, "url", None))
+            if res:
+                if storage not in self.available_storages:
+                    self.available_storages.append(storage)
+            elif storage in self.available_storages:
+                self.available_storages.remove(storage)
         logger.debug(f"Available storages: {len(self.available_storages)}")
         if len(self.available_storages) > 0:
             self.check_available.release()
         else:
             self.check_available.acquire()
+        
+    async def __check_available(self, storage: storages.iStorage):
+        if not await storage.exists(CHECK_FILE_MD5):
+            await storage.write_file(
+                convert_file_to_storage_file(CHECK_FILE),
+                CHECK_FILE_CONTENT.encode("utf-8"),
+                CHECK_FILE.mtime
+            )
+        return await storage.get_size(CHECK_FILE_MD5) == len(CHECK_FILE_CONTENT)
 
     def add_storage(self, storage: storages.iStorage):
         self.storages.append(storage)
@@ -769,29 +782,6 @@ class Cluster:
         timestamp = utils.parse_isotime_to_timestamp(result.ack)
         ping = (time.time() - timestamp) // 0.0002
         logger.tsuccess("cluster.success.keepalive", cluster=self.id, hits=units.format_number(total_counter.hits), bytes=units.format_bytes(total_counter.bytes), ping=ping)
-        
-        #storage_data = []
-        #for storage, counter in self.counter.items():
-        #    storage_data.append(
-        #        db.StorageStatistics(
-        #            storage=storage.unique_id,
-        #            hits=counter.hits,
-        #            bytes=counter.bytes,
-        #        )
-        #    )
-        #storage_data.append(
-        #    db.StorageStatistics(
-        #        None,
-        #        commit_no_storage_counter.hits,
-        #        commit_no_storage_counter.bytes
-        #    )
-        #)
-        #db.add_statistics(
-        #    db.Statistics(
-        #        self.id,
-        #        storage_data
-        #    )
-        #)
 
     async def disable(self, exit: bool = False):
         scheduler.cancel(self.keepalive_task)
@@ -970,8 +960,6 @@ class MemoryStorageFile(StorageFile):
 
 ROOT = Path(__file__).parent.parent
 
-API_VERSION = "1.13.1"
-USER_AGENT = f"openbmclapi/{API_VERSION} python-openbmclapi/{config.VERSION}"
 CHECK_FILE_CONTENT = "Python OpenBMCLAPI"
 CHECK_FILE_MD5 = hashlib.md5(CHECK_FILE_CONTENT.encode("utf-8")).hexdigest()
 CHECK_FILE = File(
@@ -1055,6 +1043,8 @@ async def init():
             storage = storages.LocalStorage(cstorage['path'], cstorage.get("weight", 0))
         elif type == "alist":
             storage = storages.AlistStorage(cstorage['path'], cstorage.get("weight", 0), cstorage['url'], cstorage['username'], cstorage['password'], cstorage.get('link_cache_expires', None))
+        elif type == "webdav":
+            storage = storages.WebDavStorage(cstorage['path'], cstorage.get("weight", 0), cstorage['url'], cstorage['username'], cstorage['password'])
         else:
             logger.terror("cluster.error.unspported_storage", type=type, path=cstorage['path'])
             continue

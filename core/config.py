@@ -160,8 +160,6 @@ class Const:
 
 const = Const()
 
-def read_version():
-    with open("VERSION", "r") as f:
-        return f.read().strip()
-
-VERSION = read_version()
+VERSION = "3.1.0"
+API_VERSION = "1.13.1"
+USER_AGENT = f"openbmclapi/{API_VERSION} python-openbmclapi/{VERSION}"

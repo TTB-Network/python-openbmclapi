@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import sys
 import threading
 import time
 from typing import Any, Optional
@@ -204,6 +205,8 @@ async def _(request: web.Request):
 async def _(request: web.Request):
     dashboard_config = json.dumps({
         "version": config.VERSION,
+        "api_version": config.API_VERSION,
+        "python_version": ".".join(map(str, (sys.version_info.major, sys.version_info.minor, sys.version_info.micro))),
         "support": {
             "websocket": True,
             "polling": True
@@ -328,6 +331,14 @@ async def handle_api(
     event: str,
     req_data: Any
 ) -> Any:
+    if event == "runtime":
+        data = {
+            "runtime": utils.get_runtime(),
+            "timestamp": time.time()
+        }
+        if isinstance(req_data, (int, float)):
+            data["browser"] = req_data
+        return data
     if event == "qps":
         config = APIQPSConfig()
         if isinstance(req_data, dict) and "count" in req_data and "interval" in req_data:
@@ -673,7 +684,7 @@ async def sync_assets():
             return io.BytesIO()
 
     headers = {
-        "User-Agent": cluster.USER_AGENT
+        "User-Agent": config.USER_AGENT
     }
     if config.const.github_token:
         headers["Authorization"] = f"Bearer {config.const.github_token}"
