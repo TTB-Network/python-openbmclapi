@@ -576,6 +576,11 @@ $i18n.addLanguageTable("zh_CN", {
     "menu.dashboard": "数据统计",
     "format.count_time": "%hour% 时 %minute% 分 %second% 秒",
     "format.count_time.days": "%day% 天 %hour% 时 %minute% 分 %second% 秒",
+    "switch.dashboard.storage.:all:": "所有存储",
+    "switch.dashboard.storage.alist": "Alist [%path% (%url%)]",
+    "switch.dashboard.storage.local": "本地存储 [%path%]",
+    "switch.dashboard.storage.webdav": "WebDAV [%path% (%url%)]"
+
 })
 $style.setTheme("light", {
     "main-color-r": "15",
@@ -660,7 +665,7 @@ $style.addAll({
         min-height: 56px;
         width: 100%;
         padding: 8px 8px 8px 8px;
-        z-index: 1;
+        z-index: 5;
         display: flex;
         align-items: center;
         flex-wrap: nowrap;
@@ -1103,24 +1108,206 @@ async function load() {
                         var width = calcElementWidth(section)
                         if (width < 1280) {
                             pre.style("height", `auto`)
-                            return
+                        } else {
+                            pre.style("height", `${calcElementHeight(info_collection)}px`)
+                            panel.style("height", "100%")
                         }
-                        pre.style("height", `${calcElementHeight(info_collection)}px`)
-                        panel.style("height", "100%")
-                        instance.resize()
+                        $dashboard_locals.basic_qps_echart.echart.resize()
                     })
                     observer.observe(info_collection.origin)
                 })
+
+                // storage
+
+                $dashboard_locals.storage_switch = new SwitchElement().addButtons("switch.dashboard.storage.:all:").addEventListener("change", (event) => {
+                }).select(0)
+                $dashboard_locals.storage_echarts = {}
+                $dashboard_locals.storage_data = ref({}, {
+                    timeout: 100,
+                    handler: (object) => {
+                        object = object.object;
+                        var current = object.current || "total"
+                        var data = object[current] || {}
+                        for (const [key, value] of Object.entries({
+                            "today_hits": data.hourly_hits,
+                            "today_bytes": data.hourly_bytes,
+                            "days_hits": data.daily_hits,
+                            "days_bytes": data.daily_bytes
+                        })) {
+                            var option = {
+                                color: [
+                                    $style.getThemeValue("main-color"),
+                                ],
+                                xAxis: {
+                                    data: Object.keys(value),
+                                },
+                                yAxis: {
+                                    max: Math.max(10, ...Object.values(value)),
+                                },
+                                series: [{
+                                    data: Object.values(value),
+                                    type: 'line',
+                                    smooth: true,
+                                }]
+                            }
+                            $dashboard_locals.storage_echarts[key].echart.setOption(option)
+                        }
+                    }
+                })
+                $dashboard_locals.storage_info = createElement("div").append(
+                    Tools.createFlexElement().append(
+                        Tools.createPanel(({
+                            panel
+                        }) => {
+                            var instance = Tools.createEchartElement(({
+                                echart, base
+                            }) => {
+                                base.style("min-height", "180px")
+                                base.style("width", "100%")
+                                $dashboard_locals.storage_echarts.today_hits = {
+                                    echart, base
+                                }
+                            })
+                            panel.append(
+                                createElement("p").classes("title").i18n("dashboard.title.storage.today.hits"),
+                                instance
+                            )
+                        }),
+                        Tools.createPanel(({
+                            panel
+                        }) => {
+                            var instance = Tools.createEchartElement(({
+                                echart, base
+                            }) => {
+                                base.style("min-height", "180px")
+                                base.style("width", "100%")
+                                $dashboard_locals.storage_echarts.today_bytes = {
+                                    echart, base
+                                }
+                            })
+                            panel.append(
+                                createElement("p").classes("title").i18n("dashboard.title.storage.today.bytes"),
+                                instance
+                            )
+                        })
+                    ).child(2).minWidth(900),
+                    Tools.createFlexElement().append(
+                        Tools.createPanel(({
+                            panel
+                        }) => {
+                            var instance = Tools.createEchartElement(({
+                                echart, base
+                            }) => {
+                                base.style("min-height", "180px")
+                                base.style("width", "100%")
+                                $dashboard_locals.storage_echarts.days_hits = {
+                                    echart, base
+                                }
+                            })
+                            panel.append(
+                                createElement("p").classes("title").i18n("dashboard.title.storage.30days.hits"),
+                                instance
+                            )
+                        }),
+                        Tools.createPanel(({
+                            panel
+                        }) => {
+                            var instance = Tools.createEchartElement(({
+                                echart, base
+                            }) => {
+                                base.style("min-height", "180px")
+                                base.style("width", "100%")
+                                $dashboard_locals.storage_echarts.days_bytes = {
+                                    echart, base
+                                }
+                            })
+                            panel.append(
+                                createElement("p").classes("title").i18n("dashboard.title.storage.30days.bytes"),
+                                instance
+                            )
+                        })
+                    ).child(2).minWidth(900)
+                )
+                var storage_observer_task = null;
+                var storage_observer = new ResizeObserver(() => {
+                    if (storage_observer_task != null) clearTimeout(storage_observer_task)
+                    storage_observer_task = setTimeout(() => {
+                        for (const instance of [
+                            "days_hits",
+                            "days_bytes",
+                            "today_hits",
+                            "today_bytes"
+                        ]) {
+                            $dashboard_locals.storage_echarts[instance].echart.resize()
+                        }
+                    }, 100)
+                })
+                storage_observer.observe($dashboard_locals.storage_info.origin)
+
+                $dashboard_locals.storage_info_task = Tools.runTask(setInterval, async () => {
+                    var hourly = await $channel.send("storage_statistics_hourly")
+                    var daily = await $channel.send("storage_statistics_daily")
+                    // remove "None"
+                    delete hourly["None"]
+                    delete daily["None"]
+                    var storage = {
+
+                    }
+                    //console.log(hourly, daily)
+                    for (const [key, data] of Object.entries({
+                        "hits": {
+                            "daily": Object.entries(daily),
+                            "hourly": Object.entries(hourly)
+                        },
+                        "bytes": {
+                            "daily": Object.entries(daily),
+                            "hourly": Object.entries(hourly)
+                        }
+                    })) {
+                        for (const [time, values] of Object.entries(data)) {
+                            for (const [storage_id, value] of values) {
+                                if (!storage[storage_id]) storage[storage_id] = {}
+                                var key_time = `${time}_${key}`
+                                if (!storage[storage_id][key_time]) storage[storage_id][key_time] = {}
+                                for (const val of value) {
+                                    var v = storage[storage_id][key_time][val._] || 0;
+                                    storage[storage_id][key_time][val._] = v + val[key]
+                                }
+                            }
+                        }
+                    }
+                    var total = {
+                        hourly_bytes: {},
+                        daily_bytes: {},
+                        hourly_hits: {},
+                        daily_hits: {}
+                    }
+                    for (const data of Object.values(storage)) {
+                        for (const [key, values] of Object.entries(data)) {
+                            for (const [time, value] of Object.entries(values)) {
+                                var v = total[key][time] || 0;
+                                total[key][time] = v + value
+                            }
+                        }
+                    }
+                    $dashboard_locals.storage_data.total = total;
+                    $dashboard_locals.storage_data.storages = storage;
+                }, 60000)
+
+                // push all elements
                 basic.push(
                     section.append(
                         info_collection,
                         $dashboard_locals.basic_qps
-                    )
+                    ),
+                    createElement("div").classes("pre-switch-container").append(
+                        $dashboard_locals.storage_switch
+                    ),
+                    $dashboard_locals.storage_info
                 )
-            })();
 
-            // share 
-            (() => {
+            })();
+            const init_echarts = () => {
                 var option = {
                     tooltip: {
                         trigger: 'axis',
@@ -1183,19 +1370,67 @@ async function load() {
                 for (let qps of instances) {
                     qps.echart.setOption(option)
                 }
+
+                for (const instance of [
+                    "days_hits",
+                    "days_bytes",
+                    "today_hits",
+                    "today_bytes"
+                ]) {
+                    var option = {
+                        color: [
+                            $style.getThemeValue("echarts-color-0"),
+                        ],
+                        tooltip: {
+                            trigger: 'axis'
+                        },
+                        grid: {
+                            left: '3%',
+                            right: '4%',
+                            bottom: '3%',
+                            top: '20%',
+                            containLabel: true
+                        },
+                        xAxis: {
+                            type: 'category',
+                        },
+                        yAxis: {
+                            type: 'value',
+                            min: 1,
+                            max: 10
+                        },
+                        series: []
+                    };
+                    $dashboard_locals.storage_echarts[instance].echart.setOption(option)
+                }
+            }
+            // share 
+            (() => {
+                const instances = [
+                    $dashboard_locals.basic_qps_echart
+                ]
+                $dashboard_locals.qps_data = ref({}, {
+                    handler: (object) => {
+                        var resp = object.object.resp;
+                        var option = {
+                            color: $style.getThemeValue("main-color"),
+                            xAxis: {
+                                data: Object.keys(resp)
+                            },
+                            series: [{ name: 'QPS', data: Object.values(resp) }]
+                        }
+                        for (let instance of instances) {
+                            instance.echart.setOption(option)
+                        }
+                    }
+                })
                 $dashboard_locals.qps_task = Tools.runTask(setInterval, async () => {
                     var resp = await $channel.send("qps")
-                    var option = {
-                        color: $style.getThemeValue("main-color"),
-                        xAxis: {
-                            data: Object.keys(resp)
-                        },
-                        series: [{ name: 'QPS', data: Object.values(resp) }]
-                    }
-                    for (let instance of instances) {
-                        instance.echart.setOption(option)
-                    }
+                    $dashboard_locals.qps_data.resp = resp;
                 }, 5000)
+                window.addEventListener("theme-changed", () => {
+                    $dashboard_locals.qps_data.resp = qps_data.resp;
+                })
             })();
 
             const reset_display = () => {
@@ -1204,6 +1439,11 @@ async function load() {
                 $dashboard_locals.files_info_30days_hits.value = Tools.formatSimpleNumber(0)
                 $dashboard_locals.files_info_today_bytes.value = Tools.formatBytes(0)
                 $dashboard_locals.files_info_today_hits.value = Tools.formatSimpleNumber(0)
+
+                $dashboard_locals.system_info_connection.value = Tools.formatSimpleNumber(0)
+                $dashboard_locals.system_info_cpu.value = Tools.formatSimpleNumber(0)
+                $dashboard_locals.system_info_memory.value = Tools.formatBytes(0)
+                
             }
 
             reset_display()
@@ -1216,6 +1456,7 @@ async function load() {
                     clearEcharts()
                     clearDashboardTask()
                     reset_display()
+                    init_echarts()
                     if (event.detail.index == 0) {
                         $dashboard_locals.container.append(
                             ...$dashboard_locals.basic
@@ -1235,6 +1476,7 @@ async function load() {
                             })) {
                                 rdata[key] = Object.values(val[1]).map((obj) => obj.reduce((a, b) => a + b[val[0]], 0)).reduce((a, b) => a + b, 0)
                             }
+                            console.log(rdata, hourly)
                             // first hits
                             for (const {
                                 handler, obj, data
@@ -1265,6 +1507,7 @@ async function load() {
                             }
                             
                         }, 10000)
+                        clearInterval($dashboard_locals.basic_task_system_info)
                         $dashboard_locals.basic_task_system_info = Tools.runTask(setInterval, async () => {
                             var resp = await $channel.send("systeminfo")
                             $dashboard_locals.system_info_connection.value = resp.connection.tcp + resp.connection.udp
@@ -1272,12 +1515,22 @@ async function load() {
                             $dashboard_locals.system_info_cpu.value = resp.cpu.toFixed(1) + "%"
                             $dashboard_locals.system_info_cpu_load.value = resp.loads.toFixed(1) + "%"
                         }, 1000)
+                        /*$channel.send("storage_keys").then((resp) => {
+                            $dashboard_locals.storage_switch.addButtons(
+                                ...resp.map((val) => "switch.dashboard.storage." + val.data.type)
+                            )
+                        })*/
 
                     } else {
                         $dashboard_locals.container.append(
                             ...$dashboard_locals.advanced
                         )
                     }
+                    requestAnimationFrame(() => {
+                        if ($dashboard_locals.qps_data.resp)
+                            $dashboard_locals.qps_data.resp = $dashboard_locals.qps_data.resp;
+                        $dashboard_locals.storage_data.refresh = true;
+                    })
                 }).select(0)
             )
         }
@@ -1289,14 +1542,17 @@ async function load() {
     })
 
     const clearEcharts = (all = false) => {
-        const $dashboard_locals = $menu_variables;
-        if ($dashboard_locals) return;
+        const $dashboard_locals = $menu_variables.dashboard;
+        if (!$dashboard_locals) return;
         $dashboard_locals.basic_qps_echart.echart.clear()
+        for (const instance of Object.values($dashboard_locals.storage_echarts)) {
+            instance.echart.clear()
+        }
     }
 
     const clearDashboardTask = (all = false) => {
-        const $dashboard_locals = $menu_variables;
-        if ($dashboard_locals) return;
+        const $dashboard_locals = $menu_variables.dashboard;
+        if (!$dashboard_locals) return;
         clearInterval($dashboard_locals.basic_task_file_info)
         clearInterval($dashboard_locals.basic_task_system_info)
         if (!all) return;

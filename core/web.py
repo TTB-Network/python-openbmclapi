@@ -96,6 +96,7 @@ IO_BUFFER = 16384
 FINDING_FILTER = "127.0.0.1"
 CHECK_PORT_SECRET = os.urandom(8)
 ip_tables: dict[tuple[str, int], tuple[str, int]] = {}
+ip_count: defaultdict[tuple[str, int], int] = defaultdict(int)
 
 def find_origin_ip(target: tuple[str, int]):
     if target not in ip_tables:
@@ -108,10 +109,12 @@ class IPAddressTable:
     target: tuple[str, int]
     def __enter__(self):
         ip_tables[self.target] = self.origin
+        ip_count[self.origin] += 1
         return self
     
     def __exit__(self, _, __, ___):
-        if self.target in ip_tables:
+        ip_count[self.origin] -= 1
+        if ip_count[self.origin] == 0 and self.target in ip_tables:
             ip_tables.pop(self.target)
         return self
 

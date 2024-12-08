@@ -150,33 +150,19 @@ class APIQPSConfig:
 
 @dataclass
 class APIStatistics:
+    _: int | str
     bytes: int
     hits: int
-
-@dataclass
-class APIStatisticsHourly(APIStatistics):
-    hour: int
-
-@dataclass
-class APIStatisticsDays(APIStatistics):
-    day: str
     
 @dataclass
 class APIResponseStatistics:
+    _: int | str
     success: int
     partial: int
     forbidden: int
     not_found: int
     error: int
     redirect: int
-
-@dataclass
-class APIResponseStatisticsHourly(APIResponseStatistics):
-    hour: int
-
-@dataclass
-class APIResponseStatisticsDays(APIResponseStatistics):
-    day: str
 
 counter = Counter()
 process = psutil.Process(os.getpid())
@@ -415,13 +401,13 @@ async def handle_api(
         q = session.query(db.ClusterStatisticsTable).filter(
             db.ClusterStatisticsTable.hour >= hour
         ).order_by(db.ClusterStatisticsTable.hour, db.ClusterStatisticsTable.cluster)
-        hourly_data: defaultdict[str, list[APIStatisticsHourly]] = defaultdict(list)
+        hourly_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
         for item in q.all():
             hourly_data[item.cluster].append( # type: ignore
-                APIStatisticsHourly(
+                APIStatistics(
+                    item.hour - hour,# type: ignore
                     int(item.bytes), # type: ignore
                     int(item.hits), # type: ignore
-                    item.hour - hour # type: ignore
                 )
             )
         return hourly_data
@@ -432,7 +418,7 @@ async def handle_api(
         q = session.query(db.ClusterStatisticsTable).filter(
             db.ClusterStatisticsTable.hour >= hour
         ).order_by(db.ClusterStatisticsTable.hour, db.ClusterStatisticsTable.cluster)
-        temp_data: defaultdict[str, defaultdict[int, APIStatistics]] = defaultdict(lambda: defaultdict(lambda: APIStatistics(0, 0)))
+        temp_data: defaultdict[str, defaultdict[int, APIStatistics]] = defaultdict(lambda: defaultdict(lambda: APIStatistics("", 0, 0)))
         for item in q.all():
             cluster_id = str(item.cluster)
             hits = int(item.hits)  # type: ignore
@@ -440,10 +426,10 @@ async def handle_api(
             day = (int(item.hour) + UTC // 3600) // 24 # type: ignore
             temp_data[cluster_id][day].bytes += bytes
             temp_data[cluster_id][day].hits += hits
-        days_data: defaultdict[str, list[APIStatisticsDays]] = defaultdict(list)
+        days_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
         for cluster_id, data in temp_data.items():
             for day, item in data.items():
-                days_data[cluster_id].append(APIStatisticsDays(item.bytes, item.hits, units.format_date(day * 86400)))
+                days_data[cluster_id].append(APIStatistics(units.format_date(day * 86400), item.bytes, item.hits))
         return days_data
 
     if event == "storage_statistics_hourly":
@@ -452,13 +438,13 @@ async def handle_api(
         q = session.query(db.StorageStatisticsTable).filter(
             db.StorageStatisticsTable.hour >= hour
         ).order_by(db.StorageStatisticsTable.hour)
-        hourly_data: defaultdict[str, list[APIStatisticsHourly]] = defaultdict(list)
+        hourly_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
         for item in q.all():
             hourly_data[item.storage].append( # type: ignore
-                APIStatisticsHourly(
+                APIStatistics(
+                    int(item.hour - hour), # type: ignore
                     int(item.bytes), # type: ignore
                     int(item.hits), # type: ignore
-                    item.hour - hour # type: ignore
                 )
             )
         return hourly_data
@@ -469,7 +455,7 @@ async def handle_api(
         q = session.query(db.StorageStatisticsTable).filter(
             db.StorageStatisticsTable.hour >= hour
         ).order_by(db.StorageStatisticsTable.hour)
-        temp_data: defaultdict[str, defaultdict[int, APIStatistics]] = defaultdict(lambda: defaultdict(lambda: APIStatistics(0, 0)))
+        temp_data: defaultdict[str, defaultdict[int, APIStatistics]] = defaultdict(lambda: defaultdict(lambda: APIStatistics("", 0, 0)))
         for item in q.all():
             storage_id = str(item.storage)
             hits = int(item.hits)  # type: ignore
@@ -477,10 +463,10 @@ async def handle_api(
             day = (int(item.hour) + UTC // 3600) // 24 # type: ignore
             temp_data[storage_id][day].bytes += bytes
             temp_data[storage_id][day].hits += hits
-        days_data: defaultdict[str, list[APIStatisticsDays]] = defaultdict(list)
+        days_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
         for storage_id, data in temp_data.items():
             for day, item in data.items():
-                days_data[storage_id].append(APIStatisticsDays(item.bytes, item.hits, units.format_date(day * 86400)))
+                days_data[storage_id].append(APIStatistics(units.format_date(day * 86400), item.bytes, item.hits))
         return days_data
     
     if event == "response_hourly":
@@ -490,16 +476,16 @@ async def handle_api(
             db.ResponseTable.hour >= hour
         ).order_by(db.ResponseTable.hour)
         
-        resp_hourly_data: list[APIResponseStatisticsHourly] = []
+        resp_hourly_data: list[APIResponseStatistics] = []
         for item in q.all():
-            resp_hourly_data.append(APIResponseStatisticsHourly(
+            resp_hourly_data.append(APIResponseStatistics(
+                int(str(item.hour - hour)),
                 int(str(item.success)),
                 int(str(item.partial)),
                 int(str(item.forbidden)),
                 int(str(item.not_found)),
                 int(str(item.error)),
                 int(str(item.redirect)),
-                int(str(item.hour - hour))
             ))
         return resp_hourly_data
 
@@ -510,7 +496,7 @@ async def handle_api(
             db.ResponseTable.hour >= day
         ).order_by(db.ResponseTable.hour)
 
-        temp_resp_data: defaultdict[int, APIResponseStatistics] = defaultdict(lambda: APIResponseStatistics(0, 0, 0, 0, 0, 0))
+        temp_resp_data: defaultdict[int, APIResponseStatistics] = defaultdict(lambda: APIResponseStatistics("", 0, 0, 0, 0, 0, 0))
         for item in q.all():
             success = int(str(item.success))
             partial = int(str(item.partial))
@@ -527,16 +513,16 @@ async def handle_api(
             temp_resp_data[day].error += error
             temp_resp_data[day].redirect += redirect
 
-        resp_daily_data: list[APIResponseStatisticsDays] = []
+        resp_daily_data: list[APIResponseStatistics] = []
         for day, item in temp_resp_data.items():
-            resp_daily_data.append(APIResponseStatisticsDays(
+            resp_daily_data.append(APIResponseStatistics(
+                units.format_date(day * 86400),
                 item.success,
                 item.partial,
                 item.forbidden,
                 item.not_found,
                 item.error,
                 item.redirect,
-                units.format_date(day * 86400)
             ))
         return resp_daily_data
         

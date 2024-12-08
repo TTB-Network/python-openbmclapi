@@ -352,6 +352,7 @@ class Style {
     applyTheme(name) {
         this._current_theme = name || Object.keys(this._themes)[0];
         this.render();
+        window.dispatchEvent(new CustomEvent("theme-changed", {detail: this._current_theme}));
     }
     getThemeValue(key) {
         return (this._themes[this._current_theme] || {})[key];
