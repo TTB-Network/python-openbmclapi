@@ -353,6 +353,9 @@ class Style {
         this._current_theme = name || Object.keys(this._themes)[0];
         this.render();
     }
+    getThemeValue(key) {
+        return (this._themes[this._current_theme] || {})[key];
+    }
     setTheme(name, style) {
         this._themes[name] = style;
     }

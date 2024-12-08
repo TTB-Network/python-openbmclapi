@@ -109,7 +109,7 @@ class Counter:
             CounterQPS(
                 item._,
                 item.value.qps
-            ) for item in self._data
+            ) for item in self._data.copy()
         ]
     
     @property
@@ -120,7 +120,7 @@ class Counter:
                 item.value.cpu_usage,
                 item.value.memory_usage,
                 item.value.connection
-            ) for item in self._data
+            ) for item in self._data.copy()
         ]
 
 @dataclass

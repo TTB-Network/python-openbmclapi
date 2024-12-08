@@ -453,6 +453,7 @@ class FlexElement extends Element {
             if (this.$autoheight) {
                 child.style("height", `${heightHandler(child)}px`)
             }
+            child.origin.getBoundingClientRect()
         }
     }
     _render_calc_child_width(total_child, index, container_width) {
@@ -492,6 +493,73 @@ class FlexElement extends Element {
     autoHeight(value) {
         this.$autoheight = value;
         return this;
+    }
+}
+const EchartType = {
+    DATA: 0,
+    LABEL: 1
+}
+class TemplateEchartElement extends Element {
+    constructor() {
+        super("div")
+        this.instance = echarts.init(this.origin)
+        this.formatter = this._format_number_unit
+        this.type = EchartType.DATA
+        this.setOption({
+            stateAnimation: {
+                duration: 300,
+                easing: "cubicOut"
+            },
+            tooltip: {
+                trigger: 'axis',
+                formatter: (params) => this._e_templates(params)
+            }
+        })
+    }
+    setFormatter(formatter) {
+        this.formatter = formatter || this._format_number_unit
+        return this
+    }
+    setOption(option) {
+        this.instance.setOption(option)
+        if ('tooltip' in option && 'formatter' in option['tooltip']) return this
+        this.setOption({
+            tooltip: {
+                ...option['tooltip'],
+                formatter: (params) => this._e_templates(params)
+            }
+        })
+        return this
+    }
+    setType(type) {
+        this.type = type
+        return this
+    }
+    clear() {
+        this.instance.clear()
+        return this
+    }
+    _format_number_unit(n) {
+        var d = (n + "").split("."), i = d[0], f = d.length >= 2 ? "." + d.slice(1).join(".") : ""
+        return i.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",") + f;
+    }
+    resize() {
+        this.instance.resize()
+        return this
+    }
+    _e_templates(params) {
+        const value_formatter = this.formatter
+        const data_label = this.type == EchartType.LABEL
+        const templates = `<div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;">` + (data_label ? '' : `<span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:{color};"></span>`) + `<span style="font-size:14px;color:#666;font-weight:400;margin-left:2px">{name}</span><span style="float:right;margin-left:20px;font-size:14px;color:#666;font-weight:900">{value}</span><div style="clear:both"></div></div><div style="clear:both"></div></div>`
+        var template = ''
+        for (const data of (Array.isArray(params) ? params : [params])) {
+            let value = isNaN(data.value) ? 0 : data.value
+            template += templates.replace("{color}", data.color).replace("{name}", `${data.seriesName}${data_label ? `(${data.data.label})` : ""}`).replace("{value}", value_formatter ? value_formatter(value) : value)
+        }
+        return `<div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;">` + (data_label ? `` : `<div style="font-size:14px;color:#666;font-weight:400;line-height:1;">${(Array.isArray(params) ? params[0] : params).name}</div>`) + `<div style="margin: ${data_label ? 0 : 10}px 0 0;line-height:1;">${template}</div><div style="clear:both"></div></div><div style="clear:both"></div></div>`
+    }
+    getOption() {
+        return this.instance.getOption()
     }
 }
 
@@ -785,6 +853,14 @@ class Tools {
         }
         return `${bytes.toFixed(2)}${Object.keys(Tools._BYTES)[i]}`
     }
+    static createEchartElement(handler) {
+        var base = new TemplateEchartElement()
+        handler({
+            echart: base.instance,
+            base
+        })
+        return base
+    }
 }
 async function load() {
     const $dom_body = new Element(document.body);
@@ -851,7 +927,7 @@ async function load() {
                                     }
                                 }
                             }),
-                        ).child(2).minWidth(680).autoHeight(true)
+                        ).child(2).minWidth(680)
                     )
                 })
                 $dashboard_locals.info_runtime = ref({}, {
@@ -1004,30 +1080,123 @@ async function load() {
                     $dashboard_locals.files_info,
                     $dashboard_locals.system_info
                 )
+                const section = Tools.createFlexElement().child('70%', '30%').minWidth(1280)
                 $dashboard_locals.basic_qps = Tools.createPanel(({ pre, panel }) => {
-                    var task = null;
+                    var instance = Tools.createEchartElement(({
+                        echart, base
+                    }) => {
+                        base.style("min-height", "180px")
+                        $dashboard_locals.basic_qps_echart = {
+                            echart, base
+                        };
+                    })
+                    panel.append(
+                        createElement("div").classes("title").append(
+                            createElement("div").append(
+                                createElement("p").i18n("dashboard.title.qps"),
+                                // ...
+                            )
+                        ),
+                        instance
+                    )
                     var observer = new ResizeObserver(() => {
-                        clearTimeout(task)
-                        task = setTimeout(() => {
-                            pre.style("height", `${calcElementHeight(info_collection)}px`)
-                            panel.style("height", "100%")
-                            clearTimeout(task)
-                        }, 250)
+                        var width = calcElementWidth(section)
+                        if (width < 1280) {
+                            pre.style("height", `auto`)
+                            return
+                        }
+                        pre.style("height", `${calcElementHeight(info_collection)}px`)
+                        panel.style("height", "100%")
+                        instance.resize()
                     })
                     observer.observe(info_collection.origin)
                 })
                 basic.push(
-                    Tools.createFlexElement().append(
+                    section.append(
                         info_collection,
                         $dashboard_locals.basic_qps
-                    ).child('60%', '40%').minWidth(1280)
+                    )
                 )
             })();
 
             // share 
             (() => {
-                $dashboard_locals.qps = createElement("div").classes("qps-container").append
-            });
+                var option = {
+                    tooltip: {
+                        trigger: 'axis',
+                    },
+                    stateAnimation: {
+                        duration: 300,
+                        easing: "cubicOut"
+                    },
+                    xAxis: {
+                        type: "category",
+                        show: false,
+                    },
+                    yAxis: {
+                        show: false,
+                        type: "value",
+                    },
+                    grid: {
+                        top: 10,
+                        bottom: 10,
+                        right: 0,
+                        left: 0,
+                        show: !1,
+                        z: 0,
+                        containLabel: !1,
+                        backgroundColor: "rgba(0,0,0,0)",
+                        borderWidth: 1,
+                        borderColor: "#ccc"
+                    },
+                    series: [
+                        {
+                            type: "bar",
+                            barGap: "0",
+                            barMinHeight: 4,
+                            itemStyle: {
+                                borderRadius: [2, 2, 0, 0]
+                            },
+                            z: 2,
+                            backgroundStyle: {
+                                color: "rgba(180, 180, 180, 0.2)",
+                                borderColor: null,
+                                borderWidth: 0,
+                                borderType: "solid",
+                                borderRadius: 0,
+                                shadowBlur: 0,
+                                shadowColor: null,
+                                shadowOffsetX: 0,
+                                shadowOffsetY: 0
+                            },
+                            select: {
+                                itemStyle: {
+                                    borderColor: "#212121"
+                                }
+                            },
+                        }
+                    ]
+                }
+                const instances = [
+                    $dashboard_locals.basic_qps_echart
+                ]
+                for (let qps of instances) {
+                    qps.echart.setOption(option)
+                }
+                $dashboard_locals.qps_task = Tools.runTask(setInterval, async () => {
+                    var resp = await $channel.send("qps")
+                    var option = {
+                        color: $style.getThemeValue("main-color"),
+                        xAxis: {
+                            data: Object.keys(resp)
+                        },
+                        series: [{ name: 'QPS', data: Object.values(resp) }]
+                    }
+                    for (let instance of instances) {
+                        instance.echart.setOption(option)
+                    }
+                }, 5000)
+            })();
 
             const reset_display = () => {
                 $dashboard_locals.info_runtime.value = Tools.formatTime(0)
@@ -1044,6 +1213,7 @@ async function load() {
                     while ($dashboard_locals.container.firstChild != null) {
                         $dashboard_locals.container.removeChild($dashboard_locals.container.firstChild)
                     }
+                    clearEcharts()
                     clearDashboardTask()
                     reset_display()
                     if (event.detail.index == 0) {
@@ -1118,10 +1288,17 @@ async function load() {
         )
     })
 
+    const clearEcharts = (all = false) => {
+        const $dashboard_locals = $menu_variables;
+        if ($dashboard_locals) return;
+        $dashboard_locals.basic_qps_echart.echart.clear()
+    }
+
     const clearDashboardTask = (all = false) => {
         const $dashboard_locals = $menu_variables;
         if ($dashboard_locals) return;
         clearInterval($dashboard_locals.basic_task_file_info)
+        clearInterval($dashboard_locals.basic_task_system_info)
         if (!all) return;
         clearInterval($dashboard_locals.info_runtime_task)
     }
