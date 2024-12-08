@@ -351,6 +351,13 @@ class SwitchElement extends Element {
         })
         this.index = null;
         this._render_next_index = null;
+        this.observer = new ResizeObserver(() => {
+            this.select(this.index)
+        })
+        this.observer.observe(this.origin)
+        window.addEventListener("langChange", () => {
+            this.select(this.index);
+        })
     }
     addButtons(...button) {
         this._buttons.push(...button);
@@ -522,13 +529,22 @@ class TemplateEchartElement extends Element {
     }
     setOption(option) {
         this.instance.setOption(option)
-        if ('tooltip' in option && 'formatter' in option['tooltip']) return this
-        this.setOption({
-            tooltip: {
+        var options = {}
+        if (!('tooltip' in option && 'formatter' in option['tooltip'])) {
+            options.tooltip = {
                 ...option['tooltip'],
                 formatter: (params) => this._e_templates(params)
             }
-        })
+        }
+        if ('yAxis' in option && !('axisLabel' in option['yAxis'])) {
+            options.yAxis = {
+                ...option['yAxis'],
+                axisLabel: {
+                    formatter: (params) => this.formatter(params)
+                }
+            }
+        }
+        this.instance.setOption(options)
         return this
     }
     setType(type) {
@@ -579,7 +595,15 @@ $i18n.addLanguageTable("zh_CN", {
     "switch.dashboard.storage.:all:": "所有存储",
     "switch.dashboard.storage.alist": "Alist [%path% (%url%)]",
     "switch.dashboard.storage.local": "本地存储 [%path%]",
-    "switch.dashboard.storage.webdav": "WebDAV [%path% (%url%)]"
+    "switch.dashboard.storage.webdav": "WebDAV [%path% (%url%)]",
+    "unit.hour": "%value% 时",
+    "unit.day": "%value% 天",
+    "dashboard.title.storage.today.hits": "今日下载数",
+    "dashboard.title.storage.today.bytes": "今日下载量",
+    "dashboard.title.storage.30days.hits": "30 天下载数",
+    "dashboard.title.storage.30days.bytes": "30 天下载量",
+    "dashboard.value.storage.hits": "下载数",
+    "dashboard.value.storage.bytes": "下载量",
 
 })
 $style.setTheme("light", {
@@ -602,6 +626,11 @@ $style.setTheme("light", {
     "panel-color": "rgb(255, 255, 255)",
     "title-color": "rgba(0, 0, 0, 0.5)",
     "value-color": "rgba(0, 0, 0, 0.7)",
+    "echarts-color-0": "#0FC6C2",//"#246de6",
+    "echarts-color-1": "#6199FE",
+    "echarts-color-2": "#FFD268",
+    "echarts-color-3": "#FF5576",
+    "echarts-color-4": "#89DFE2"
 })
 $style.setTheme("dark", {
     "main-color-r": "244",
@@ -622,6 +651,11 @@ $style.setTheme("dark", {
     "panel-color": "rgb(35, 35, 35)",
     "title-color": "rgba(255, 255, 255, 0.5);",
     "value-color": "rgb(255, 255, 255);",
+    "echarts-color-0": "#F1D6BF",
+    "echarts-color-1": "#FFA552", 
+    "echarts-color-2": "#F16575", 
+    "echarts-color-3": "#65B8FF", 
+    "echarts-color-4": "#FF8859"
 })
 $style.addAll({
     "*": {
@@ -834,7 +868,7 @@ class Tools {
     }
     static formatSimpleNumber(number) {
         // convert number to belike: 100,000, if 100000.0, we are 100,000.0
-        return number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+        return number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ", ")
     }
     static _BYTES = {
         "iB": 1,
@@ -1120,37 +1154,53 @@ async function load() {
                 // storage
 
                 $dashboard_locals.storage_switch = new SwitchElement().addButtons("switch.dashboard.storage.:all:").addEventListener("change", (event) => {
-                }).select(0)
+                })
+                $dashboard_locals.cluster_switch = new SwitchElement().addButtons("switch.dashboard.cluster.:all:").addEventListener("change", (event) => { 
+                })
                 $dashboard_locals.storage_echarts = {}
-                $dashboard_locals.storage_data = ref({}, {
-                    timeout: 100,
+                $dashboard_locals.statistics_data = ref({}, {
+                    timeout: 20,
                     handler: (object) => {
                         object = object.object;
                         var current = object.current || "total"
                         var data = object[current] || {}
-                        for (const [key, value] of Object.entries({
-                            "today_hits": data.hourly_hits,
-                            "today_bytes": data.hourly_bytes,
-                            "days_hits": data.daily_hits,
-                            "days_bytes": data.daily_bytes
+                        for (const [key, values] of Object.entries({
+                            "today_hits": [
+                                data.hourly_hits, (n) => $i18n.t("unit.hour", { value: n }), Tools.formatSimpleNumber, $i18n.t("dashboard.value.storage.hits")
+                            ],
+                            "today_bytes": [
+                                data.hourly_bytes, (n) => $i18n.t("unit.hour", { value: n }), Tools.formatBytes, $i18n.t("dashboard.value.storage.bytes")
+                            ],
+                            "days_hits": [
+                                data.daily_hits, (n) => n, Tools.formatSimpleNumber, $i18n.t("dashboard.value.storage.hits")
+                            ],
+                            "days_bytes": [
+                                data.daily_bytes, (n) => n, Tools.formatBytes, $i18n.t("dashboard.value.storage.bytes") 
+                            ]
                         })) {
+                            const [value, key_unit, value_formatter, i18n] = values;
+                            if (!value) continue;
                             var option = {
                                 color: [
-                                    $style.getThemeValue("main-color"),
+                                    $style.getThemeValue("echarts-color-0"),
                                 ],
                                 xAxis: {
-                                    data: Object.keys(value),
+                                    data: Object.keys(value).map(
+                                        key_unit
+                                    ),
                                 },
                                 yAxis: {
                                     max: Math.max(10, ...Object.values(value)),
                                 },
                                 series: [{
+                                    name: i18n,
                                     data: Object.values(value),
                                     type: 'line',
                                     smooth: true,
                                 }]
                             }
-                            $dashboard_locals.storage_echarts[key].echart.setOption(option)
+                            $dashboard_locals.storage_echarts[key].base.setFormatter(value_formatter)
+                            $dashboard_locals.storage_echarts[key].base.setOption(option)
                         }
                     }
                 })
@@ -1244,56 +1294,6 @@ async function load() {
                 })
                 storage_observer.observe($dashboard_locals.storage_info.origin)
 
-                $dashboard_locals.storage_info_task = Tools.runTask(setInterval, async () => {
-                    var hourly = await $channel.send("storage_statistics_hourly")
-                    var daily = await $channel.send("storage_statistics_daily")
-                    // remove "None"
-                    delete hourly["None"]
-                    delete daily["None"]
-                    var storage = {
-
-                    }
-                    //console.log(hourly, daily)
-                    for (const [key, data] of Object.entries({
-                        "hits": {
-                            "daily": Object.entries(daily),
-                            "hourly": Object.entries(hourly)
-                        },
-                        "bytes": {
-                            "daily": Object.entries(daily),
-                            "hourly": Object.entries(hourly)
-                        }
-                    })) {
-                        for (const [time, values] of Object.entries(data)) {
-                            for (const [storage_id, value] of values) {
-                                if (!storage[storage_id]) storage[storage_id] = {}
-                                var key_time = `${time}_${key}`
-                                if (!storage[storage_id][key_time]) storage[storage_id][key_time] = {}
-                                for (const val of value) {
-                                    var v = storage[storage_id][key_time][val._] || 0;
-                                    storage[storage_id][key_time][val._] = v + val[key]
-                                }
-                            }
-                        }
-                    }
-                    var total = {
-                        hourly_bytes: {},
-                        daily_bytes: {},
-                        hourly_hits: {},
-                        daily_hits: {}
-                    }
-                    for (const data of Object.values(storage)) {
-                        for (const [key, values] of Object.entries(data)) {
-                            for (const [time, value] of Object.entries(values)) {
-                                var v = total[key][time] || 0;
-                                total[key][time] = v + value
-                            }
-                        }
-                    }
-                    $dashboard_locals.storage_data.total = total;
-                    $dashboard_locals.storage_data.storages = storage;
-                }, 60000)
-
                 // push all elements
                 basic.push(
                     section.append(
@@ -1301,7 +1301,8 @@ async function load() {
                         $dashboard_locals.basic_qps
                     ),
                     createElement("div").classes("pre-switch-container").append(
-                        $dashboard_locals.storage_switch
+                        $dashboard_locals.storage_switch.select(0),
+                        $dashboard_locals.cluster_switch.select(0)
                     ),
                     $dashboard_locals.storage_info
                 )
@@ -1378,9 +1379,9 @@ async function load() {
                     "today_bytes"
                 ]) {
                     var option = {
-                        color: [
+                        /*color: [
                             $style.getThemeValue("echarts-color-0"),
-                        ],
+                        ],*/
                         tooltip: {
                             trigger: 'axis'
                         },
@@ -1410,10 +1411,11 @@ async function load() {
                     $dashboard_locals.basic_qps_echart
                 ]
                 $dashboard_locals.qps_data = ref({}, {
+                    timeout: 20,
                     handler: (object) => {
                         var resp = object.object.resp;
                         var option = {
-                            color: $style.getThemeValue("main-color"),
+                            color: $style.getThemeValue("echarts-color-0"),
                             xAxis: {
                                 data: Object.keys(resp)
                             },
@@ -1429,7 +1431,8 @@ async function load() {
                     $dashboard_locals.qps_data.resp = resp;
                 }, 5000)
                 window.addEventListener("theme-changed", () => {
-                    $dashboard_locals.qps_data.resp = qps_data.resp;
+                    $dashboard_locals.qps_data.resp = $dashboard_locals.qps_data.resp;
+                    $dashboard_locals.statistics_data.refresh = true;
                 })
             })();
 
@@ -1461,6 +1464,68 @@ async function load() {
                         $dashboard_locals.container.append(
                             ...$dashboard_locals.basic
                         )
+                        clearInterval($dashboard_locals.storage_info_task)
+                        $dashboard_locals.storage_info_task = Tools.runTask(setInterval, async () => {
+                            var hourly = await $channel.send("storage_statistics_hourly")
+                            var daily = await $channel.send("storage_statistics_daily")
+                            // remove "None"
+                            delete hourly["None"]
+                            delete daily["None"]
+                            var storage = {
+        
+                            }
+                            //console.log(hourly, daily)
+                            for (const [key, data] of Object.entries({
+                                "hits": {
+                                    "daily": Object.entries(daily),
+                                    "hourly": Object.entries(hourly)
+                                },
+                                "bytes": {
+                                    "daily": Object.entries(daily),
+                                    "hourly": Object.entries(hourly)
+                                }
+                            })) {
+                                for (const [time, values] of Object.entries(data)) {
+                                    for (const [storage_id, value] of values) {
+                                        if (!storage[storage_id]) storage[storage_id] = {}
+                                        var key_time = `${time}_${key}`
+                                        if (!storage[storage_id][key_time]) storage[storage_id][key_time] = {}
+                                        for (const val of value) {
+                                            var v = storage[storage_id][key_time][val._] || 0;
+                                            storage[storage_id][key_time][val._] = v + val[key]
+                                        }
+                                        if (time == "hourly") {
+                                            for (let i = 0; i < 24; i++) {
+                                                if (storage[storage_id][key_time][i]) continue
+                                                storage[storage_id][key_time][i] = 0
+                                            }
+                                            storage[storage_id][key_time] = Object.fromEntries(
+                                                Object.keys(storage[storage_id][key_time]).sort((a, b) => parseInt(a) - parseInt(b)).map(v => [v, storage[storage_id][key_time][v]])
+                                            )
+                                        } else {
+                                            var server_time = $dashboard_locals.info.runtime
+                                            console.log(server_time)
+                                        }
+                                    }
+                                }
+                            }
+                            var total = {
+                                hourly_bytes: {},
+                                daily_bytes: {},
+                                hourly_hits: {},
+                                daily_hits: {}
+                            }
+                            for (const data of Object.values(storage)) {
+                                for (const [key, values] of Object.entries(data)) {
+                                    for (const [time, value] of Object.entries(values)) {
+                                        var v = total[key][time] || 0;
+                                        total[key][time] = v + value
+                                    }
+                                }
+                            }
+                            $dashboard_locals.statistics_data.total = total;
+                            $dashboard_locals.statistics_data.storages = storage;
+                        }, 1000)
                         clearInterval($dashboard_locals.basic_task_file_info)
                         $dashboard_locals.basic_task_file_info = Tools.runTask(setInterval, async () => {
                             var hourly = await $channel.send("cluster_statistics_hourly")
@@ -1476,7 +1541,6 @@ async function load() {
                             })) {
                                 rdata[key] = Object.values(val[1]).map((obj) => obj.reduce((a, b) => a + b[val[0]], 0)).reduce((a, b) => a + b, 0)
                             }
-                            console.log(rdata, hourly)
                             // first hits
                             for (const {
                                 handler, obj, data
@@ -1529,7 +1593,7 @@ async function load() {
                     requestAnimationFrame(() => {
                         if ($dashboard_locals.qps_data.resp)
                             $dashboard_locals.qps_data.resp = $dashboard_locals.qps_data.resp;
-                        $dashboard_locals.storage_data.refresh = true;
+                        $dashboard_locals.statistics_data.refresh = true;
                     })
                 }).select(0)
             )
@@ -1555,8 +1619,10 @@ async function load() {
         if (!$dashboard_locals) return;
         clearInterval($dashboard_locals.basic_task_file_info)
         clearInterval($dashboard_locals.basic_task_system_info)
+        clearInterval($dashboard_locals.storage_info_task)
         if (!all) return;
         clearInterval($dashboard_locals.info_runtime_task)
+        clearInterval($dashboard_locals.qps_task)
     }
 
     $router.before_handler(() => {
