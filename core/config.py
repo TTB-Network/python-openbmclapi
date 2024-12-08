@@ -9,6 +9,7 @@ defaults = {
     "advanced.debug": False,
     "advanced.sync_interval": 600,
     "advanced.base_url": "https://openbmclapi.bangbang93.com",
+    "advanced.dashboard_rank_clusters_url": "https://bd.bangbang93.com/openbmclapi/metric/rank",
     "advanced.threads": 128,
     "advanced.ssl_dir": ".ssl",
     "advanced.host": "",
@@ -159,9 +160,13 @@ class Const:
     def measure_storage(self) -> bool:
         return Config.get("advanced.measure_storage", False)
 
+    @property
+    def rank_clusters_url(self):
+        return Config.get("advanced.dashboard_rank_clusters_url") or "https://bd.bangbang93.com/openbmclapi/metric/rank"
+
 const = Const()
 
-VERSION = "3.2.5"
+VERSION = "3.2.6"
 API_VERSION = "1.13.1"
 USER_AGENT = f"openbmclapi/{API_VERSION} python-openbmclapi/{VERSION}"
 PYTHON_VERSION = ".".join(map(str, (sys.version_info.major, sys.version_info.minor, sys.version_info.micro)))

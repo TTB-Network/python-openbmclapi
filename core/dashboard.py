@@ -333,18 +333,18 @@ async def handle_api(
             "online_storages": len(cluster.clusters.storage_manager.available_storages)
         }
     if event == "qps":
-        config = APIQPSConfig()
+        qps_config = APIQPSConfig()
         if isinstance(req_data, dict) and "count" in req_data and "interval" in req_data:
-            config.count = req_data["count"]
-            config.interval = req_data["interval"]
-        if config.count * config.interval > counter.max:
-            config = APIQPSConfig()
+            qps_config.count = req_data["count"]
+            qps_config.interval = req_data["interval"]
+        if qps_config.count * qps_config.interval > counter.max:
+            qps_config = APIQPSConfig()
         info = counter.last()
         c = int(info._) if info is not None else 0
         start_timestamp = int(time.time() - c)
         c -= c % 5
         start_timestamp -= start_timestamp % 5
-        total = config.count * config.interval
+        total = qps_config.count * qps_config.interval
         raw_data = {
             int(q._): q.value for q in counter.all_qps if q._ > c - total
         }
@@ -557,6 +557,23 @@ async def handle_api(
             return [
                 json.loads(line) for line in content.split("\n") if line
             ]
+
+    if event == "clusters_name":
+        clusters: dict[str, str] = {}
+        async with aiohttp.ClientSession() as session:
+            async with session.get(config.const.rank_clusters_url) as resp:
+                resp = await resp.json()
+                for item in resp:
+                    clusters[item["_id"]] = item["name"]
+
+        return [
+            clusters.get(c.id, c.id) for c in cluster.clusters.clusters
+        ]
+
+    if event == "rank":
+        async with aiohttp.ClientSession() as session:
+            async with session.get(config.const.rank_clusters_url) as resp:
+                return await resp.json()
 
     return None
 
