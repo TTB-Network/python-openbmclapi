@@ -134,31 +134,31 @@ class Const:
     
     @property
     def check_sign(self):
-        return Config.get("advanced.check_sign", True)
+        return Config.get("advanced.check_sign") or True
     
     @property
     def check_type(self):
-        return Config.get("advanced.check_type", "size")
+        return Config.get("advanced.check_type") or "size"
     
     @property
     def sync_interval(self):
-        return max(Config.get("advanced.sync_interval", 600), 600)
+        return max(Config.get("advanced.sync_interval", 600) or 600, 600)
     
     @property
     def xff(self):
-        return Config.get("web.x_forwarded_for", 0)
+        return Config.get("web.x_forwarded_for") or 0
     
     @property
     def auto_sync_assets(self):
-        return Config.get("advanced.auto_sync_assets", True)
+        return Config.get("advanced.auto_sync_assets") or True
     
     @property
     def github_token(self):
-        return Config.get("advanced.github_token", None) or None
+        return Config.get("advanced.github_token") or None
     
     @property
     def measure_storage(self) -> bool:
-        return Config.get("advanced.measure_storage", False)
+        return Config.get("advanced.measure_storage") or False
 
     @property
     def rank_clusters_url(self):
@@ -166,7 +166,7 @@ class Const:
 
 const = Const()
 
-VERSION = "3.2.6"
+VERSION = "3.2.7"
 API_VERSION = "1.13.1"
 USER_AGENT = f"openbmclapi/{API_VERSION} python-openbmclapi/{VERSION}"
 PYTHON_VERSION = ".".join(map(str, (sys.version_info.major, sys.version_info.minor, sys.version_info.micro)))

@@ -1132,6 +1132,20 @@ async def _(request: aweb.Request):
                 return aweb.FileResponse(
                     Path(storage.get_path(MEASURES_HASH[size]))
                 )
+            elif isinstance(storage, storages.WebDavStorage):
+                file = await storage.get_file(MEASURES_HASH[size])
+                if file.url:
+                    return aweb.HTTPFound(file.url)
+                elif file.size >= 0:
+                    return aweb.Response(
+                        status=200,
+                        headers={
+                            "Content-Length": str(file.size),
+                            "Content-Type": "application/octet-stream",
+                        },
+                        body=file.data
+                    )
+
         if config.const.measure_storage:
             logger.twarning("cluster.warning.measure_storage")
         response = aweb.StreamResponse(
@@ -1153,6 +1167,7 @@ async def _(request: aweb.Request):
             f"https://speedtest1.online.sh.cn:8080/download?size={size * 1024 * 1024}&r=0.7129844570865569"
         )"""
     except:
+        logger.traceback()
         return aweb.Response(status=400)
     
 @routes.get("/download/{hash}")

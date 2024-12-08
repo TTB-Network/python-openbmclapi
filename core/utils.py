@@ -184,7 +184,7 @@ class Time:
 
 
 def check_sign(hash: str, secret: str, s: str, e: str) -> bool:
-    return check_sign(hash, secret, s, e) and time.time() - 300 < int(e, 36)
+    return check_sign_without_time(hash, secret, s, e) and time.time() - 300 < int(e, 36)
 
 def check_sign_without_time(hash: str, secret: str, s: str, e: str):
     if not s or not e:
