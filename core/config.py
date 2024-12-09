@@ -13,7 +13,7 @@ defaults = {
     "advanced.threads": 128,
     "advanced.ssl_dir": ".ssl",
     "advanced.host": "",
-    "advnaced.ssl_cert": "",
+    "advanced.ssl_cert": "",
     "advanced.ssl_key": "",
     "advanced.check_sign": True,
     "advanced.check_type": "size",
@@ -154,7 +154,7 @@ class Const:
     
     @property
     def auto_sync_assets(self):
-        return Config.get("advanced.auto_sync_assets") or True
+        return bool(Config.get("advanced.auto_sync_assets", True))
     
     @property
     def github_token(self):
@@ -170,7 +170,7 @@ class Const:
 
 const = Const()
 
-VERSION = "3.3.0"
+VERSION = "3.3.1"
 API_VERSION = "1.13.1"
 USER_AGENT = f"openbmclapi/{API_VERSION} python-openbmclapi/{VERSION}"
 PYTHON_VERSION = ".".join(map(str, (sys.version_info.major, sys.version_info.minor, sys.version_info.micro)))

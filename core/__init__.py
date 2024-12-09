@@ -8,7 +8,6 @@ from . import utils
 import atexit
 from . import cluster
 from . import scheduler
-from . import web_old
 from . import dashboard
 from . import database
 

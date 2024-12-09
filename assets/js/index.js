@@ -392,6 +392,7 @@ class SwitchElement extends Element {
             this._render_next_index = index;
             return this;
         };
+        var oldindex = this.index;
         this.index = index;
         var buttons_width = this.$buttons.map(e => calcElementWidth(e));
         var left = 0;
@@ -408,6 +409,7 @@ class SwitchElement extends Element {
             })
         }
         this.$bar.style("left", `${left}px`).style("width", `${width}px`);
+        if (oldindex == this.index) return this;
         this.origin.dispatchEvent(new CustomEvent("change", {
             detail: {
                 index: index,
@@ -900,6 +902,9 @@ class Tools {
         })
         return base
     }
+    static formatDate(d) {
+        return `${d.getFullYear().toString().padStart(4, "0")}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`
+    }
 }
 async function load() {
     const $dom_body = new Element(document.body);
@@ -1178,8 +1183,29 @@ async function load() {
                                 data.daily_bytes, (n) => n, Tools.formatBytes, $i18n.t("dashboard.value.storage.bytes") 
                             ]
                         })) {
-                            const [value, key_unit, value_formatter, i18n] = values;
+                            var [value, key_unit, value_formatter, i18n] = values;
                             if (!value) continue;
+                            if (key.startsWith("today")) {
+                                for (let i = 0; i < 24; i++) {
+                                    if (value[i]) continue
+                                    value[i] = 0
+                                }
+                                value = Object.fromEntries(
+                                    Object.keys(value).sort((a, b) => parseInt(a) - parseInt(b)).map(v => [v, value[v]])
+                                )
+                            } else {
+                                var server_time = $dashboard_locals.info_runtime
+                                // object.current_time - object.start_time - object.diff / 1000.0 + (+new Date() - object.resp_timestamp) / 1000.0;
+                                var time = server_time.start_time - server_time.diff / 1000.0 + (+new Date() - server_time.resp_timestamp) / 1000.0;
+                                const previous = (time - (time % (24 * 3600)) - 86400 * 30);
+                                const res = {}
+                                for (let i = 0; i < 30; i++) {
+                                    var d = Tools.formatDate(new Date((previous + i * 86400) * 1000.0))
+                                    if (value[d]) res[d] = value[d]
+                                    else res[d] = 0
+                                }
+                                value = res
+                            }
                             var option = {
                                 color: [
                                     $style.getThemeValue("echarts-color-0"),
@@ -1494,18 +1520,6 @@ async function load() {
                                             var v = storage[storage_id][key_time][val._] || 0;
                                             storage[storage_id][key_time][val._] = v + val[key]
                                         }
-                                        if (time == "hourly") {
-                                            for (let i = 0; i < 24; i++) {
-                                                if (storage[storage_id][key_time][i]) continue
-                                                storage[storage_id][key_time][i] = 0
-                                            }
-                                            storage[storage_id][key_time] = Object.fromEntries(
-                                                Object.keys(storage[storage_id][key_time]).sort((a, b) => parseInt(a) - parseInt(b)).map(v => [v, storage[storage_id][key_time][v]])
-                                            )
-                                        } else {
-                                            var server_time = $dashboard_locals.info.runtime
-                                            console.log(server_time)
-                                        }
                                     }
                                 }
                             }
@@ -1525,7 +1539,7 @@ async function load() {
                             }
                             $dashboard_locals.statistics_data.total = total;
                             $dashboard_locals.statistics_data.storages = storage;
-                        }, 1000)
+                        }, 60000)
                         clearInterval($dashboard_locals.basic_task_file_info)
                         $dashboard_locals.basic_task_file_info = Tools.runTask(setInterval, async () => {
                             var hourly = await $channel.send("cluster_statistics_hourly")
