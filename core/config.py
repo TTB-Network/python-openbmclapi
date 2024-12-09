@@ -114,7 +114,11 @@ class Const:
     
     @property
     def public_port(self):
-        return os.environ.get("web.public_port", Config.get("web.public_port", 6543))
+        return os.environ.get("web.public_port", Config.get("web.public_port", 6543)) or 6543
+
+    @property
+    def port(self):
+        return os.environ.get("web.port", Config.get("web.port", 0)) or 0
     
     @property
     def ssl_dir(self):
@@ -166,7 +170,7 @@ class Const:
 
 const = Const()
 
-VERSION = "3.2.7"
+VERSION = "3.3.0"
 API_VERSION = "1.13.1"
 USER_AGENT = f"openbmclapi/{API_VERSION} python-openbmclapi/{VERSION}"
 PYTHON_VERSION = ".".join(map(str, (sys.version_info.major, sys.version_info.minor, sys.version_info.micro)))

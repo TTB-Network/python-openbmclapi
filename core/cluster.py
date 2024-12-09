@@ -78,7 +78,8 @@ class StorageManager:
                     self.available_storages.remove(storage)
             except:
                 logger.ttraceback("storage.error.check_available", type=storage.type, path=storage.path, url=getattr(storage, "url", None))
-                self.available_storages.remove(storage)
+                if storage in self.available_storages:
+                    self.available_storages.remove(storage)
             if res:
                 if storage not in self.available_storages:
                     self.available_storages.append(storage)
@@ -573,6 +574,7 @@ class ClusterManager:
         self.cluster_id_tables: dict[str, 'Cluster'] = {}
         self.file_manager = FileListManager(self)
         self.storage_manager = StorageManager(self)
+        self.clusters_certificate: dict[str, ClusterCertificate] = {}
 
     def add_cluster(self, cluster: 'Cluster'):
         self.cluster_id_tables[cluster.id] = cluster
@@ -585,10 +587,11 @@ class ClusterManager:
         self.storage_manager.init()
         logger.tdebug("cluster.debug.base_url", base_url=config.const.base_url)
 
-        cert = await self.get_certificate()
-        await web.start_ssl_server(
-            cert.cert, cert.key
-        )
+        certificates = await self.get_certificates()
+        for cert in certificates:
+            await web.start_private_server(
+                cert.cert, cert.key
+            )
         # start web ssl
         public_port = config.const.public_port
         public_host = cert.host
@@ -617,7 +620,7 @@ class ClusterManager:
                 return True
         return False
 
-    async def get_certificate(self):
+    async def get_certificates(self, cluster_id: Optional[str] = None):
         if config.const.ssl_cert and config.const.ssl_key:
             main = ClusterCertificate(
                 config.const.host,
@@ -625,9 +628,18 @@ class ClusterManager:
                 Path(config.const.ssl_key)
             )
             if main.is_valid:
-                return main
-        await asyncio.gather(*[cluster.request_cert() for cluster in self.clusters])
-        return [cluster.certificate for cluster in self.clusters][0]
+                return [
+                    main
+                ]
+        if not self.clusters_certificate:
+            await asyncio.gather(*[cluster.request_cert() for cluster in self.clusters])
+            for cluster in self.clusters:
+                self.clusters_certificate[cluster.id] = cluster.certificate
+        if cluster_id is None:
+            return list(self.clusters_certificate.values())
+        if cluster_id in self.clusters_certificate:
+            return [self.clusters_certificate[cluster_id]]
+        return []
     
     async def stop(self):
         await asyncio.gather(*[cluster.disable(True) for cluster in self.clusters])
@@ -736,7 +748,7 @@ class Cluster:
             key.write(result.ack["key"])
 
     async def enable(self):
-        cert = await clusters.get_certificate()
+        cert = await clusters.get_certificates(self.id)
         scheduler.cancel(self.delay_enable_task)
         if self.want_enable:
             return
@@ -747,7 +759,7 @@ class Cluster:
             result = await self.socket_io.emit(
                 "enable", {
                     "host": config.const.host,
-                    "port": config.const.public_port,
+                    "port": config.const.public_port or config.const.port,
                     "byoc": clusters.byoc(),
                     "version": API_VERSION,
                     "noFastEnable": True,

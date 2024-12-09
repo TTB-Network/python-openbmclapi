@@ -1,12 +1,14 @@
 import asyncio
 import os
 import time
+
+from core import web
 from .logger import logger
 from . import utils
 import atexit
 from . import cluster
 from . import scheduler
-from . import web
+from . import web_old
 from . import dashboard
 from . import database
 
@@ -28,10 +30,10 @@ async def main():
     await asyncio.gather(*[
         call(m, "init") for m in (
             scheduler,
-            web,
             database,
             dashboard,
             cluster,
+            web
         )
     ])
     _WAITLOCK.acquire()
@@ -45,10 +47,10 @@ async def main():
         await asyncio.gather(*[
             call(m, "unload") for m in (
                 scheduler,
-                web,
                 cluster,
                 database,
-                dashboard
+                dashboard,
+                web
             )
         ])
 
