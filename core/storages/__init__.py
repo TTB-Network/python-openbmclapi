@@ -39,7 +39,6 @@ class iStorage(metaclass=abc.ABCMeta):
         self.path = path
         self.weight = weight
         self.current_weight = 0
-        self.cache_files = cache.MemoryStorage()
 
     @property
     def unique_id(self) -> str:
@@ -221,7 +220,7 @@ class AlistStorage(iStorage):
         self.wait_token.acquire()
         self.tcp_connector = aiohttp.TCPConnector(limit=256)
         self.download_connector = aiohttp.TCPConnector(limit=256)
-        self.cache = cache.MemoryStorage()
+        self.cache = cache.TimeoutCache()
         self.link_cache_timeout = utils.parse_time(link_cache_expires).to_seconds if link_cache_expires is not None else None
         self.link_cache: defaultdict[str, AlistLink] = defaultdict(lambda: AlistLink())
         scheduler.run_repeat_later(self._check_token, 0, 3600)
@@ -312,7 +311,7 @@ class AlistStorage(iStorage):
                     logger.debug(data)
                     logger.debug(result)
                 else:
-                    self.cache.set(hash, result, 30)
+                    self.cache.set(hash, result, 600)
                 return result
             except:
                 logger.terror("storage.error.alist", status=resp.status, message=await resp.text())
@@ -399,7 +398,7 @@ class AlistStorage(iStorage):
                         if result.code != 200:
                             logger.tdebug("storage.debug.error_alist", status=result.code, message=result.message)
                         else:
-                            self.cache.set(f"listfile_{root}", result, 60)
+                            self.cache.set(f"listfile_{root}", result, 600)
                 except:
                     logger.traceback()
                     return []
@@ -506,7 +505,7 @@ class WebDavStorage(iStorage):
             "User-Agent": config.USER_AGENT
         })
         self.client_lock = asyncio.Lock()
-        self.cache = cache.MemoryStorage()
+        self.cache = cache.TimeoutCache()
         self.session = aiohttp.ClientSession(
             auth=aiohttp.BasicAuth(
                 self.username,
@@ -549,7 +548,7 @@ class WebDavStorage(iStorage):
                         name=r["name"],
                         size=int(r["size"])
                     ) for r in result if not r["isdir"]]
-                    self.cache.set(f"listfile_{root}", res, 60)
+                    self.cache.set(f"listfile_{root}", res, 600)
                 except webdav3_exceptions.RemoteResourceNotFound:
                     return []
                 except:

@@ -177,10 +177,12 @@ class Channel {
             total: 0,
             current: 0,
         };
+        this.timeout = 10000
         if (!this.support_websocket) return;
         this._ws_init();
         this._ws_initizalized = false;
         this._ws_callbacks = {};
+        this._ws_timeouts = {}
     }
     // websocket
     _ws_init() {
@@ -191,21 +193,23 @@ class Channel {
         this._ws.onmessage = (event) => {
             var data = JSON.parse(event.data);
             if (data.echo_id) {
+                clearTimeout(this._ws_timeouts[data.echo_id])
+                delete this._ws_timeouts[data.echo_id]
                 this._ws_callbacks[data.echo_id].resolve(data.data);
                 delete this._ws_callbacks[data.echo_id];
                 return;
             }
-            console.log(data)
+            window.dispatchEvent(new CustomEvent(`channel_${data.event}`, { detail: data.data }))
         }
         this._ws.onclose = () => {
             this._ws_initizalized = false;
-            this._Ws_reconnect();
+            this._ws_reconnect();
         }
         this._ws.onerror = (event) => {
             console.log("websocket error", event)
         }
     }
-    _Ws_reconnect() {
+    _ws_reconnect() {
         if (this._ws_reconnect_task) return;
         this._ws_reconnect_task = setTimeout(() => {
             this._ws_init();
@@ -223,6 +227,10 @@ class Channel {
                 data,
                 echo_id
             }))
+            this._ws_timeouts[echo_id] = setTimeout(() => {
+                delete this._ws_callbacks[echo_id];
+                reject("timeout")
+            }, this.timeout)
         })
     }
 
@@ -250,6 +258,7 @@ class Channel {
             })
             xhr.addEventListener("readystatechange", (event) => {
                 if (xhr.readyState == 4) {
+                    clearTimeout(timer)
                     if (xhr.statusText == "OK") {
                         resolve(JSON.parse(xhr.responseText)[0].data)
                     } else {
@@ -261,6 +270,10 @@ class Channel {
                 event,
                 data: data
             }))
+            var timer = setTimeout(() => {
+                xhr.abort();
+                reject("timeout")
+            }, this.timeout)
         })
     }
 

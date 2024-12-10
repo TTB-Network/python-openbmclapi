@@ -566,9 +566,9 @@ async def handle_api(
                 for item in resp:
                     clusters[item["_id"]] = item["name"]
 
-        return [
-            clusters.get(c.id, c.id) for c in cluster.clusters.clusters
-        ]
+        return {
+            c.id: clusters.get(c.id, c.id) for c in cluster.clusters.clusters
+        }
 
     if event == "rank":
         async with aiohttp.ClientSession() as session:
@@ -644,18 +644,17 @@ async def init():
     global task
     task = threading.Thread(target=record)
     task.start()
-    if config.const.auto_sync_assets:
-        scheduler.run_repeat_later(
-            sync_assets,
-            5,
-            interval=3600
-        )
+    scheduler.run_repeat_later(
+        fetch_github_repo,
+        5,
+        interval=3600
+    )
 
 async def unload():
     global running
     running = 0
 
-async def sync_assets():
+async def fetch_github_repo():
     async def get_dir_list(path: str = "/"):
         result = []
         if not path.startswith("/"):
@@ -699,15 +698,8 @@ async def sync_assets():
                 return data
             return io.BytesIO()
 
-    headers = {
-        "User-Agent": config.USER_AGENT
-    }
-    if config.const.github_token:
-        headers["Authorization"] = f"Bearer {config.const.github_token}"
-    async with aiohttp.ClientSession(
-        GITHUB_BASEURL,
-        headers=headers
-    ) as session:
+    
+    async def sync_assets():
         res: list[GithubPath] = await get_dir_list("/assets")
         if not res:
             return
@@ -739,3 +731,31 @@ async def sync_assets():
             with open(path, "wb") as f:
                 f.write(files[file].getvalue())
         logger.info(f"Synced {len(files)} files")
+    
+    async def check_update():
+        async with session.get(
+            f"/repos/{GITHUB_REPO}/releases/latest"
+        ) as resp:
+            if resp.status == 200:
+                json_data = await resp.json()
+                tag_name = json_data["tag_name"][1:]
+                if tag_name != config.VERSION:
+                    logger.tinfo("dashboard.info.new_version", current=config.VERSION, latest=tag_name)
+                    return
+
+
+    headers = {
+        "User-Agent": config.USER_AGENT
+    }
+    if config.const.github_token:
+        headers["Authorization"] = f"Bearer {config.const.github_token}"
+    async with aiohttp.ClientSession(
+        GITHUB_BASEURL,
+        headers=headers
+    ) as session:
+        tasks = [
+            check_update()
+        ]
+        if config.const.auto_sync_assets:
+            tasks.append(sync_assets())
+        await asyncio.gather(*tasks)

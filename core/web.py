@@ -374,7 +374,7 @@ async def check_server():
         for server in privates.values():
             servers.append(CheckServer(server.server.sockets[0].getsockname()[1], start_private_server, server.key))
     
-    logger.tdebug("web.debug.check_server", servers=len(servers))
+    #logger.tdebug("web.debug.check_server", servers=len(servers))
     results = await asyncio.gather(*[asyncio.create_task(_check_server(server)) for server in servers])
     for server, result in zip(servers, results):
         if result:

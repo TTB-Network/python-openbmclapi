@@ -170,7 +170,7 @@ class Const:
 
 const = Const()
 
-VERSION = "3.3.2"
+VERSION = "3.3.3"
 API_VERSION = "1.13.1"
 USER_AGENT = f"openbmclapi/{API_VERSION} python-openbmclapi/{VERSION}"
 PYTHON_VERSION = ".".join(map(str, (sys.version_info.major, sys.version_info.minor, sys.version_info.micro)))

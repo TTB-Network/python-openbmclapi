@@ -8,7 +8,7 @@ from apscheduler.schedulers.asyncio import (
     AsyncIOScheduler as AsyncBackground
 )
 from apscheduler.job import Job
-from . import logger
+from .logger import logger
 from weakref import WeakValueDictionary
 
 from . import units

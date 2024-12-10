@@ -55,5 +55,6 @@
     "cluster.error.configuration": "无法获取 [${id}] 下载配置，原因：",
     "cluster.warning.measure_storage": "尝试重定向至存储测速失败，已自动切换至本地测速",
     "database.error.unable.to.decompress": "无法解压数据库，数据：%{data}",
-    "storage.error.check_available": "存储 [${type}] [${path}] [${url}] 检查可用性出错，原因："
+    "storage.error.check_available": "存储 [${type}] [${path}] [${url}] 检查可用性出错，原因：",
+    "dashboard.info.new_version": "当前版本 [${current}] 发现新版本 [${latest}]"
 }
