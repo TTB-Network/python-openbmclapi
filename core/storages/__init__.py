@@ -281,9 +281,9 @@ class AlistStorage(iStorage):
     def __repr__(self) -> str:
         return f"AlistStorage({self.path})"
 
-    async def _action_data(self, action: str, url: str, data: Any, headers: dict[str, str] = {}, session: Optional[aiohttp.ClientSession] = None, _authentication: bool = False) -> AlistResult:
+    async def _action_data(self, action: str, url: str, data: Any, headers: dict[str, str] = {}, session: Optional[aiohttp.ClientSession] = None, _authentication: bool = False, cache: bool = True) -> AlistResult:
         hash = hashlib.sha256(f"{action},{url},{data},{headers}".encode()).hexdigest()
-        if hash in self.cache:
+        if cache and hash in self.cache:
             return self.cache.get(hash)
         session = self.session
         async with session.request(
@@ -305,7 +305,7 @@ class AlistStorage(iStorage):
                     self.last_token = 0
                     self.wait_token.acquire()
                     await self.wait_token.wait()
-                    return await self._action_data(action, url, data, headers, session, True)
+                    return await self._action_data(action, url, data, headers, session, True, cache)
                 if result.code != 200:
                     logger.terror("storage.error.action_alist", method=action, url=url, status=result.code, message=result.message)
                     logger.debug(data)
@@ -324,7 +324,8 @@ class AlistStorage(iStorage):
             {
                 "path": self.get_path(file_hash),
                 "password": ""
-            }
+            },
+            cache=False
         )
         if r.code == 500:
             return AlistFileInfo(
@@ -382,28 +383,23 @@ class AlistStorage(iStorage):
         files: defaultdict[str, deque[File]] = defaultdict(deque)
         async def get_files(root_id: int):
             root = f"{self.path}/{root_id:02x}"
-            if f"listfile_{root}" in self.cache:
-                result = self.cache.get(f"listfile_{root}")
-            else:
-                try:
-                    async with session.post(
-                        "/api/fs/list",
-                        data={
-                            "path": str(root)
-                        },
-                    ) as resp:
-                        result = AlistResult(
-                            **await resp.json()
-                        )
-                        if result.code != 200:
-                            logger.tdebug("storage.debug.error_alist", status=result.code, message=result.message)
-                        else:
-                            self.cache.set(f"listfile_{root}", result, 600)
-                except:
-                    logger.traceback()
-                    return []
-                finally:
-                    update_tqdm()
+            try:
+                async with session.post(
+                    "/api/fs/list",
+                    data={
+                        "path": str(root)
+                    },
+                ) as resp:
+                    result = AlistResult(
+                        **await resp.json()
+                    )
+                    if result.code != 200:
+                        logger.tdebug("storage.debug.error_alist", status=result.code, message=result.message)
+            except:
+                logger.traceback()
+                return []
+            finally:
+                update_tqdm()
             return ((result.data or {}).get("content", None) or [])
         async with aiohttp.ClientSession(
             self.url,
@@ -533,30 +529,25 @@ class WebDavStorage(iStorage):
         files: defaultdict[str, deque[File]] = defaultdict(deque)
         async def get_files(root_id: int):
             root = f"{self.path}/{root_id:02x}/"
-            if f"listfile_{root}" in self.cache:
-                result = self.cache.get(f"listfile_{root}")
-                return result
-            else:
-                try:
-                    result = await self.client.list(
-                        root,
-                        True
-                    )
-                    res = [WebDavFileInfo(
-                        created=utils.parse_isotime_to_timestamp(r["created"]),
-                        modified=utils.parse_gmttime_to_timestamp(r["modified"]),
-                        name=r["name"],
-                        size=int(r["size"])
-                    ) for r in result if not r["isdir"]]
-                    self.cache.set(f"listfile_{root}", res, 600)
-                except webdav3_exceptions.RemoteResourceNotFound:
-                    return []
-                except:
-                    logger.traceback()
-                    return []
-                finally:
-                    update_tqdm()
-                return res
+            try:
+                result = await self.client.list(
+                    root,
+                    True
+                )
+                res = [WebDavFileInfo(
+                    created=utils.parse_isotime_to_timestamp(r["created"]),
+                    modified=utils.parse_gmttime_to_timestamp(r["modified"]),
+                    name=r["name"],
+                    size=int(r["size"])
+                ) for r in result if not r["isdir"]]
+            except webdav3_exceptions.RemoteResourceNotFound:
+                return []
+            except:
+                logger.traceback()
+                return []
+            finally:
+                update_tqdm()
+            return res
         for root_id in range(256):
             for r in await get_files(root_id):
                 files[f"{root_id:02x}"].append(File(
