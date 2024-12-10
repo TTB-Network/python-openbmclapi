@@ -6,16 +6,22 @@ import os
 from pathlib import Path
 import ssl
 import time
-from typing import Any, Optional
+from typing import Any, Optional, Callable
 from aiohttp import web
 from aiohttp.web_urldispatcher import SystemRoute
 
-from core import config, units, utils
+from core import config, scheduler, units, utils
 from .logger import logger
 
 from cryptography import x509
 from cryptography.x509.oid import NameOID
 
+
+@dataclass
+class CheckServer:
+    port: int
+    start_handle: Callable
+    client: Optional[ssl.SSLContext] = None
 
 @dataclass
 class PrivateSSLServer:
@@ -158,8 +164,6 @@ async def start_tcp_site():
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
 
-    print(site)
-
 async def init():
     global runner, site
 
@@ -171,6 +175,12 @@ async def init():
     await start_tcp_site()
 
     await start_public_server()
+
+    scheduler.run_repeat_later(
+        check_server,
+        60,
+        10
+    )
 
 async def forward_data(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     while not writer.is_closing():
@@ -354,5 +364,47 @@ def get_certificate_domains(
     ]
     return results
 
+async def check_server():
+    servers: list[CheckServer] = []
+    if site is not None:
+        servers.append(CheckServer(site._port, start_private_server))
+    if public_server is not None:
+        servers.append(CheckServer(public_server.sockets[0].getsockname()[1], start_public_server))
+    if privates:
+        for server in privates.values():
+            servers.append(CheckServer(server.server.sockets[0].getsockname()[1], start_private_server, server.key))
+    
+    logger.tdebug("web.debug.check_server", servers=len(servers))
+    results = await asyncio.gather(*[asyncio.create_task(_check_server(server)) for server in servers])
+    for server, result in zip(servers, results):
+        if result:
+            continue
+        await server.start_handle()
+        logger.twarning("web.warning.server_down", port=server.port)
+
+
+async def _check_server(
+    server: CheckServer
+):
+    try:
+        r, w = await asyncio.wait_for(
+            asyncio.open_connection(
+                '127.0.0.1',
+                server.port,
+                ssl=server.client
+            ),
+            timeout=5
+        )
+        w.close()
+        try:
+            await asyncio.wait_for(w.wait_closed(), timeout=10)
+        except:
+            ...
+        return True
+    except:
+        logger.ttraceback("web.traceback.check_server", port=server.port)
+    return False
+
 async def unload():
-    ...
+    await app.cleanup()
+    await app.shutdown()

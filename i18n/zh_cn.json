@@ -19,6 +19,7 @@
     "web.success.public_port": "当前 Web 服务器在 [${port}] 端口上开启",
     "web.error.any": "Web 服务器出错 ${e}",
     "web.debug.request_info": "${host} | ${time} | ${address} | ${method} ${status} | ${real_path} - ${user_agent}",
+    "web.debug.check_server": "一共有 [${servers}] 个服务器准备检查",
     "cluster.error.socketio.request_cert": "节点 [${cluster}] 请求证书失败，原因 [${err}]",
     "cluster.debug.public_host": "已在 [${host}:${port}] 上开放，节点地址 [https://${domain}:${port}]",
     "cluster.error.socketio": "节点 [${cluster}] 发送 [${type}] 时出错，原因 [${err}]",
