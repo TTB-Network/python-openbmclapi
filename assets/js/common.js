@@ -511,14 +511,13 @@ class Router {
         this._route_prefix = route_prefix.replace(/\/+$/, "")
         this._before_handlers = []
         this._after_handlers = []
-        this._current_path = this._get_current_path()
+        this._current_path = null; //this._get_current_path()
         this._routes = []
     }
     init() {
         window.addEventListener("popstate", () => {
             this._popstate_handler()
         })
-        this._popstate_handler()
         window.addEventListener("click", (e) => {
             if (e.target.tagName == "A") {
                 const href = e.target.getAttribute("href")
@@ -530,6 +529,7 @@ class Router {
                 }
             }
         })
+        this._popstate_handler()
     }
     page(path) {
         this._popstate_handler(path)

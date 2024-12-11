@@ -122,6 +122,16 @@ class Menu extends Element {
                 this.route_handler_lock = resolve
             })
             var page = event.current_route
+            if (page.length == 1) {
+                (() => {
+                    const first_menu = Object.values(this.$menus)[0]
+                    if (first_menu.children.length != 0) {
+                        first_menu.children[0].$dom.click();
+                    } else {
+                        first_menu.$dom.click();
+                    }
+                })();
+            }
             var [key, sub] = page.slice(1).split("/", 2)
             if (cur_key == key && cur_sub == sub) return;
             for (const [$key, $val] of Object.entries(this.$menus)) {
@@ -619,6 +629,8 @@ $i18n.addLanguageTable("zh_CN", {
     "dashboard.title.storage.30days.bytes": "30 天下载量",
     "dashboard.value.storage.hits": "下载数",
     "dashboard.value.storage.bytes": "下载量",
+    "dashboard.title.qps": "5 分钟请求数",
+    "switch.dashboard.cluster.:all:": "所有节点"
 
 })
 $style.setTheme("light", {

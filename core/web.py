@@ -387,7 +387,10 @@ def get_server_port(server: Optional[asyncio.Server]):
         return None
     if not server.sockets:
         return None
-    return server.sockets[0].getsockname()[1]
+    try:
+        return server.sockets[0].getsockname()[1]
+    except:
+        return None
 
 
 async def _check_server(
