@@ -19,7 +19,7 @@ from cryptography.x509.oid import NameOID
 
 @dataclass
 class CheckServer:
-    port: int
+    port: Optional[int]
     start_handle: Callable
     client: Optional[ssl.SSLContext] = None
 
@@ -349,7 +349,7 @@ async def start_private_server(
         server,
         context,
         client,
-        domains
+        domains,
     )
     logger.tdebug("web.debug.ssl_port", port=server.sockets[0].getsockname()[1])
 
@@ -369,10 +369,10 @@ async def check_server():
     if site is not None:
         servers.append(CheckServer(site._port, start_private_server))
     if public_server is not None:
-        servers.append(CheckServer(public_server.sockets[0].getsockname()[1], start_public_server))
+        servers.append(CheckServer(get_server_port(public_server), start_public_server))
     if privates:
         for server in privates.values():
-            servers.append(CheckServer(server.server.sockets[0].getsockname()[1], start_private_server, server.key))
+            servers.append(CheckServer(get_server_port(server.server), start_private_server, server.key))
     
     #logger.tdebug("web.debug.check_server", servers=len(servers))
     results = await asyncio.gather(*[asyncio.create_task(_check_server(server)) for server in servers])
@@ -382,10 +382,19 @@ async def check_server():
         await server.start_handle()
         logger.twarning("web.warning.server_down", port=server.port)
 
+def get_server_port(server: Optional[asyncio.Server]):
+    if server is None:
+        return None
+    if not server.sockets:
+        return None
+    return server.sockets[0].getsockname()[1]
+
 
 async def _check_server(
     server: CheckServer
 ):
+    if server.port is None:
+        return False
     try:
         r, w = await asyncio.wait_for(
             asyncio.open_connection(
