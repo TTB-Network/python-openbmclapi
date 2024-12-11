@@ -121,17 +121,18 @@ class Menu extends Element {
             if (this._render_task) await new Promise((resolve) => {
                 this.route_handler_lock = resolve
             })
-            var page = event.current_route
-            if (page.length == 1) {
+            if (event.current_route.length < 2) {
                 (() => {
-                    const first_menu = Object.values(this.$menus)[0]
-                    if (first_menu.children.length != 0) {
-                        first_menu.children[0].$dom.click();
+                    const [menu, value] = Object.entries(this.$menus)[0]
+                    if (value.children.length != 0) {
+                        value.children[0].$dom.click();
                     } else {
-                        first_menu.$dom.click();
+                        $router.page("/" + menu)
                     }
                 })();
+                return;
             }
+            var page = event.current_route
             var [key, sub] = page.slice(1).split("/", 2)
             if (cur_key == key && cur_sub == sub) return;
             for (const [$key, $val] of Object.entries(this.$menus)) {
@@ -375,6 +376,7 @@ class SwitchElement extends Element {
         this.index = null;
         this._render_next_index = null;
         this.observer = new ResizeObserver(() => {
+            if (this.index == null) return;
             this.select(this.index)
         })
         this.observer.observe(this.origin)
@@ -404,14 +406,15 @@ class SwitchElement extends Element {
         }
         this.$main.append(...this.$buttons)
         if (this._render_next_index != null) {
+            const next_index = this._render_next_index;
+            this._render_next_index = null;
             requestAnimationFrame(() => {
-                this.select(this._render_next_index);
-                this._render_next_index = null;
+                this.select(next_index);
             })
         }
     }
     select(index) {
-        if (this._render_task) {
+        if (this._render_task || this.$buttons.length == 0) {
             this._render_next_index = index;
             return this;
         };
@@ -957,6 +960,7 @@ async function load() {
     const $menu = new Menu()
     const $menu_variables = {};
     $menu.add("dashboard", "a", (...args) => {
+        console.log("triggered")
         if (!$menu_variables.dashboard) {
             $menu_variables.dashboard = {};
         }
@@ -1668,7 +1672,7 @@ async function load() {
         while ($main.firstChild != null) {
             $main.removeChild($main.firstChild)
         }
-        clearDashboardTask(true)
+        //clearDashboardTask(true)
     })
 
     for (const $theme_key in $theme) {
