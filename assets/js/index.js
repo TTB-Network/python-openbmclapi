@@ -1224,9 +1224,18 @@ async function load() {
                                 )
                             } else {
                                 var server_time = $dashboard_locals.info_runtime
+                                var latest_time = (() => {
+                                    const data = value;
+                                    const keys = Object.keys(data);
+                                    const res = [];
+                                    for (let i = 0; i < keys.length; i++) {
+                                        res.push(+new Date(keys[i] + "T00:00:00.000Z"));
+                                    }
+                                    return Math.max(...res);
+                                })();
                                 // object.current_time - object.start_time - object.diff / 1000.0 + (+new Date() - object.resp_timestamp) / 1000.0;
-                                var time = server_time.start_time - server_time.diff / 1000.0 + (+new Date() - server_time.resp_timestamp) / 1000.0;
-                                const previous = (time - (time % (24 * 3600)) - 86400 * 30);
+                                var time = server_time.current_time - server_time.diff / 1000.0 + (+new Date() - server_time.resp_timestamp) / 1000.0;
+                                const previous = (time + (time % (24 * 3600)) - 86400 * 30);
                                 const res = {}
                                 for (let i = 0; i < 30; i++) {
                                     var d = Tools.formatDate(new Date((previous + i * 86400) * 1000.0))

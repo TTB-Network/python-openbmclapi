@@ -178,8 +178,8 @@ async def init():
 
     scheduler.run_repeat_later(
         check_server,
-        60,
-        10
+        5,
+        5
     )
 
 async def forward_data(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -409,7 +409,7 @@ async def _check_server(
         )
         w.close()
         try:
-            await asyncio.wait_for(w.wait_closed(), timeout=10)
+            await asyncio.wait_for(w.wait_closed(), timeout=2)
         except:
             ...
         return True

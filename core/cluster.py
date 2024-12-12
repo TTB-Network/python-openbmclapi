@@ -180,7 +180,7 @@ class StorageManager:
         if await self.available() and not use_master:
             storage = self.get_width_storage()
             if isinstance(storage, storages.LocalStorage) and await storage.exists(hash):
-                return LocalStorageFile(
+                file = LocalStorageFile(
                     hash,
                     await storage.get_size(hash),
                     await storage.get_mtime(hash),
@@ -188,7 +188,7 @@ class StorageManager:
                     Path(storage.get_path(hash))
                 )
             elif isinstance(storage, storages.AlistStorage):
-                return URLStorageFile(
+                file = URLStorageFile(
                     hash,
                     await storage.get_size(hash),
                     await storage.get_mtime(hash),
@@ -200,7 +200,7 @@ class StorageManager:
                     hash
                 )
                 if storage_file.data_size() == 0 and storage_file.url:
-                    return URLStorageFile(
+                    file = URLStorageFile(
                         hash,
                         await storage.get_size(hash),
                         await storage.get_mtime(hash),
@@ -208,12 +208,16 @@ class StorageManager:
                         storage_file.url
                     )
                 if storage_file.data_size() > 0:
-                    return MemoryStorageFile(
+                    file = MemoryStorageFile(
                         hash,
                         await storage.get_size(hash),
                         await storage.get_mtime(hash),
                         storage_file.data.getvalue()
                     )
+        if isinstance(file, URLStorageFile) and not file.url:
+            file = None
+        if file is not None:
+            return file
         async with aiohttp.ClientSession(
                 config.const.base_url,
             ) as session:
