@@ -232,37 +232,6 @@ async def _(request: web.Request):
     except:
         return web.json_response([])
 
-@route.get("/api/system_info")
-async def _(request: web.Request):
-    return web.json_response(counter.get_json())
-
-@route.get("/api/count")
-async def _(request: web.Request):
-    # statistics of the cluster hits and bytes
-    session = db.SESSION.get_session()
-    current_hour = db.get_hour()
-    hour_of_day = (current_hour // 24) * 24
-    next_hour = hour_of_day + 24
-    q = session.query(db.ClusterStatisticsTable).filter(
-        db.ClusterStatisticsTable.hour >= hour_of_day,
-        db.ClusterStatisticsTable.hour < next_hour
-    ).all()
-    return web.json_response({
-        "hits": sum([int(item.hits) for item in q]), # type: ignore
-        "bytes": sum([int(item.bytes) for item in q]) # type: ignore
-    })
-    
-
-@route.get("/api/openbmclapi/rank")
-async def _(request: web.Request):
-    async with aiohttp.ClientSession(
-        "bd.bangbang93.com"
-    ) as session:
-        async with session.get("/openbmclapi/metric/rank") as resp:
-            return web.json_response(
-                await resp.json(),
-            )
-
 route.static("/assets", "./assets")
 
 class JSONEncoder(json.JSONEncoder):
@@ -281,7 +250,6 @@ async def websocket_process_api(resp: web.WebSocketResponse, data: Any):
     if resp.closed:
         return
     await resp.send_json(res, dumps=json_dumps)
-
 
 async def process_api(
     event: Optional[str],

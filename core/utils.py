@@ -12,6 +12,8 @@ import re
 import time
 from typing import Any, Callable, Optional
 
+from tqdm import tqdm
+
 from core import logger
 
 
@@ -182,6 +184,30 @@ class Time:
     def to_days(self):
         return self.day + self.hour / 24 + self.minute / 1440 + self.second / 86400 + self.milisecond / 86400000
 
+class WrapperTQDM:
+    def __init__(self, pbar: tqdm):
+        self.pbar = pbar
+    
+    def __enter__(self):
+        wrapper_tqdms.appendleft(self)
+        self.pbar.__enter__()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self in wrapper_tqdms:
+            wrapper_tqdms.remove(self)
+        self.pbar.__exit__(exc_type, exc_val, exc_tb)
+
+    def update(self, n: float | None = 1):
+        self.pbar.update(n)
+
+    def set_postfix_str(self, s: str):
+        self.pbar.set_postfix_str(s)
+
+    def close(self):
+        if self in wrapper_tqdms:
+            wrapper_tqdms.remove(self)
+        self.pbar.close()
 
 def check_sign(hash: str, secret: str, s: str, e: str) -> bool:
     return check_sign_without_time(hash, secret, s, e) and time.time() - 300 < int(e, 36)
@@ -282,3 +308,6 @@ class ServiceError:
     httpCode: int
     message: str
     name: str
+
+
+wrapper_tqdms: deque[WrapperTQDM] = deque()

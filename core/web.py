@@ -19,9 +19,11 @@ from cryptography.x509.oid import NameOID
 
 @dataclass
 class CheckServer:
+    object: Any
     port: Optional[int]
     start_handle: Callable
     client: Optional[ssl.SSLContext] = None
+    args: tuple[Any, ...] = ()
 
 @dataclass
 class PrivateSSLServer:
@@ -84,9 +86,15 @@ async def middleware(request: web.Request, handler: Any) -> web.Response:
             pass
         setattr(request, "custom_address", address)
         start = time.perf_counter_ns()
-        resp = None
+        resp: web.Response = None # type: ignore
         try:
             resp = await asyncio.create_task(handler(request))
+            #if not isinstance(resp, web.WebSocketResponse):
+            #    if not resp.prepared:
+            #        await resp.prepare(request)
+            #await resp.write_eof()
+            resp.force_close()
+            #resp.force_close()
             return resp
         finally:
             status = 500
@@ -179,7 +187,7 @@ async def init():
     scheduler.run_repeat_later(
         check_server,
         5,
-        5
+        10
     )
 
 async def forward_data(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -189,8 +197,7 @@ async def forward_data(reader: asyncio.StreamReader, writer: asyncio.StreamWrite
             break
         writer.write(data)
         await writer.drain()
-    writer.close()
-    await writer.wait_closed()
+    await close_writer(writer)
 
 async def close_writer(writer: asyncio.StreamWriter):
     if writer.is_closing():
@@ -227,10 +234,8 @@ async def open_forward_data(reader: asyncio.StreamReader, writer: asyncio.Stream
         ...
     finally:
         if "target_w" in locals():
-            target_w.close()
-            await target_w.wait_closed()
-        writer.close()
-        await writer.wait_closed()
+            await close_writer(target_w)
+        await close_writer(writer)
 
 
 async def public_handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -282,7 +287,10 @@ async def start_public_server():
             await asyncio.wait_for(public_server.wait_closed(), timeout=5)
         except:
             ...
-    public_server = await asyncio.start_server(public_handle, '0.0.0.0', get_public_port())
+    port = get_public_port()
+    if port == 0:
+        port = await get_free_port()
+    public_server = await asyncio.start_server(public_handle, '0.0.0.0', port)
 
     await public_server.start_serving()
 
@@ -341,7 +349,7 @@ async def start_private_server(
     server = await asyncio.start_server(
         private_handle,
         '0.0.0.0',
-        0,
+        await get_free_port(),
         ssl=context
     )
     await server.start_serving()
@@ -367,12 +375,15 @@ def get_certificate_domains(
 async def check_server():
     servers: list[CheckServer] = []
     if site is not None:
-        servers.append(CheckServer(site._port, start_private_server))
+        servers.append(CheckServer(site, site._port, start_tcp_site))
     if public_server is not None:
-        servers.append(CheckServer(get_server_port(public_server), start_public_server))
+        servers.append(CheckServer(public_server, get_server_port(public_server), start_public_server))
     if privates:
-        for server in privates.values():
-            servers.append(CheckServer(get_server_port(server.server), start_private_server, server.key))
+        for hash, server in privates.items():
+            servers.append(CheckServer(server.server, get_server_port(server.server), start_private_server, server.key, (
+                Path(hash[0]),
+                Path(hash[1])
+            )))
     
     #logger.tdebug("web.debug.check_server", servers=len(servers))
     results = await asyncio.gather(*[asyncio.create_task(_check_server(server)) for server in servers])
@@ -398,6 +409,9 @@ async def _check_server(
 ):
     if server.port is None:
         return False
+    if isinstance(server.object, asyncio.Server):
+        if len(server.object.sockets) != 0:
+            return True
     try:
         r, w = await asyncio.wait_for(
             asyncio.open_connection(

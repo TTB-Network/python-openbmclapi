@@ -14,6 +14,7 @@ from tqdm import tqdm
 from core import config, units
 from .. import scheduler, utils, cache
 from ..logger import logger
+from ..utils import WrapperTQDM
 import urllib.parse as urlparse
 
 import aiofiles
@@ -21,6 +22,9 @@ import aiohttp
 
 import aiowebdav.client as webdav3_client
 import aiowebdav.exceptions as webdav3_exceptions
+
+FILES_DIR = "/download"
+MEASURE_DIR = "/measure"
 
 @dataclass
 class File:
@@ -36,7 +40,7 @@ class iStorage(metaclass=abc.ABCMeta):
     def __init__(self, path: str, weight: int) -> None:
         if self.type == "_interface":
             raise ValueError("Cannot instantiate interface")
-        self.path = path
+        self.path = path.rstrip("/")
         self.weight = weight
         self.current_weight = 0
 
@@ -57,7 +61,7 @@ class iStorage(metaclass=abc.ABCMeta):
     async def delete_file(self, file_hash: str) -> bool:
         raise NotImplementedError("Not implemented")
     @abc.abstractmethod
-    async def list_files(self, pbar: Optional[tqdm] = None) -> defaultdict[str, deque[File]]:
+    async def list_files(self, pbar: Optional[WrapperTQDM] = None) -> defaultdict[str, deque[File]]:
         raise NotImplementedError("Not implemented")
     @abc.abstractmethod
     async def exists(self, file_hash: str) -> bool:
@@ -70,7 +74,26 @@ class iStorage(metaclass=abc.ABCMeta):
         raise NotImplementedError("Not implemented")
     
     def get_path(self, file_hash: str) -> str:
-        return f"{self.path}/{file_hash[:2]}/{file_hash}"
+        return f"{self.get_path_dir(file_hash)}/{file_hash}"
+    
+    def get_path_dir(self, file_hash: str) -> str:
+        return f"{self.path}{FILES_DIR}/{file_hash[:2]}"
+
+    def get_measure_path(self, size: int) -> str:
+        return f"{self.get_measure_path_dir()}/{size}"
+
+    def get_measure_path_dir(self):
+        return f"{self.path}{MEASURE_DIR}"
+    
+    def get_real_path(self, path: str) -> str:
+        if self.path.startswith(path):
+            path = path.removeprefix(self.path)
+        return path.lstrip("/")
+        
+    
+    @abc.abstractmethod
+    async def raw_write_file(self, path: str, content: bytes, mtime: Optional[float]) -> bool:
+        raise NotImplementedError("Not implemented")
 
 class LocalStorage(iStorage):
     type: str = "local"
@@ -85,27 +108,32 @@ class LocalStorage(iStorage):
         return f"LocalStorage({self.path})"
     
     async def write_file(self, file: File, content: bytes, mtime: Optional[float]) -> bool:
-        Path(f"{self.path}/{file.hash[:2]}").mkdir(parents=True, exist_ok=True)
-        async with aiofiles.open(f"{self.path}/{file.hash[:2]}/{file.hash}", "wb") as f:
+        return await self.raw_write_file(self.get_path(file.hash), content, mtime)
+    
+    async def raw_write_file(self, path: str, content: bytes, mtime: Optional[float]) -> bool:
+        path = self.get_real_path(path)
+        file = Path(f"{self.path}/{path}")
+        file.parent.mkdir(parents=True, exist_ok=True)
+        async with aiofiles.open(file, "wb") as f:
             await f.write(content)
         return True
 
     async def read_file(self, file_hash: str) -> bytes:
         if not await self.exists(file_hash):
             raise FileNotFoundError(f"File {file_hash} not found")
-        async with aiofiles.open(f"{self.path}/{file_hash[:2]}/{file_hash}", "rb") as f:
+        async with aiofiles.open(self.get_path(file_hash), "rb") as f:
             return await f.read()
 
     async def exists(self, file_hash: str) -> bool:
-        return os.path.exists(f"{self.path}/{file_hash[:2]}/{file_hash}")
+        return os.path.exists(self.get_path(file_hash))
 
     async def delete_file(self, file_hash: str) -> bool:
         if not await self.exists(file_hash):
             return False
-        os.remove(f"{self.path}/{file_hash[:2]}/{file_hash}")
+        os.remove(self.get_path(file_hash))
         return True
 
-    async def list_files(self, pbar: Optional[tqdm] = None) -> dict[str, deque[File]]:
+    async def list_files(self, pbar: Optional[WrapperTQDM] = None) -> dict[str, deque[File]]:
         def update():
             pbar.update(1) # type: ignore
         def empty():
@@ -116,7 +144,7 @@ class LocalStorage(iStorage):
 
         files: defaultdict[str, deque[File]] = defaultdict(deque)
         for root_id in range(0, 256):
-            root = f"{self.path}/{root_id:02x}"
+            root = self.get_path_dir(f"{root_id:02x}")
             if not os.path.exists(root):
                 update_tqdm()
                 continue
@@ -135,10 +163,10 @@ class LocalStorage(iStorage):
         return files
 
     async def get_size(self, file_hash: str) -> int:
-        return os.path.getsize(f"{self.path}/{file_hash[:2]}/{file_hash}")
+        return os.path.getsize(self.get_path(file_hash))
 
     async def get_mtime(self, file_hash: str) -> float:
-        return os.path.getmtime(f"{self.path}/{file_hash[:2]}/{file_hash}")
+        return os.path.getmtime(self.get_path(file_hash))
 
 @dataclass
 class AlistFileInfo:
@@ -156,40 +184,6 @@ class AlistResult:
     message: str
     data: Any
 
-class AlistPath:
-    def __init__(self, path: str):
-        self.path = path if path.startswith("/") else f"/{path}"
-    
-    @property
-    def parent(self):
-        if self.path == "/":
-            return None
-        return AlistPath("/".join(self.path.split("/")[:-1]))
-
-    @property
-    def parents(self):
-        return [AlistPath("/".join(self.path.split("/")[:-i])) for i in range(1, len(self.path.split("/")))]
-
-    @property
-    def name(self):
-        return self.path.split("/")[-1]
-
-    def __div__(self, other: object):
-        if isinstance(other, AlistPath):
-            return AlistPath(f"{self.path}/{other.path}")
-        return AlistPath(f"{self.path}{other}")
-    
-    def __truediv__(self, other: object):
-        return self.__div__(other)
-    
-    def __add__(self, other: 'AlistPath'):
-        return AlistPath(f"{self.path}{other.path}")
-    
-    def __repr__(self):
-        return f"AlistPath({self.path})"
-    
-    def __str__(self):
-        return self.path
 
 @dataclass
 class AlistLink:
@@ -355,7 +349,7 @@ class AlistStorage(iStorage):
                 "names": [
                     file_hash
                 ],
-                "dir": f"{self.path}/{file_hash[:2]}"
+                "dir": self.get_path_dir(file_hash)
             }
         )
         return result.code == 200
@@ -371,7 +365,7 @@ class AlistStorage(iStorage):
         info = await self.__info_file(file_hash)
         return max(0, info.size)
 
-    async def list_files(self, pbar: Optional[tqdm] = None) -> defaultdict[str, deque[File]]:
+    async def list_files(self, pbar: Optional[WrapperTQDM] = None) -> defaultdict[str, deque[File]]:
         def update():
             pbar.update(1) # type: ignore
         def empty():
@@ -381,39 +375,31 @@ class AlistStorage(iStorage):
             update_tqdm = update
     
         files: defaultdict[str, deque[File]] = defaultdict(deque)
-        async def get_files(root_id: int):
-            root = f"{self.path}/{root_id:02x}"
-            try:
-                async with session.post(
-                    "/api/fs/list",
-                    data={
-                        "path": str(root)
-                    },
-                ) as resp:
-                    result = AlistResult(
-                        **await resp.json()
-                    )
-                    if result.code != 200:
-                        logger.tdebug("storage.debug.error_alist", status=result.code, message=result.message)
-            except:
-                logger.traceback()
-                return []
-            finally:
-                update_tqdm()
-            return ((result.data or {}).get("content", None) or [])
         async with aiohttp.ClientSession(
             self.url,
             headers={
                 "Authorization": await self._get_token()
             }
         ) as session:
-            results = await asyncio.gather(
-                *(get_files(root_id) for root_id in range(256))
-            )
-            for root_id, result in zip(
-                range(256), results
-            ):
-                for r in result:
+            for root_id in range(256):
+                try:
+                    async with session.post(
+                        "/api/fs/list",
+                        data={
+                            "path": str(self.get_path_dir(f"{root_id:02x}"))
+                        },
+                    ) as resp:
+                        result = AlistResult(
+                            **await resp.json()
+                        )
+                except:
+                    logger.traceback()
+                    continue
+                finally:
+                    update_tqdm()
+                if result.code != 200:
+                    logger.tdebug("storage.debug.error_alist", status=result.code, message=result.message)
+                for r in ((result.data or {}).get("content", None) or []):
                     file = File(
                         r["name"],
                         r["size"],
@@ -421,8 +407,6 @@ class AlistStorage(iStorage):
                         r["name"]
                     )
                     files[f"{root_id:02x}"].append(file)
-                await asyncio.sleep(0)
-            
         return files
     
     async def read_file(self, file_hash: str) -> bytes:
@@ -457,6 +441,18 @@ class AlistStorage(iStorage):
     
     async def close(self):
         await self.session.close()
+
+    async def raw_write_file(self, path: str, content: bytes, mtime: Optional[float]) -> bool:
+        path = self.get_real_path(path)
+        result = await self._action_data(
+            "put",
+            "/api/fs/put",
+            content,
+            {
+                "File-Path": urlparse.quote(f"{self.path}/{path}")
+            }
+        )
+        return result.code == 200
 
 @dataclass
 class WebDavFileInfo:
@@ -517,7 +513,7 @@ class WebDavStorage(iStorage):
     def unique_id(self) -> str:
         return hashlib.md5(f"{self.type},{self.url},{self.path}".encode()).hexdigest()
     
-    async def list_files(self, pbar: Optional[tqdm] = None) -> defaultdict[str, deque[File]]:
+    async def list_files(self, pbar: Optional[WrapperTQDM] = None) -> defaultdict[str, deque[File]]:
         def update():
             pbar.update(1) # type: ignore
         def empty():
@@ -528,7 +524,8 @@ class WebDavStorage(iStorage):
     
         files: defaultdict[str, deque[File]] = defaultdict(deque)
         async def get_files(root_id: int):
-            root = f"{self.path}/{root_id:02x}/"
+            root = self.get_path_dir(f"{root_id:02x}") + "/"
+            print(root)
             try:
                 result = await self.client.list(
                     root,
@@ -607,6 +604,19 @@ class WebDavStorage(iStorage):
             return False
         return True
     
+    async def raw_write_file(self, path: str, content: bytes, mtime: Optional[float]) -> bool:
+        path = self.get_real_path(path)
+        await self._mkdir(path.rsplit("/", 1)[0])
+        try:
+            await self.client.upload_to(
+                io.BytesIO(content),
+                path,
+            )
+        except:
+            logger.traceback()
+            return False
+        return True
+
     async def _mkdir(self, dir: str):
         async with self.client_lock:
             d = ""
@@ -617,6 +627,20 @@ class WebDavStorage(iStorage):
                 d += "/"
     
     async def get_file(self, file_hash: str) -> WebDavFile:
+        # by old code
+        file = WebDavFile(
+            file_hash,
+            0
+        )
+
+        # replace url to basic auth url
+
+        urlobject = urlparse.urlparse(f"{self.url}")
+        url = f"{urlobject.scheme}://{urlparse.quote(self.username)}:{urlparse.quote(self.password)}@{urlobject.hostname}:{urlobject.port}{urlobject.path}{self.get_path(file_hash)}"
+        file.url = url
+        return file
+
+
         async with self.session.get(
             f"{self.url}{self.get_path(file_hash)}",
             allow_redirects=False

@@ -14,6 +14,7 @@ import aiohttp.client_exceptions
 import pyzstd as zstd
 import aiohttp
 from tqdm import tqdm
+
 from . import web
 from . import utils, logger, config, scheduler, units, storages, i18n
 from .storages import File as SFile
@@ -21,6 +22,7 @@ import socketio
 import urllib.parse as urlparse
 from . import database as db
 from .config import USER_AGENT, API_VERSION
+from .utils import WrapperTQDM
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
@@ -123,19 +125,19 @@ class StorageManager:
             function = self._check_exists
 
         await self.available()
-        with tqdm(
+        with WrapperTQDM(tqdm(
             total=len(self.available_storages) * 256,
             desc="List Files",
             unit="dir",
             unit_scale=True
-        ) as pbar:
+        )) as pbar:
             await asyncio.gather(*(self.get_storage_filelist(storage, pbar) for storage in self.available_storages))
-        with tqdm(
+        with WrapperTQDM(tqdm(
             total=len(files) * len(self.available_storages),
             desc="Checking files",
             unit="file",
             unit_scale=True,
-        ) as pbar:
+        )) as pbar:
             missing_files = set()
             waiting_files: asyncio.Queue[File] = asyncio.Queue()
             
@@ -145,14 +147,14 @@ class StorageManager:
             await asyncio.gather(*(self._get_missing_file_storage(function, missing_files, waiting_files, storage, pbar) for storage in self.available_storages))
             return missing_files
     
-    async def get_storage_filelist(self, storage: storages.iStorage, pbar: tqdm):
+    async def get_storage_filelist(self, storage: storages.iStorage, pbar: WrapperTQDM):
         result = await storage.list_files(pbar)
         for files in result.values():
             for file in files:
                 self.cache_filelist[storage][file.hash] = file
         return result
 
-    async def _get_missing_file_storage(self, function: Callable[..., Coroutine[Any, Any, bool]], missing_files: set[File], files: asyncio.Queue[File], storage: storages.iStorage, pbar: tqdm):
+    async def _get_missing_file_storage(self, function: Callable[..., Coroutine[Any, Any, bool]], missing_files: set[File], files: asyncio.Queue[File], storage: storages.iStorage, pbar: WrapperTQDM):
         while not files.empty():
             file = await files.get()
             if await function(file, storage):
@@ -290,13 +292,13 @@ class DownloadStatistics:
         self.pbar = None
     
     def __enter__(self):
-        self.pbar = tqdm(
+        self.pbar = WrapperTQDM(tqdm(
             total=self.total_size,
             unit="b",
             unit_scale=True,
             unit_divisor=1024,
             desc=i18n.locale.t("cluster.processbar.download_files")
-        )
+        ))
         self.downloaded_files = 0
         self.failed_files = 0
         return self
@@ -1151,6 +1153,7 @@ async def _(request: aweb.Request):
             elif isinstance(storage, storages.WebDavStorage):
                 file = await storage.get_file(MEASURES_HASH[size])
                 if file.url:
+                    logger.debug("Requested measure url:", file.url)
                     return aweb.HTTPFound(file.url)
                 elif file.size >= 0:
                     return aweb.Response(
