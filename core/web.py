@@ -93,7 +93,7 @@ async def middleware(request: web.Request, handler: Any) -> web.Response:
             #    if not resp.prepared:
             #        await resp.prepare(request)
             #await resp.write_eof()
-            resp.force_close()
+            #resp.force_close()
             #resp.force_close()
             return resp
         finally:
@@ -187,7 +187,7 @@ async def init():
     scheduler.run_repeat_later(
         check_server,
         5,
-        10
+        5
     )
 
 async def forward_data(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):

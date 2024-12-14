@@ -1,30 +1,29 @@
 import abc
 import asyncio
-from collections import defaultdict, deque
+from collections import deque
 from dataclasses import dataclass, field
 import hashlib
 import io
+from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
 import time
 from typing import Any, Optional
 
-from tqdm import tqdm
-
-from core import config, units
-from .. import scheduler, utils, cache
-from ..logger import logger
-from ..utils import WrapperTQDM
-import urllib.parse as urlparse
-
-import aiofiles
 import aiohttp
+
+from core import cache, config, logger
+from core import utils
+from core.utils import WrapperTQDM
+import urllib.parse as urlparse
 
 import aiowebdav.client as webdav3_client
 import aiowebdav.exceptions as webdav3_exceptions
 
-FILES_DIR = "/download"
-MEASURE_DIR = "/measure"
+
+DOWNLOAD_DIR = "download"
+MEASURE_DIR = "measure"
+ALIST_TOKEN_DEAULT_EXPIRY = 86400 * 2
 
 @dataclass
 class File:
@@ -33,140 +32,222 @@ class File:
     mtime: float
     hash: str
 
+    def __hash__(self):
+        return self.hash.__hash__()
+    
+@dataclass
+class MeasureFile:
+    size: int
+
+    def __hash__(self) -> int:
+        return hash(self.size)
+
+
+class FilePath(object):
+    def __init__(self, path: str) -> None:
+        self._path = FilePath._fix_path(path)
+
+    @staticmethod
+    def _fix_path(path: str):
+        return path.replace("\\", "/").rstrip("/")
+    
+    @property
+    def parents(self):
+        result = []
+        for i in range(1, len(self._path.split("/"))):
+            result.append(FilePath("/".join(self._path.split("/")[:i])))
+        return result
+    
+    @property
+    def parent(self):
+        return FilePath(self._path.rsplit("/", 1)[-2])
+    
+    @property
+    def name(self):
+        return self._path.rsplit("/")[-1]
+    
+    @property
+    def path(self):
+        return self._path
+    
+    def __str__(self):
+        return self._path
+    
+    def __repr__(self):
+        return f"FilePath({self._path})"
+    
+    def __eq__(self, __o: object) -> bool:
+        if isinstance(__o, FilePath):
+            return self._path == __o._path
+        return False
+    
+    def __hash__(self):
+        return self._path.__hash__()
+    
+    def __truediv__(self, __o: Any) -> 'FilePath':
+        if isinstance(__o, str):
+            return FilePath(self._path + "/" + __o)
+        elif isinstance(__o, FilePath):
+            return FilePath(self._path + "/" + __o._path)
+        else:
+            raise TypeError(f"Unsupported type {type(__o)}")
+        
+    def __rtruediv__(self, __o: Any) -> 'FilePath':
+        if isinstance(__o, str):
+            return FilePath(__o + "/" + self._path)
+        elif isinstance(__o, FilePath):
+            return FilePath(__o._path + "/" + self._path)
+        else:
+            raise TypeError(f"Unsupported type {type(__o)}")
+
+
+CollectionFile = MeasureFile | File
+Range = lambda: range(256)
+
+
 class iStorage(metaclass=abc.ABCMeta):
     type: str = "_interface"
-    can_write: bool = False
-
-    def __init__(self, path: str, weight: int) -> None:
-        if self.type == "_interface":
-            raise ValueError("Cannot instantiate interface")
-        self.path = path.rstrip("/")
+    def __init__(self, path: str, weight: int = 0, list_concurrent: int = 32):
+        self.path = FilePath(path)
         self.weight = weight
+        self.list_concurrent = list_concurrent
         self.current_weight = 0
+        
+    @property
+    @abc.abstractmethod
+    def unique_id(self):
+        raise NotImplementedError("unique_id not implemented")
+
+    def __repr__(self):
+        return f"{self.type}({self.path})"
+
+    @abc.abstractmethod
+    async def list_files(self, pbar: WrapperTQDM) -> set[File]:
+        raise NotImplementedError("list_files not implemented")
+    
+    @abc.abstractmethod
+    async def write_file(self, file: CollectionFile, content: io.BytesIO):
+        raise NotImplementedError("write_file not implemented")
+    
+    @abc.abstractmethod
+    async def read_file(self, file: File) -> io.BytesIO:
+        raise NotImplementedError("read_file not implemented")
+    
+    @abc.abstractmethod
+    async def delete_file(self, file: CollectionFile):
+        raise NotImplementedError("delete_file not implemented")
+    
+    @abc.abstractmethod
+    async def exists(self, file: CollectionFile) -> bool:
+        raise NotImplementedError("exists not implemented")
+    
+    @abc.abstractmethod
+    async def get_size(self, file: CollectionFile) -> int:
+        raise NotImplementedError("get_size not implemented")
+    
+    @abc.abstractmethod
+    async def get_mtime(self, file: CollectionFile) -> float:
+        raise NotImplementedError("get_mtime not implemented")
+    
+    def get_path(self, file: CollectionFile):
+        if isinstance(file, MeasureFile):
+            return self.path / MEASURE_DIR / str(file.size)
+        else:
+            return self.path / DOWNLOAD_DIR / file.hash[:2] / file.hash
+    
+class LocalStorage(iStorage):
+    type = "local"
+
+    def __init__(self, path: str, weight: int = 0, list_concurrent: int = 32):
+        super().__init__(path, weight, list_concurrent)
+        self.async_executor = ThreadPoolExecutor(max_workers=list_concurrent)
 
     @property
-    def unique_id(self) -> str:
+    def unique_id(self):
         return hashlib.md5(f"{self.type},{self.path}".encode("utf-8")).hexdigest()
 
-    def __repr__(self) -> str:
-        return f"{self.type}({self.path})"
-    
-    @abc.abstractmethod
-    async def write_file(self, file: File, content: bytes, mtime: Optional[float]) -> bool:
-        raise NotImplementedError("Not implemented")
-    @abc.abstractmethod
-    async def read_file(self, file_hash: str) -> bytes:
-        raise NotImplementedError("Not implemented")
-    @abc.abstractmethod
-    async def delete_file(self, file_hash: str) -> bool:
-        raise NotImplementedError("Not implemented")
-    @abc.abstractmethod
-    async def list_files(self, pbar: Optional[WrapperTQDM] = None) -> defaultdict[str, deque[File]]:
-        raise NotImplementedError("Not implemented")
-    @abc.abstractmethod
-    async def exists(self, file_hash: str) -> bool:
-        raise NotImplementedError("Not implemented")
-    @abc.abstractmethod
-    async def get_size(self, file_hash: str) -> int:
-        raise NotImplementedError("Not implemented")
-    @abc.abstractmethod
-    async def get_mtime(self, file_hash: str) -> float:
-        raise NotImplementedError("Not implemented")
-    
-    def get_path(self, file_hash: str) -> str:
-        return f"{self.get_path_dir(file_hash)}/{file_hash}"
-    
-    def get_path_dir(self, file_hash: str) -> str:
-        return f"{self.path}{FILES_DIR}/{file_hash[:2]}"
+    async def _to_coroutine(self, func, *args, **kwargs):
+        return await asyncio.get_event_loop().run_in_executor(self.async_executor, func, *args, **kwargs)
 
-    def get_measure_path(self, size: int) -> str:
-        return f"{self.get_measure_path_dir()}/{size}"
-
-    def get_measure_path_dir(self):
-        return f"{self.path}{MEASURE_DIR}"
-    
-    def get_real_path(self, path: str) -> str:
-        if self.path.startswith(path):
-            path = path.removeprefix(self.path)
-        return path.lstrip("/")
-        
-    
-    @abc.abstractmethod
-    async def raw_write_file(self, path: str, content: bytes, mtime: Optional[float]) -> bool:
-        raise NotImplementedError("Not implemented")
-
-class LocalStorage(iStorage):
-    type: str = "local"
-    can_write: bool = True
-    def __init__(self, path: str, weight: int) -> None:
-        super().__init__(path, weight)
-
-    def __str__(self) -> str:
-        return f"Local Storage: {self.path}"
-    
-    def __repr__(self) -> str:
-        return f"LocalStorage({self.path})"
-    
-    async def write_file(self, file: File, content: bytes, mtime: Optional[float]) -> bool:
-        return await self.raw_write_file(self.get_path(file.hash), content, mtime)
-    
-    async def raw_write_file(self, path: str, content: bytes, mtime: Optional[float]) -> bool:
-        path = self.get_real_path(path)
-        file = Path(f"{self.path}/{path}")
-        file.parent.mkdir(parents=True, exist_ok=True)
-        async with aiofiles.open(file, "wb") as f:
-            await f.write(content)
-        return True
-
-    async def read_file(self, file_hash: str) -> bytes:
-        if not await self.exists(file_hash):
-            raise FileNotFoundError(f"File {file_hash} not found")
-        async with aiofiles.open(self.get_path(file_hash), "rb") as f:
-            return await f.read()
-
-    async def exists(self, file_hash: str) -> bool:
-        return os.path.exists(self.get_path(file_hash))
-
-    async def delete_file(self, file_hash: str) -> bool:
-        if not await self.exists(file_hash):
-            return False
-        os.remove(self.get_path(file_hash))
-        return True
-
-    async def list_files(self, pbar: Optional[WrapperTQDM] = None) -> dict[str, deque[File]]:
-        def update():
-            pbar.update(1) # type: ignore
-        def empty():
-            ...
-        update_tqdm = empty
-        if pbar is not None:
-            update_tqdm = update
-
-        files: defaultdict[str, deque[File]] = defaultdict(deque)
-        for root_id in range(0, 256):
-            root = self.get_path_dir(f"{root_id:02x}")
-            if not os.path.exists(root):
-                update_tqdm()
-                continue
+    async def list_files(self, pbar: WrapperTQDM) -> set[File]:
+        def get_files(root_id: str):
+            root = os.path.join(str(self.path / DOWNLOAD_DIR), root_id)
+            if not os.path.isdir(root):
+                pbar.update(1)
+                return deque()
+            results: deque[File] = deque()
             for file in os.listdir(root):
                 path = os.path.join(root, file)
                 if not os.path.isfile(path):
                     continue
-                files[root].append(File(
+                results.append(File(
                     file,
                     os.path.getsize(path),
                     os.path.getmtime(path),
                     file
                 ))
-                await asyncio.sleep(0)
-            update_tqdm()
-        return files
+            pbar.update(1)
+            return results
 
-    async def get_size(self, file_hash: str) -> int:
-        return os.path.getsize(self.get_path(file_hash))
+        return set().union(*await asyncio.gather(*[self._to_coroutine(get_files, root_id) for root_id in os.listdir(str(self.path))]))
+            
+    
+    async def write_file(self, file: CollectionFile, content: io.BytesIO):
+        path = self.get_path(file)
 
-    async def get_mtime(self, file_hash: str) -> float:
-        return os.path.getmtime(self.get_path(file_hash))
+        parent = path.parent
+        parent_path = Path(str(parent))
+        parent_path.mkdir(parents=True, exist_ok=True)
+        file_path = Path(str(path))
+        with open(file_path, "wb") as f:
+            await self._to_coroutine(f.write, content.read())
+
+    async def read_file(self, file: File) -> io.BytesIO:
+        path = self.get_path(file)
+        with open(Path(str(path)), "rb") as f:
+            return io.BytesIO(await self._to_coroutine(f.read))
+        
+    async def delete_file(self, file: CollectionFile):
+        path = self.get_path(file)
+        os.remove(Path(str(path)))
+
+    async def exists(self, file: CollectionFile) -> bool:
+        path = self.get_path(file)
+        return os.path.isfile(Path(str(path)))
+    
+
+    async def get_size(self, file: CollectionFile) -> int:
+        path = self.get_path(file)
+        return os.path.getsize(Path(str(path)))
+    
+    async def get_mtime(self, file: CollectionFile) -> float:
+        path = self.get_path(file)
+        return os.path.getmtime(Path(str(path)))
+
+
+class iNetworkStorage(iStorage):
+
+    def __init__(self, path: str, username: str, password: str, endpoint: str, weight: int = 0, list_concurrent: int = 32):
+        super().__init__(path, weight, list_concurrent)
+        self.username = username
+        self.password = password
+        self.endpoint = endpoint.rstrip("/")
+        self.cache = cache.TimeoutCache()
+
+    @property
+    def unique_id(self):
+        return hashlib.md5(f"{self.type},{self.path},{self.endpoint}".encode("utf-8")).hexdigest()
+
+@dataclass
+class AlistResult:
+    code: int
+    message: str
+    data: Any
+
+@dataclass
+class AlistToken:
+    value: str
+    expires: float
 
 @dataclass
 class AlistFileInfo:
@@ -178,116 +259,59 @@ class AlistFileInfo:
     sign: str
     raw_url: str
 
-@dataclass
-class AlistResult:
-    code: int
-    message: str
-    data: Any
+class AlistError(Exception):
+    def __init__(self, result: AlistResult):
+        super().__init__(f"Status: {result.code}, Message: {result.message}")
+        self.result = result
 
+class AlistStorage(iNetworkStorage):
+    type = "alist"
 
-@dataclass
-class AlistLink:
-    url: str = ""
-    _expires: Optional[float] = None
-
-    def set_url(self, url: str, expired: Optional[float] = None):
-        self.url = url
-        if expired is None:
-            return
-        self._expires = expired + time.monotonic()
-        
-    @property
-    def expired(self):
-        return self._expires is None or self._expires > time.monotonic()
-            
-class AlistStorage(iStorage):
-    type: str = "alist"
-    def __init__(self, path: str, weight: int, url: str, username: Optional[str], password: Optional[str], link_cache_expires: Optional[str] = None) -> None:
-        super().__init__(path[0:-1] if path.endswith("/") else path, weight)
-        self.url = url.rstrip("/")
-        self.username = username
-        self.password = password
-        self.can_write = username is not None and password is not None
-        self.fetch_token = None
-        self.last_token = 0
-        self.wait_token = utils.CountLock()
-        self.wait_token.acquire()
-        self.tcp_connector = aiohttp.TCPConnector(limit=256)
-        self.download_connector = aiohttp.TCPConnector(limit=256)
-        self.cache = cache.TimeoutCache()
-        self.link_cache_timeout = utils.parse_time(link_cache_expires).to_seconds if link_cache_expires is not None else None
-        self.link_cache: defaultdict[str, AlistLink] = defaultdict(lambda: AlistLink())
-        scheduler.run_repeat_later(self._check_token, 0, 3600)
-        logger.tinfo("storage.info.alist.link_cache", url=self.url, path=self.path, raw=link_cache_expires, time="disabled" if self.link_cache_timeout is None else units.format_count_datetime(self.link_cache_timeout))
+    def __init__(self, path: str, username: str, password: str, endpoint: str, weight: int = 0, list_concurrent: int = 32, retry: int = 3):
+        super().__init__(path, username, password, endpoint, weight, list_concurrent)
+        self.retry = retry
+        self.last_token: Optional[AlistToken] = None
         self.session = aiohttp.ClientSession(
-            self.url
+            headers={
+                "User-Agent": config.USER_AGENT
+            }
         )
 
-    @property
-    def unique_id(self) -> str:
-        return hashlib.md5(f"{self.type},{self.url},{self.path}".encode("utf-8")).hexdigest()
-
     async def _get_token(self):
-        await self.wait_token.wait()
-        return str(self.fetch_token)
-
-    async def _check_token(self):
-        async def _check():
-            if self.fetch_token is None or self.last_token + 172000 < time.time():
-                return False
-            async with session.get(
-                "/api/me",
-                headers={
-                    "Authorization": str(self.fetch_token)
-                }
-            ) as resp:
-                return AlistResult(
-                    **await resp.json()
-                ).code != 200
-            
-        async def _fetch():
-            async with session.post(
-                f"/api/auth/login",
-                json = {
-                    "username": self.username,
-                    "password": self.password
-                }
-            ) as resp:
-                return AlistResult(
-                    **await resp.json()
+        if self.last_token is None or self.last_token.expires < time.monotonic():
+            async with self.session.post(f"{self.endpoint}/api/auth/login", json={"username": self.username, "password": self.password}) as resp:
+                r = AlistResult(
+                    **(await resp.json())
                 )
-
-        async with aiohttp.ClientSession(
-            self.url
-        ) as session:
-            if not await _check(): # type: ignore
-                r = await _fetch()
+            try:
                 if r.code == 200:
-                    self.fetch_token = r.data["token"]
-                    self.last_token = time.time()
-                    self.wait_token.release()
+                    self.last_token = AlistToken(
+                        value=r.data["token"],
+                        expires=time.monotonic() + ALIST_TOKEN_DEAULT_EXPIRY - 3600
+                    )
                 else:
-                    logger.terror("storage.error.alist.fetch_token", status=r.code, message=r.message)
-                
-    def __str__(self) -> str:
-        return f"Alist Storage: {self.path}"
-
-    def __repr__(self) -> str:
-        return f"AlistStorage({self.path})"
-
-    async def _action_data(self, action: str, url: str, data: Any, headers: dict[str, str] = {}, session: Optional[aiohttp.ClientSession] = None, _authentication: bool = False, cache: bool = True) -> AlistResult:
-        hash = hashlib.sha256(f"{action},{url},{data},{headers}".encode()).hexdigest()
-        if cache and hash in self.cache:
-            return self.cache.get(hash)
-        session = self.session
-        async with session.request(
-            action, url,
+                    raise AlistError(r)
+            except:
+                logger.terror("storage.error.alist.fetch_token", status=r.code, message=r.message)
+        if self.last_token is None:
+            raise AlistError(AlistResult(500, "Failed to fetch token", None))
+        return self.last_token.value
+    
+    async def __action_data(self, method: str, path: str, data: Any, headers: dict[str, Any] = {}, _authentication: bool = False, _retry: int = 0):
+        key = hash((
+            method,
+            path,
+            repr(headers),
+            repr(data)
+        ))
+        if key in self.cache:
+            return self.cache[key]
+        async with self.session.request(
+            method, f"{self.endpoint}{path}",
             data=data,
             headers={
                 **headers,
-                **{
-                    "Authorization": await self._get_token()
-                }
+                "Authorization": await self._get_token()
             }
         ) as resp:
             try:
@@ -295,35 +319,78 @@ class AlistStorage(iStorage):
                     **await resp.json()
                 )
                 if result.code == 401 and not _authentication:
-                    self.fetch_token = None
-                    self.last_token = 0
-                    self.wait_token.acquire()
-                    await self.wait_token.wait()
-                    return await self._action_data(action, url, data, headers, session, True, cache)
+                    self.last_token = None
+                    return await self.__action_data(method, path, data, headers, True, _retry + 1)
                 if result.code != 200:
-                    logger.terror("storage.error.action_alist", method=action, url=url, status=result.code, message=result.message)
+                    if _retry < self.retry:
+                        return await self.__action_data(method, path, data, headers, _authentication, _retry + 1)
+                    logger.terror("storage.error.action_alist", method=method, url=resp.url, status=result.code, message=result.message)
                     logger.debug(data)
                     logger.debug(result)
                 else:
-                    self.cache.set(hash, result, 600)
+                    self.cache.set(
+                        key,
+                        result,
+                        60
+                    )
                 return result
             except:
                 logger.terror("storage.error.alist", status=resp.status, message=await resp.text())
                 raise
+    
+    async def list_files(self, pbar: WrapperTQDM) -> set[File]:
+        async def get_files(root_id: int):
+            root = self.path / DOWNLOAD_DIR / f"{root_id:02x}"
+            try:
+                async with sem:
+                    async with self.session.post(
+                        f"{self.endpoint}/api/fs/list",
+                        headers={
+                            "Authorization": await self._get_token()
+                        },
+                        data={
+                            "path": str(root),
+                        }
+                    ) as resp:
+                        result = AlistResult(
+                            **await resp.json()
+                        )
+                        return ((result.data or {}).get("content", None) or [])
+            except:
+                logger.traceback()
+            finally:
+                pbar.update(1)
+            return []
 
-    async def __info_file(self, file_hash: str) -> AlistFileInfo:
-        r = await self._action_data(
+        sem = asyncio.Semaphore(self.list_concurrent)
+        results = set()
+        for result in await asyncio.gather(*(
+            get_files(root_id)
+            for root_id in Range()
+        )):
+            for file in result:
+                results.add(File(
+                    file["name"],
+                    file["size"],
+                    utils.parse_isotime_to_timestamp(file["modified"]),
+                    file["name"]
+                ))
+
+        return results
+    
+    async def __info_file(self, file: CollectionFile) -> AlistFileInfo:
+        r = await self.__action_data(
             "post",
             "/api/fs/get",
             {
-                "path": self.get_path(file_hash),
+                "path": str(self.get_path(file)),
                 "password": ""
             },
-            cache=False
         )
+        name = file.hash if isinstance(file, File) else str(file.size)
         if r.code == 500:
             return AlistFileInfo(
-                file_hash,
+                name,
                 -1,
                 False,
                 0,
@@ -341,100 +408,26 @@ class AlistStorage(iStorage):
             r.data["raw_url"]
         )
 
-    async def delete_file(self, file_hash: str) -> bool:
-        result = await self._action_data(
-            "post",
-            "/api/fs/remove",
-            {
-                "names": [
-                    file_hash
-                ],
-                "dir": self.get_path_dir(file_hash)
-            }
-        )
-        return result.code == 200
-    
-    async def exists(self, file_hash: str) -> bool:
-        info = await self.__info_file(file_hash)
-        return info.size != -1
-    
-    async def get_mtime(self, file_hash: str) -> float:
-        return (await self.__info_file(file_hash)).modified
-    
-    async def get_size(self, file_hash: str) -> int:
-        info = await self.__info_file(file_hash)
-        return max(0, info.size)
-
-    async def list_files(self, pbar: Optional[WrapperTQDM] = None) -> defaultdict[str, deque[File]]:
-        def update():
-            pbar.update(1) # type: ignore
-        def empty():
-            ...
-        update_tqdm = empty
-        if pbar is not None:
-            update_tqdm = update
-    
-        files: defaultdict[str, deque[File]] = defaultdict(deque)
-        async with aiohttp.ClientSession(
-            self.url,
-            headers={
-                "Authorization": await self._get_token()
-            }
-        ) as session:
-            for root_id in range(256):
-                try:
-                    async with session.post(
-                        "/api/fs/list",
-                        data={
-                            "path": str(self.get_path_dir(f"{root_id:02x}"))
-                        },
-                    ) as resp:
-                        result = AlistResult(
-                            **await resp.json()
-                        )
-                except:
-                    logger.traceback()
-                    continue
-                finally:
-                    update_tqdm()
-                if result.code != 200:
-                    logger.tdebug("storage.debug.error_alist", status=result.code, message=result.message)
-                for r in ((result.data or {}).get("content", None) or []):
-                    file = File(
-                        r["name"],
-                        r["size"],
-                        utils.parse_isotime_to_timestamp(r["modified"]),
-                        r["name"]
-                    )
-                    files[f"{root_id:02x}"].append(file)
-        return files
-    
-    async def read_file(self, file_hash: str) -> bytes:
-        info = await self.__info_file(file_hash)
+    async def read_file(self, file: File) -> io.BytesIO:
+        info = await self.__info_file(file)
         if info.size == -1:
-            return b''
-        async with aiohttp.ClientSession(
-            connector=self.download_connector
-        ) as session:
-            async with session.get(
-                info.raw_url
-            ) as resp:
-                return await resp.read()
-
-    async def get_url(self, file_hash: str) -> str:
-        cache = self.link_cache[file_hash]
-        if cache.expired:
-            info = await self.__info_file(file_hash)
-            cache.set_url('' if info.size == -1 else info.raw_url, self.link_cache_timeout)
-        return cache.url
-
-    async def write_file(self, file: File, content: bytes, mtime: float | None) -> bool:
-        result = await self._action_data(
+            return io.BytesIO()
+        async with self.session.get(
+            info.raw_url
+        ) as resp:
+            return io.BytesIO(await resp.read())
+        
+    async def get_url(self, file: CollectionFile) -> str:
+        info = await self.__info_file(file)
+        return '' if info.size == -1 else info.raw_url
+    
+    async def write_file(self, file: MeasureFile | File, content: io.BytesIO):
+        result = await self.__action_data(
             "put",
             "/api/fs/put",
-            content,
+            content.getbuffer(),
             {
-                "File-Path": urlparse.quote(self.get_path(file.hash))
+                "File-Path": str((self.get_path(file), print(self.get_path(file)))[0]),
             }
         )
         return result.code == 200
@@ -442,18 +435,27 @@ class AlistStorage(iStorage):
     async def close(self):
         await self.session.close()
 
-    async def raw_write_file(self, path: str, content: bytes, mtime: Optional[float]) -> bool:
-        path = self.get_real_path(path)
-        result = await self._action_data(
-            "put",
-            "/api/fs/put",
-            content,
+    async def delete_file(self, file: MeasureFile | File):
+        await self.__action_data(
+            "post",
+            "/api/fs/delete",
             {
-                "File-Path": urlparse.quote(f"{self.path}/{path}")
+                "path": str(self.get_path(file)),
+                "password": ""
             }
         )
-        return result.code == 200
 
+    async def exists(self, file: MeasureFile | File) -> bool:
+        info = await self.__info_file(file)
+        return info.size != -1
+    
+    async def get_mtime(self, file: MeasureFile | File) -> float:
+        return (await self.__info_file(file)).modified
+    
+    async def get_size(self, file: MeasureFile | File) -> int:
+        info = await self.__info_file(file)
+        return max(0, info.size)
+    
 @dataclass
 class WebDavFileInfo:
     created: float
@@ -480,143 +482,105 @@ class WebDavFile:
     
     def data_size(self) -> int:
         return len(self.data.getbuffer())
-    
 
-
-class WebDavStorage(iStorage):
-    type: str = "webdav"
-    def __init__(self, path: str, weight: int, url: str, username: str, password: str):
-        super().__init__(path, weight)
-        self.url = url.rstrip("/")
-        self.username = username
-        self.password = password
+class WebDavStorage(iNetworkStorage):
+    def __init__(self, path: str, username: str, password: str, endpoint: str, weight: int = 0, list_concurrent: int = 32):
+        super().__init__(path, username, password, endpoint, weight, list_concurrent)
         self.client = webdav3_client.Client({
-            "webdav_hostname": url,
+            "webdav_hostname": endpoint,
             "webdav_login": username,
             "webdav_password": password,
             "User-Agent": config.USER_AGENT
         })
         self.client_lock = asyncio.Lock()
-        self.cache = cache.TimeoutCache()
         self.session = aiohttp.ClientSession(
-            auth=aiohttp.BasicAuth(
-                self.username,
-                self.password
-            ),
+            auth=aiohttp.BasicAuth(username, password),
             headers={
                 "User-Agent": config.USER_AGENT
             }
         )
 
-
-    @property
-    def unique_id(self) -> str:
-        return hashlib.md5(f"{self.type},{self.url},{self.path}".encode()).hexdigest()
-    
-    async def list_files(self, pbar: Optional[WrapperTQDM] = None) -> defaultdict[str, deque[File]]:
-        def update():
-            pbar.update(1) # type: ignore
-        def empty():
-            ...
-        update_tqdm = empty
-        if pbar is not None:
-            update_tqdm = update
-    
-        files: defaultdict[str, deque[File]] = defaultdict(deque)
-        async def get_files(root_id: int):
-            root = self.get_path_dir(f"{root_id:02x}") + "/"
-            print(root)
+    async def list_files(self, pbar: WrapperTQDM) -> set[File]:
+        async def get_files(root_id: int) -> list[WebDavFileInfo]:
+            root = self.path / DOWNLOAD_DIR / f"{root_id:02x}"
             try:
-                result = await self.client.list(
-                    root,
-                    True
-                )
-                res = [WebDavFileInfo(
+                async with sem:
+                    result = await self.client.list(
+                        str(root),
+                        True
+                    )
+                return [WebDavFileInfo(
                     created=utils.parse_isotime_to_timestamp(r["created"]),
                     modified=utils.parse_gmttime_to_timestamp(r["modified"]),
                     name=r["name"],
                     size=int(r["size"])
                 ) for r in result if not r["isdir"]]
             except webdav3_exceptions.RemoteResourceNotFound:
-                return []
+                ...
             except:
                 logger.traceback()
-                return []
             finally:
-                update_tqdm()
-            return res
-        for root_id in range(256):
-            for r in await get_files(root_id):
-                files[f"{root_id:02x}"].append(File(
-                    name=r.name,
-                    hash=r.name,
-                    size=r.size,
-                    mtime=r.modified,
+                pbar.update(1)
+            return []
+
+        sem = asyncio.Semaphore(self.list_concurrent)
+        results = set()
+        for result in await asyncio.gather(*(
+            get_files(root_id)
+            for root_id in Range()
+        )):
+            for file in result:
+                results.add(File(
+                    name=file.name,
+                    hash=file.name,
+                    size=file.size,
+                    mtime=file.modified,
                 ))
-        return files
+
+        return results
     
-    async def delete_file(self, file_hash: str) -> bool:
-        await self.client.unpublish(self.get_path(file_hash))
-        return True
-    
-    async def exists(self, file_hash: str) -> bool:
-        return (await self._info_file(file_hash)).size != -1
-    
-    async def get_mtime(self, file_hash: str) -> float:
-        return (await self._info_file(file_hash)).modified
-    
-    async def _info_file(self, file_hash: str) -> WebDavFileInfo:
+    async def _info_file(self, file: CollectionFile) -> WebDavFileInfo:
+        key = hash(file)
+        if key in self.cache:
+            return self.cache[key]
         try:
-            res = await self.client.info(self.get_path(file_hash))
+            res = await self.client.info(str(self.get_path(file)))
         except:
             return WebDavFileInfo(
                 created=0,
                 modified=0,
-                name=file_hash,
+                name=file.hash if isinstance(file, File) else str(file.size),
                 size=-1
             )
-        return WebDavFileInfo(
+        result = WebDavFileInfo(
             created=utils.parse_isotime_to_timestamp(res["created"]),
             modified=utils.parse_gmttime_to_timestamp(res["modified"]),
             name=res["name"],
             size=int(res["size"])
         )
+        self.cache.set(key, result, 60)
+        return result
 
-    async def get_size(self, file_hash: str) -> int:
-        return (await self._info_file(file_hash)).size
+    async def get_mtime(self, file: MeasureFile | File) -> float:
+        return (await self._info_file(file)).modified
     
-    async def read_file(self, file_hash: str) -> bytes:
-        if (await self._info_file(file_hash)).size == -1:
-            return b""
+    async def get_size(self, file: MeasureFile | File) -> int:
+        return (await self._info_file(file)).size
+    
+    async def exists(self, file: MeasureFile | File) -> bool:
+        return (await self._info_file(file)).size != -1
+    
+    async def delete_file(self, file: MeasureFile | File):
+        await self.client.unpublish(str(self.get_path(file)))
+        return True
+    
+    async def read_file(self, file: File) -> io.BytesIO:
         data = io.BytesIO()
-        await self.client.download_from(data, self.get_path(file_hash))
-        return data.getvalue()
-
-    async def write_file(self, file: File, content: bytes, mtime: float | None) -> bool:
-        await self._mkdir(self.get_path(file.hash).rsplit("/", 1)[0])
-        try:
-            await self.client.upload_to(
-                io.BytesIO(content),
-                self.get_path(file.hash),
-            )
-        except:
-            logger.traceback()
-            return False
-        return True
+        if (await self._info_file(file)).size == -1:
+            return data
+        await self.client.download_from(data, str(self.get_path(file)))
+        return data
     
-    async def raw_write_file(self, path: str, content: bytes, mtime: Optional[float]) -> bool:
-        path = self.get_real_path(path)
-        await self._mkdir(path.rsplit("/", 1)[0])
-        try:
-            await self.client.upload_to(
-                io.BytesIO(content),
-                path,
-            )
-        except:
-            logger.traceback()
-            return False
-        return True
-
     async def _mkdir(self, dir: str):
         async with self.client_lock:
             d = ""
@@ -625,35 +589,31 @@ class WebDavStorage(iStorage):
                 if d:
                     await self.client.mkdir(d)
                 d += "/"
+
     
-    async def get_file(self, file_hash: str) -> WebDavFile:
+    async def get_file(self, file: CollectionFile) -> WebDavFile:
         # by old code
-        file = WebDavFile(
-            file_hash,
+        f = WebDavFile(
+            file.hash if isinstance(file, File) else str(file.size),
             0
         )
 
         # replace url to basic auth url
 
-        urlobject = urlparse.urlparse(f"{self.url}")
-        url = f"{urlobject.scheme}://{urlparse.quote(self.username)}:{urlparse.quote(self.password)}@{urlobject.hostname}:{urlobject.port}{urlobject.path}{self.get_path(file_hash)}"
-        file.url = url
-        return file
-
-
-        async with self.session.get(
-            f"{self.url}{self.get_path(file_hash)}",
-            allow_redirects=False
-        ) as resp:
-            file = WebDavFile(
-                file_hash,
-                resp.content_length or 0,
-            )
-            if resp.status == 200:
-                file.data = io.BytesIO(await resp.read())
-            elif resp.status // 100 == 3:
-                file.url = resp.headers["Location"]
-            else:
-                file.size = -1
-        return file
+        urlobject = urlparse.urlparse(f"{self.endpoint}")
+        url = f"{urlobject.scheme}://{urlparse.quote(self.username)}:{urlparse.quote(self.password)}@{urlobject.hostname}:{urlobject.port}{urlobject.path}{self.get_path(file)}"
+        f.url = url
+        return f
     
+    async def write_file(self, file: MeasureFile | File, content: io.BytesIO):
+        path = self.get_path(file)
+        await self._mkdir(str(path.parent))
+        try:
+            await self.client.upload_to(
+                content,
+                str(path),
+            )
+        except:
+            logger.traceback()
+            return False
+        return True

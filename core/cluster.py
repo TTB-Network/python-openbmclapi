@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 from . import web
 from . import utils, logger, config, scheduler, units, storages, i18n
-from .storages import File as SFile
+from .storages import File as SFile, MeasureFile
 import socketio
 import urllib.parse as urlparse
 from . import database as db
@@ -94,13 +94,15 @@ class StorageManager:
             self.check_available.acquire()
         
     async def __check_available(self, storage: storages.iStorage):
-        if not await storage.exists(CHECK_FILE_MD5):
+        file = MeasureFile(
+            0
+        )
+        if not await storage.exists(file):
             await storage.write_file(
-                convert_file_to_storage_file(CHECK_FILE),
-                CHECK_FILE_CONTENT.encode("utf-8"),
-                CHECK_FILE.mtime
+                file,
+                io.BytesIO(CHECK_FILE_CONTENT.encode("utf-8")),
             )
-        return await storage.get_size(CHECK_FILE_MD5) == len(CHECK_FILE_CONTENT)
+        return await storage.get_size(file) == len(CHECK_FILE_CONTENT)
 
     def add_storage(self, storage: storages.iStorage):
         self.storages.append(storage)
@@ -110,7 +112,7 @@ class StorageManager:
         return len(self.available_storages) > 0
     
     async def write_file(self, file: File, content: bytes):
-        return all(await asyncio.gather(*(asyncio.create_task(storage.write_file(convert_file_to_storage_file(file), content, file.mtime)) for storage in self.available_storages)))
+        return all(await asyncio.gather(*(asyncio.create_task(storage.write_file(convert_file_to_storage_file(file), io.BytesIO(content))) for storage in self.available_storages)))
 
     async def get_missing_files(self, files: set[File]) -> set[File | Any]:
         function = None
@@ -145,13 +147,15 @@ class StorageManager:
                 waiting_files.put_nowait(file)
             
             await asyncio.gather(*(self._get_missing_file_storage(function, missing_files, waiting_files, storage, pbar) for storage in self.available_storages))
+            
+            # clear cache_list
+            self.cache_filelist.clear()
             return missing_files
     
     async def get_storage_filelist(self, storage: storages.iStorage, pbar: WrapperTQDM):
         result = await storage.list_files(pbar)
-        for files in result.values():
-            for file in files:
-                self.cache_filelist[storage][file.hash] = file
+        for file in result:
+            self.cache_filelist[storage][file.hash] = file
         return result
 
     async def _get_missing_file_storage(self, function: Callable[..., Coroutine[Any, Any, bool]], missing_files: set[File], files: asyncio.Queue[File], storage: storages.iStorage, pbar: WrapperTQDM):
@@ -168,53 +172,59 @@ class StorageManager:
         if storage in self.cache_filelist:
             file_hash = file.hash
             return file_hash in self.cache_filelist[storage]
-        return await storage.exists(file.hash)
+        return await storage.exists(convert_file_to_storage_file(file))
     async def _check_size(self, file: File, storage: storages.iStorage):
         if storage in self.cache_filelist:
             file_hash = file.hash
             return file_hash in self.cache_filelist[storage] and self.cache_filelist[storage][file_hash].size == file.size
-        return await self._check_exists(file, storage) and await storage.get_size(file.hash) == file.size
+        return await self._check_exists(file, storage) and await storage.get_size(convert_file_to_storage_file(file)) == file.size
     async def _check_hash(self, file: File, storage: storages.iStorage):
-        return await self._check_exists(file, storage) and utils.equals_hash(file.hash, await storage.read_file(file.hash))
+        return await self._check_exists(file, storage) and utils.equals_hash(file.hash, (await storage.read_file(convert_file_to_storage_file(file))).getvalue())
 
     async def get_file(self, hash: str, use_master: bool = False):
         file = None
+        storage_file = SFile(
+            hash,
+            0,
+            0,
+            hash
+        )
         if await self.available() and not use_master:
             storage = self.get_width_storage()
-            if isinstance(storage, storages.LocalStorage) and await storage.exists(hash):
+            if isinstance(storage, storages.LocalStorage) and await storage.exists(storage_file):
                 file = LocalStorageFile(
                     hash,
-                    await storage.get_size(hash),
-                    await storage.get_mtime(hash),
+                    await storage.get_size(storage_file),
+                    await storage.get_mtime(storage_file),
                     storage,
-                    Path(storage.get_path(hash))
+                    Path(str(storage.get_path(storage_file)))
                 )
             elif isinstance(storage, storages.AlistStorage):
                 file = URLStorageFile(
                     hash,
-                    await storage.get_size(hash),
-                    await storage.get_mtime(hash),
+                    await storage.get_size(storage_file),
+                    await storage.get_mtime(storage_file),
                     storage,
-                    await storage.get_url(hash)
+                    await storage.get_url(storage_file)
                 )
             elif isinstance(storage, storages.WebDavStorage):
-                storage_file = await storage.get_file(
-                    hash
+                result_file = await storage.get_file(
+                    storage_file
                 )
-                if storage_file.data_size() == 0 and storage_file.url:
+                if result_file.data_size() == 0 and result_file.url:
                     file = URLStorageFile(
                         hash,
-                        await storage.get_size(hash),
-                        await storage.get_mtime(hash),
+                        await storage.get_size(storage_file),
+                        await storage.get_mtime(storage_file),
                         storage,
-                        storage_file.url
+                        result_file.url
                     )
-                if storage_file.data_size() > 0:
+                if result_file.data_size() > 0:
                     file = MemoryStorageFile(
                         hash,
-                        await storage.get_size(hash),
-                        await storage.get_mtime(hash),
-                        storage_file.data.getvalue()
+                        await storage.get_size(storage_file),
+                        await storage.get_mtime(storage_file),
+                        result_file.data.getvalue()
                     )
         if isinstance(file, URLStorageFile) and not file.url:
             file = None
@@ -616,15 +626,22 @@ class ClusterManager:
         return self.cluster_id_tables.get(id or "", None)
 
     def byoc(self):
-        if config.const.ssl_cert and config.const.ssl_key:
-            main = ClusterCertificate(
-                config.const.host,
-                Path(config.const.ssl_cert),
-                Path(config.const.ssl_key)
-            )
-            if main.is_valid:
-                return True
-        return False
+        return self.main_certificate is not None
+
+    @property
+    def main_certificate(self):
+        if not config.const.ssl_cert or not config.const.ssl_key:
+            return None
+        main = ClusterCertificate(
+            config.const.host,
+            Path(config.const.ssl_cert),
+            Path(config.const.ssl_key)
+        )
+        if not main.is_valid:
+            return None
+        return main
+        
+
 
     async def get_certificates(self, cluster_id: Optional[str] = None):
         if config.const.ssl_cert and config.const.ssl_key:
@@ -1046,19 +1063,17 @@ async def init_measure_file(
     size: int,
     hash: str
 ):
-    file = File(
-        hash,
-        hash,
-        size * 1024 * 1024,
-        946684800000
+    storage_file = MeasureFile(
+        size,
     )
     try:
-        if await storage.exists(hash) and await storage.get_size(hash) == size * 1024 * 1024:
+        if await storage.exists(storage_file) and await storage.get_size(storage_file) == size * 1024 * 1024:
             return True
         await storage.write_file(
-            convert_file_to_storage_file(file),
-            MEASURE_BUFFER * 1024 * 1024 * size,
-            file.mtime
+            storage_file,
+            io.BytesIO(
+                MEASURE_BUFFER * 1024 * 1024 * size
+            )
         )
         return True
     except:
@@ -1091,9 +1106,9 @@ async def init():
         if type == "local":
             storage = storages.LocalStorage(cstorage['path'], cstorage.get("weight", 0))
         elif type == "alist":
-            storage = storages.AlistStorage(cstorage['path'], cstorage.get("weight", 0), cstorage['url'], cstorage['username'], cstorage['password'], cstorage.get('link_cache_expires', None))
+            storage = storages.AlistStorage(cstorage['path'], cstorage.get("username"), cstorage['password'], cstorage['endpoint'], cstorage.get('weight', 0), cstorage.get('link_concurrent', 32))
         elif type == "webdav":
-            storage = storages.WebDavStorage(cstorage['path'], cstorage.get("weight", 0), cstorage['url'], cstorage['username'], cstorage['password'])
+            storage = storages.WebDavStorage(cstorage['path'], cstorage.get("username"), cstorage['password'], cstorage['endpoint'], cstorage.get('weight', 0), cstorage.get('link_concurrent', 32))
         else:
             logger.terror("cluster.error.unspported_storage", type=type, path=cstorage['path'])
             continue
@@ -1137,21 +1152,24 @@ async def _(request: aweb.Request):
         if not check_sign(f"/measure/{size}", s, e):
             return aweb.Response(status=403)
         cluster_id = get_cluster_id_from_sign(f"/measure/{size}", s, e)
+        file = MeasureFile(
+            size
+        )
         if config.const.measure_storage:
             init_measure_block(size)
             await init_measure_files()
             storage = clusters.storage_manager.storages[0]
             if isinstance(storage, storages.AlistStorage):
-                url = await storage.get_url(MEASURES_HASH[size])
+                url = await storage.get_url(file)
                 logger.debug("Requested measure url:", url)
                 if url:
                     return aweb.HTTPFound(url)
             elif isinstance(storage, storages.LocalStorage):
                 return aweb.FileResponse(
-                    Path(storage.get_path(MEASURES_HASH[size]))
+                    Path(str(storage.get_path(file)))
                 )
             elif isinstance(storage, storages.WebDavStorage):
-                file = await storage.get_file(MEASURES_HASH[size])
+                file = await storage.get_file(file)
                 if file.url:
                     logger.debug("Requested measure url:", file.url)
                     return aweb.HTTPFound(file.url)

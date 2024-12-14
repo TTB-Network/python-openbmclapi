@@ -278,10 +278,10 @@ def init_storages_key(*storage: storages.iStorage):
     for s in storage:
         data = {
             "type": s.type,
-            "path": s.path,
+            "path": str(s.path),
         }
         if isinstance(s, storages.AlistStorage):
-            data["url"] = s.url
+            data["url"] = s.endpoint
         content = json.dumps(data, separators=(',', ':'))
         
         q = session.query(StorageUniqueIDTable).filter(StorageUniqueIDTable.unique_id == s.unique_id)
