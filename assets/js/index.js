@@ -317,7 +317,6 @@ class SwitchElement extends Element {
                 display: inline-block;
                 flex: 1 1 auto;
                 white-space: nowrap;
-                overflow-x: hidden;
                 width: 100%;
             `,
             ".switch-main": {
@@ -391,6 +390,20 @@ class SwitchElement extends Element {
             this._render();
         })
         return this;
+    }
+    removeButtons(...button) {
+        // remove of button value
+        for (let button_value of button) {
+            this._buttons = this._buttons.filter(e => e != button_value);
+        }
+        if (this._render_task) return this;
+        this._render_task = requestAnimationFrame(() => {
+            this._render();
+        })
+        return this;
+    }
+    getInstanceButtons() {
+        return this.$buttons;
     }
     _render() {
         this._render_task = null;
@@ -626,12 +639,6 @@ $i18n.addLanguageTable("zh_CN", {
     "switch.dashboard.storage.webdav": "WebDAV [%path% (%url%)]",
     "unit.hour": "%value% 时",
     "unit.day": "%value% 天",
-    "dashboard.title.storage.today.hits": "今日下载数",
-    "dashboard.title.storage.today.bytes": "今日下载量",
-    "dashboard.title.storage.30days.hits": "30 天下载数",
-    "dashboard.title.storage.30days.bytes": "30 天下载量",
-    "dashboard.value.storage.hits": "下载数",
-    "dashboard.value.storage.bytes": "下载量",
     "dashboard.title.qps": "5 分钟请求数",
     "switch.dashboard.cluster.:all:": "所有节点"
 
@@ -797,6 +804,7 @@ $style.addAll({
         "padding": "9px",
         "margin-bottom": "24px",
         "margin-left": "16px",
+        "overflow": "auto"
     },
     "main": {
         "padding": "32px 32px 32px 16px",
@@ -1192,171 +1200,104 @@ async function load() {
                 $dashboard_locals.cluster_switch = new SwitchElement().addButtons("switch.dashboard.cluster.:all:").addEventListener("change", (event) => { 
                 })
                 $dashboard_locals.storage_echarts = {}
-                $dashboard_locals.statistics_data = ref({}, {
-                    timeout: 20,
-                    handler: (object) => {
-                        object = object.object;
-                        var current = object.current || "total"
-                        var data = object[current] || {}
-                        for (const [key, values] of Object.entries({
-                            "today_hits": [
-                                data.hourly_hits, (n) => $i18n.t("unit.hour", { value: n }), Tools.formatSimpleNumber, $i18n.t("dashboard.value.storage.hits")
-                            ],
-                            "today_bytes": [
-                                data.hourly_bytes, (n) => $i18n.t("unit.hour", { value: n }), Tools.formatBytes, $i18n.t("dashboard.value.storage.bytes")
-                            ],
-                            "days_hits": [
-                                data.daily_hits, (n) => n, Tools.formatSimpleNumber, $i18n.t("dashboard.value.storage.hits")
-                            ],
-                            "days_bytes": [
-                                data.daily_bytes, (n) => n, Tools.formatBytes, $i18n.t("dashboard.value.storage.bytes") 
-                            ]
-                        })) {
-                            var [value, key_unit, value_formatter, i18n] = values;
-                            if (!value) continue;
-                            if (key.startsWith("today")) {
-                                for (let i = 0; i < 24; i++) {
-                                    if (value[i]) continue
-                                    value[i] = 0
-                                }
-                                value = Object.fromEntries(
-                                    Object.keys(value).sort((a, b) => parseInt(a) - parseInt(b)).map(v => [v, value[v]])
-                                )
-                            } else {
-                                var server_time = $dashboard_locals.info_runtime
-                                var latest_time = (() => {
-                                    const data = value;
-                                    const keys = Object.keys(data);
-                                    const res = [];
-                                    for (let i = 0; i < keys.length; i++) {
-                                        res.push(+new Date(keys[i] + "T00:00:00.000Z"));
-                                    }
-                                    return Math.max(...res);
-                                })();
-                                // object.current_time - object.start_time - object.diff / 1000.0 + (+new Date() - object.resp_timestamp) / 1000.0;
-                                var time = server_time.current_time - server_time.diff / 1000.0 + (+new Date() - server_time.resp_timestamp) / 1000.0;
-                                const previous = (time + (time % (24 * 3600)) - 86400 * 30);
-                                const res = {}
-                                for (let i = 0; i < 30; i++) {
-                                    var d = Tools.formatDate(new Date((previous + i * 86400) * 1000.0))
-                                    if (value[d]) res[d] = value[d]
-                                    else res[d] = 0
-                                }
-                                value = res
-                            }
-                            var option = {
-                                color: [
-                                    $style.getThemeValue("echarts-color-0"),
-                                ],
-                                xAxis: {
-                                    data: Object.keys(value).map(
-                                        key_unit
-                                    ),
-                                },
-                                yAxis: {
-                                    max: Math.max(10, ...Object.values(value)),
-                                },
-                                series: [{
-                                    name: i18n,
-                                    data: Object.values(value),
-                                    type: 'line',
-                                    smooth: true,
-                                }]
-                            }
-                            $dashboard_locals.storage_echarts[key].base.setFormatter(value_formatter)
-                            $dashboard_locals.storage_echarts[key].base.setOption(option)
-                        }
+                $dashboard_locals.storage_data = ref({}, {
+                    timeout: 50,
+                    handler(obj) {
+                        console.log(obj)
                     }
                 })
-                $dashboard_locals.storage_info = createElement("div").append(
-                    Tools.createFlexElement().append(
-                        Tools.createPanel(({
-                            panel
+                $dashboard_locals.storages_info = Tools.createFlexElement().append(
+                    Tools.createPanel(({
+                        panel
+                    }) => {
+                        var instance = Tools.createEchartElement(({
+                            echart, base
                         }) => {
-                            var instance = Tools.createEchartElement(({
+                            base.style("min-height", "180px")
+                            base.style("width", "100%")
+                            $dashboard_locals.storage_echarts.storage_today = {
                                 echart, base
-                            }) => {
-                                base.style("min-height", "180px")
-                                base.style("width", "100%")
-                                $dashboard_locals.storage_echarts.today_hits = {
-                                    echart, base
-                                }
-                            })
-                            panel.append(
-                                createElement("p").classes("title").i18n("dashboard.title.storage.today.hits"),
-                                instance
-                            )
-                        }),
-                        Tools.createPanel(({
-                            panel
-                        }) => {
-                            var instance = Tools.createEchartElement(({
-                                echart, base
-                            }) => {
-                                base.style("min-height", "180px")
-                                base.style("width", "100%")
-                                $dashboard_locals.storage_echarts.today_bytes = {
-                                    echart, base
-                                }
-                            })
-                            panel.append(
-                                createElement("p").classes("title").i18n("dashboard.title.storage.today.bytes"),
-                                instance
-                            )
+                            }
                         })
-                    ).child(2).minWidth(900),
-                    Tools.createFlexElement().append(
-                        Tools.createPanel(({
-                            panel
+                        panel.append(
+                            createElement("p").classes("title").i18n("dashboard.title.storage.today"),
+                            instance
+                        )
+                    }),
+                    Tools.createPanel(({
+                        panel
+                    }) => {
+                        var instance = Tools.createEchartElement(({
+                            echart, base
                         }) => {
-                            var instance = Tools.createEchartElement(({
+                            base.style("min-height", "180px")
+                            base.style("width", "100%")
+                            $dashboard_locals.storage_echarts.storage_30days = {
                                 echart, base
-                            }) => {
-                                base.style("min-height", "180px")
-                                base.style("width", "100%")
-                                $dashboard_locals.storage_echarts.days_hits = {
-                                    echart, base
-                                }
-                            })
-                            panel.append(
-                                createElement("p").classes("title").i18n("dashboard.title.storage.30days.hits"),
-                                instance
-                            )
-                        }),
-                        Tools.createPanel(({
-                            panel
-                        }) => {
-                            var instance = Tools.createEchartElement(({
-                                echart, base
-                            }) => {
-                                base.style("min-height", "180px")
-                                base.style("width", "100%")
-                                $dashboard_locals.storage_echarts.days_bytes = {
-                                    echart, base
-                                }
-                            })
-                            panel.append(
-                                createElement("p").classes("title").i18n("dashboard.title.storage.30days.bytes"),
-                                instance
-                            )
+                            }
                         })
-                    ).child(2).minWidth(900)
+                        panel.append(
+                            createElement("p").classes("title").i18n("dashboard.title.storage.30days"),
+                            instance
+                        )
+                    }),
+                ).child(2).minWidth(720)
+
+                $dashboard_locals.clusters_info = Tools.createFlexElement().append(
+                    Tools.createPanel(({
+                        panel
+                    }) => {
+                        var instance = Tools.createEchartElement(({
+                            echart, base
+                        }) => {
+                            base.style("min-height", "180px")
+                            base.style("width", "100%")
+                            $dashboard_locals.storage_echarts.cluster_today = {
+                                echart, base
+                            }
+                        })
+                        panel.append(
+                            createElement("p").classes("title").i18n("dashboard.title.cluster.today"),
+                            instance
+                        )
+                    }),
+                    Tools.createPanel(({
+                        panel
+                    }) => {
+                        var instance = Tools.createEchartElement(({
+                            echart, base
+                        }) => {
+                            base.style("min-height", "180px")
+                            base.style("width", "100%")
+                            $dashboard_locals.storage_echarts.cluster_30days = {
+                                echart, base
+                            }
+                        })
+                        panel.append(
+                            createElement("p").classes("title").i18n("dashboard.title.cluster.30days"),
+                            instance
+                        )
+                    }),
+                ).child(2).minWidth(720)
+
+                var statistics = createElement("div").append(
+                    createElement("div").classes("pre-switch-container").append(
+                        $dashboard_locals.storage_switch.select(0),
+                    ),
+                    $dashboard_locals.storages_info,
+                    createElement("div").classes("pre-switch-container").append(
+                        $dashboard_locals.cluster_switch.select(0),
+                    ),
+                    $dashboard_locals.clusters_info
                 )
-                var storage_observer_task = null;
-                var storage_observer = new ResizeObserver(() => {
-                    if (storage_observer_task != null) clearTimeout(storage_observer_task)
-                    storage_observer_task = setTimeout(() => {
-                        for (const instance of [
-                            "days_hits",
-                            "days_bytes",
-                            "today_hits",
-                            "today_bytes"
-                        ]) {
-                            $dashboard_locals.storage_echarts[instance].echart.resize()
-                        }
-                    }, 100)
+
+                var observer = new ResizeObserver(() => {
+                    for (var instance of Object.values($dashboard_locals.storage_echarts)) {
+                        instance.echart.resize();
+                    }
                 })
-                storage_observer.observe($dashboard_locals.storage_info.origin)
+
+                observer.observe(statistics.origin);
 
                 // push all elements
                 basic.push(
@@ -1364,13 +1305,8 @@ async function load() {
                         info_collection,
                         $dashboard_locals.basic_qps
                     ),
-                    createElement("div").classes("pre-switch-container").append(
-                        $dashboard_locals.storage_switch.select(0),
-                        $dashboard_locals.cluster_switch.select(0)
-                    ),
-                    $dashboard_locals.storage_info
+                    statistics
                 )
-
             })();
             const init_echarts = () => {
                 var option = {
@@ -1436,38 +1372,38 @@ async function load() {
                     qps.echart.setOption(option)
                 }
 
-                for (const instance of [
-                    "days_hits",
-                    "days_bytes",
-                    "today_hits",
-                    "today_bytes"
-                ]) {
-                    var option = {
-                        /*color: [
-                            $style.getThemeValue("echarts-color-0"),
-                        ],*/
-                        tooltip: {
-                            trigger: 'axis'
-                        },
-                        grid: {
-                            left: '3%',
-                            right: '4%',
-                            bottom: '3%',
-                            top: '20%',
-                            containLabel: true
-                        },
-                        xAxis: {
-                            type: 'category',
-                        },
-                        yAxis: {
-                            type: 'value',
-                            min: 1,
-                            max: 10
-                        },
-                        series: []
-                    };
-                    $dashboard_locals.storage_echarts[instance].echart.setOption(option)
-                }
+                // for (const instance of [
+                //     "days_hits",
+                //     "days_bytes",
+                //     "today_hits",
+                //     "today_bytes"
+                // ]) {
+                //     var option = {
+                //         /*color: [
+                //             $style.getThemeValue("echarts-color-0"),
+                //         ],*/
+                //         tooltip: {
+                //             trigger: 'axis'
+                //         },
+                //         grid: {
+                //             left: '3%',
+                //             right: '4%',
+                //             bottom: '3%',
+                //             top: '20%',
+                //             containLabel: true
+                //         },
+                //         xAxis: {
+                //             type: 'category',
+                //         },
+                //         yAxis: {
+                //             type: 'value',
+                //             min: 1,
+                //             max: 10
+                //         },
+                //         series: []
+                //     };
+                //     $dashboard_locals.storage_echarts[instance].echart.setOption(option)
+                // }
             }
             // share 
             (() => {
@@ -1496,7 +1432,6 @@ async function load() {
                 }, 5000)
                 window.addEventListener("theme-changed", () => {
                     $dashboard_locals.qps_data.resp = $dashboard_locals.qps_data.resp;
-                    $dashboard_locals.statistics_data.refresh = true;
                 })
             })();
 
@@ -1528,101 +1463,91 @@ async function load() {
                         $dashboard_locals.container.append(
                             ...$dashboard_locals.basic
                         )
-                        clearInterval($dashboard_locals.storage_info_task)
-                        $dashboard_locals.storage_info_task = Tools.runTask(setInterval, async () => {
-                            var hourly = await $channel.send("storage_statistics_hourly")
-                            var daily = await $channel.send("storage_statistics_daily")
-                            // remove "None"
-                            delete hourly["None"]
-                            delete daily["None"]
-                            var storage = {
+                        clearInterval($dashboard_locals.statistics_task)
+                        $dashboard_locals.statistics_task = Tools.runTask(setInterval, async () => {
+                            // 并发获取
+                            const responses = {}
+                            for (const key of ["storage_statistics_daily", "cluster_statistics_daily", "storage_statistics_hourly", "cluster_statistics_hourly"])
+                                responses[key] = await $channel.send(key);
         
-                            }
-                            //console.log(hourly, daily)
-                            for (const [key, data] of Object.entries({
-                                "hits": {
-                                    "daily": Object.entries(daily),
-                                    "hourly": Object.entries(hourly)
-                                },
-                                "bytes": {
-                                    "daily": Object.entries(daily),
-                                    "hourly": Object.entries(hourly)
-                                }
-                            })) {
-                                for (const [time, values] of Object.entries(data)) {
-                                    for (const [storage_id, value] of values) {
-                                        if (!storage[storage_id]) storage[storage_id] = {}
-                                        var key_time = `${time}_${key}`
-                                        if (!storage[storage_id][key_time]) storage[storage_id][key_time] = {}
-                                        for (const val of value) {
-                                            var v = storage[storage_id][key_time][val._] || 0;
-                                            storage[storage_id][key_time][val._] = v + val[key]
+                            // set fileinfo 
+                            var temp_response = {};
+                            for (const statistics_type of ["storage", "cluster"]) {
+                                for (const time_type of ["hourly", "daily"]) {
+                                    const data = responses[`${statistics_type}_statistics_${time_type}`]
+                                    // delete without "null" and "None"
+                                    for (const delete_key of ["null", "None"]) {
+                                        delete data[delete_key]
+                                    }
+                                    for (const [key, values] of Object.entries(data)) {
+                                        var rdata = {};
+                                        for (const value of values) {
+                                            if (rdata[value._] === undefined) rdata[value._] = {}
+                                            for (const key of ["hits", "bytes"]) {
+                                                rdata[value._][key] = (rdata[value._][key] || 0) + value[key]
+                                            }
+                                        }
+                                        if (temp_response[statistics_type] === undefined) temp_response[statistics_type] = {}
+                                        if (temp_response[statistics_type][key] === undefined) temp_response[statistics_type][key] = {}
+                                        temp_response[statistics_type][key][time_type] = rdata
+                                        if (temp_response[statistics_type][":all:"] === undefined) temp_response[statistics_type][":all:"] = {}
+                                        if (temp_response[statistics_type][":all:"][time_type] === undefined) temp_response[statistics_type][":all:"][time_type] = {}
+                                        for (const [time, value] of Object.entries(rdata)) {
+                                            for (const key of ["hits", "bytes"]) {
+                                                if (temp_response[statistics_type][":all:"][time_type][time] === undefined) temp_response[statistics_type][":all:"][time_type][time] = {}
+                                                temp_response[statistics_type][":all:"][time_type][time][key] = (temp_response[statistics_type][":all:"][time_type][time][key] || 0) + value[key]
+                                            }
                                         }
                                     }
                                 }
                             }
-                            var total = {
-                                hourly_bytes: {},
-                                daily_bytes: {},
-                                hourly_hits: {},
-                                daily_hits: {}
-                            }
-                            for (const data of Object.values(storage)) {
-                                for (const [key, values] of Object.entries(data)) {
-                                    for (const [time, value] of Object.entries(values)) {
-                                        var v = total[key][time] || 0;
-                                        total[key][time] = v + value
+                            (() => {
+                                var hourly = responses.cluster_statistics_hourly
+                                var daily = responses.cluster_statistics_daily
+                                var rdata = {}
+                                for (const [
+                                    key, val
+                                ] of Object.entries({
+                                    "hourly_hits": ["hits", hourly],
+                                    "hourly_bytes": ["bytes", hourly],
+                                    "daily_hits": ["hits", daily],
+                                    "daily_bytes": ["bytes", daily],
+                                })) {
+                                    rdata[key] = Object.values(val[1]).map((obj) => obj.reduce((a, b) => a + b[val[0]], 0)).reduce((a, b) => a + b, 0)
+                                }
+                                // first hits
+                                for (const {
+                                    handler, obj, data
+                                 } of [
+                                    {
+                                         handler: Tools.formatSimpleNumber,
+                                         obj: $dashboard_locals.files_info_today_hits,
+                                         data: rdata.hourly_hits
+                                    },
+                                    {
+                                         handler: Tools.formatSimpleNumber,
+                                         obj: $dashboard_locals.files_info_30days_hits,
+                                         data: rdata.daily_hits
+                                    },
+                                    {
+                                         handler: Tools.formatBytes,
+                                         obj: $dashboard_locals.files_info_today_bytes,
+                                         data: rdata.hourly_bytes
+                                    },
+                                    {
+                                        handler: Tools.formatBytes,
+                                        obj: $dashboard_locals.files_info_30days_bytes,
+                                        data: rdata.daily_bytes
                                     }
+                                ]) {
+                                    var formatted = handler(data)
+                                    obj.value = formatted
                                 }
+                            })();
+                            for (const [statistics_type, data] of Object.entries(temp_response)) {
+                                $dashboard_locals.storage_data[statistics_type] = data
                             }
-                            $dashboard_locals.statistics_data.total = total;
-                            $dashboard_locals.statistics_data.storages = storage;
-                        }, 60000)
-                        clearInterval($dashboard_locals.basic_task_file_info)
-                        $dashboard_locals.basic_task_file_info = Tools.runTask(setInterval, async () => {
-                            var hourly = await $channel.send("cluster_statistics_hourly")
-                            var daily = await $channel.send("cluster_statistics_daily")
-                            var rdata = {}
-                            for (const [
-                                key, val
-                            ] of Object.entries({
-                                "hourly_hits": ["hits", hourly],
-                                "hourly_bytes": ["bytes", hourly],
-                                "daily_hits": ["hits", daily],
-                                "daily_bytes": ["bytes", daily],
-                            })) {
-                                rdata[key] = Object.values(val[1]).map((obj) => obj.reduce((a, b) => a + b[val[0]], 0)).reduce((a, b) => a + b, 0)
-                            }
-                            // first hits
-                            for (const {
-                                handler, obj, data
-                             } of [
-                                {
-                                     handler: Tools.formatSimpleNumber,
-                                     obj: $dashboard_locals.files_info_today_hits,
-                                     data: rdata.hourly_hits
-                                },
-                                {
-                                     handler: Tools.formatSimpleNumber,
-                                     obj: $dashboard_locals.files_info_30days_hits,
-                                     data: rdata.daily_hits
-                                },
-                                {
-                                     handler: Tools.formatBytes,
-                                     obj: $dashboard_locals.files_info_today_bytes,
-                                     data: rdata.hourly_bytes
-                                },
-                                {
-                                    handler: Tools.formatBytes,
-                                    obj: $dashboard_locals.files_info_30days_bytes,
-                                    data: rdata.daily_bytes
-                                }
-                            ]) {
-                                var formatted = handler(data)
-                                obj.value = formatted
-                            }
-                            
-                        }, 10000)
+                        }, 30000)
                         clearInterval($dashboard_locals.basic_task_system_info)
                         $dashboard_locals.basic_task_system_info = Tools.runTask(setInterval, async () => {
                             var resp = await $channel.send("systeminfo")
@@ -1631,11 +1556,11 @@ async function load() {
                             $dashboard_locals.system_info_cpu.value = resp.cpu.toFixed(1) + "%"
                             $dashboard_locals.system_info_cpu_load.value = resp.loads.toFixed(1) + "%"
                         }, 1000)
-                        /*$channel.send("storage_keys").then((resp) => {
+                        $channel.send("storage_keys").then((resp) => {
                             $dashboard_locals.storage_switch.addButtons(
                                 ...resp.map((val) => "switch.dashboard.storage." + val.data.type)
                             )
-                        })*/
+                        })
 
                     } else {
                         $dashboard_locals.container.append(
@@ -1645,7 +1570,6 @@ async function load() {
                     requestAnimationFrame(() => {
                         if ($dashboard_locals.qps_data.resp)
                             $dashboard_locals.qps_data.resp = $dashboard_locals.qps_data.resp;
-                        $dashboard_locals.statistics_data.refresh = true;
                     })
                 }).select(0)
             )
@@ -1661,17 +1585,13 @@ async function load() {
         const $dashboard_locals = $menu_variables.dashboard;
         if (!$dashboard_locals) return;
         $dashboard_locals.basic_qps_echart.echart.clear()
-        for (const instance of Object.values($dashboard_locals.storage_echarts)) {
-            instance.echart.clear()
-        }
     }
 
     const clearDashboardTask = (all = false) => {
         const $dashboard_locals = $menu_variables.dashboard;
         if (!$dashboard_locals) return;
-        clearInterval($dashboard_locals.basic_task_file_info)
         clearInterval($dashboard_locals.basic_task_system_info)
-        clearInterval($dashboard_locals.storage_info_task)
+        clearInterval($dashboard_locals.statistics_task)
         if (!all) return;
         clearInterval($dashboard_locals.info_runtime_task)
         clearInterval($dashboard_locals.qps_task)

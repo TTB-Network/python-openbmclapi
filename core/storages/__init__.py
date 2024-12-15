@@ -3,13 +3,15 @@ import asyncio
 from collections import deque
 from dataclasses import dataclass, field
 import hashlib
+import inspect
 import io
 from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
 import time
-from typing import Any, Optional
+from typing import Any, Optional, TypeVar
 
+import aiofiles
 import aiohttp
 
 from core import cache, config, logger
@@ -102,7 +104,7 @@ class FilePath(object):
 
 
 CollectionFile = MeasureFile | File
-Range = lambda: range(256)
+Range = lambda: range(0, 256)
 
 
 class iStorage(metaclass=abc.ABCMeta):
@@ -112,7 +114,12 @@ class iStorage(metaclass=abc.ABCMeta):
         self.weight = weight
         self.list_concurrent = list_concurrent
         self.current_weight = 0
-        
+    
+    @staticmethod
+    @abc.abstractmethod
+    def from_config(config: dict[str, Any]):
+        raise NotImplementedError("from_config not implemented")
+
     @property
     @abc.abstractmethod
     def unique_id(self):
@@ -162,6 +169,13 @@ class LocalStorage(iStorage):
         super().__init__(path, weight, list_concurrent)
         self.async_executor = ThreadPoolExecutor(max_workers=list_concurrent)
 
+    @staticmethod
+    def from_config(config: dict[str, Any]):
+        path = config["path"]
+        weight = config.get("weight", 0)
+        list_concurrent = config.get("list_concurrent", 32)
+        return LocalStorage(path, weight, list_concurrent)
+
     @property
     def unique_id(self):
         return hashlib.md5(f"{self.type},{self.path}".encode("utf-8")).hexdigest()
@@ -199,8 +213,8 @@ class LocalStorage(iStorage):
         parent_path = Path(str(parent))
         parent_path.mkdir(parents=True, exist_ok=True)
         file_path = Path(str(path))
-        with open(file_path, "wb") as f:
-            await self._to_coroutine(f.write, content.read())
+        async with aiofiles.open(file_path, "wb") as f:
+            await f.write(await self._to_coroutine(content.read))
 
     async def read_file(self, file: File) -> io.BytesIO:
         path = self.get_path(file)
@@ -223,7 +237,6 @@ class LocalStorage(iStorage):
     async def get_mtime(self, file: CollectionFile) -> float:
         path = self.get_path(file)
         return os.path.getmtime(Path(str(path)))
-
 
 class iNetworkStorage(iStorage):
 
@@ -267,15 +280,30 @@ class AlistError(Exception):
 class AlistStorage(iNetworkStorage):
     type = "alist"
 
-    def __init__(self, path: str, username: str, password: str, endpoint: str, weight: int = 0, list_concurrent: int = 32, retry: int = 3):
+    def __init__(self, path: str, username: str, password: str, endpoint: str, weight: int = 0, list_concurrent: int = 32, retries: int = 3, public_webdav_endpoint: str = ""):
         super().__init__(path, username, password, endpoint, weight, list_concurrent)
-        self.retry = retry
+        self.retries = retries
         self.last_token: Optional[AlistToken] = None
         self.session = aiohttp.ClientSession(
             headers={
                 "User-Agent": config.USER_AGENT
             }
         )
+        if public_webdav_endpoint:
+            urlobject = urlparse.urlparse(public_webdav_endpoint)
+            self._public_webdav_endpoint = f"{urlobject.scheme}://{urlparse.quote(self.username)}:{urlparse.quote(self.password)}@{urlobject.netloc}{urlobject.path}"
+
+    @staticmethod
+    def from_config(config: dict[str, Any]):
+        path = config["path"]
+        username = config["username"]
+        password = config["password"]
+        endpoint = config["endpoint"]
+        weight = config.get("weight", 0)
+        list_concurrent = config.get("list_concurrent", 32)
+        retries = config.get("retries", 3)
+        public_webdav_endpoint = config.get("public_webdav_endpoint", "")
+        return AlistStorage(path, username, password, endpoint, weight, list_concurrent, retries, public_webdav_endpoint)
 
     async def _get_token(self):
         if self.last_token is None or self.last_token.expires < time.monotonic():
@@ -297,15 +325,16 @@ class AlistStorage(iNetworkStorage):
             raise AlistError(AlistResult(500, "Failed to fetch token", None))
         return self.last_token.value
     
-    async def __action_data(self, method: str, path: str, data: Any, headers: dict[str, Any] = {}, _authentication: bool = False, _retry: int = 0):
+    async def __action_data(self, method: str, path: str, data: Any, headers: dict[str, Any] = {}, _authentication: bool = False, _retries: int = 0):
         key = hash((
             method,
             path,
             repr(headers),
             repr(data)
         ))
-        if key in self.cache:
-            return self.cache[key]
+        res = self.cache.get(key)
+        if res is not cache.EMPTY:
+            return res
         async with self.session.request(
             method, f"{self.endpoint}{path}",
             data=data,
@@ -320,10 +349,10 @@ class AlistStorage(iNetworkStorage):
                 )
                 if result.code == 401 and not _authentication:
                     self.last_token = None
-                    return await self.__action_data(method, path, data, headers, True, _retry + 1)
+                    return await self.__action_data(method, path, data, headers, True, _retries + 1)
                 if result.code != 200:
-                    if _retry < self.retry:
-                        return await self.__action_data(method, path, data, headers, _authentication, _retry + 1)
+                    if _retries < self.retries:
+                        return await self.__action_data(method, path, data, headers, _authentication, _retries + 1)
                     logger.terror("storage.error.action_alist", method=method, url=resp.url, status=result.code, message=result.message)
                     logger.debug(data)
                     logger.debug(result)
@@ -418,6 +447,8 @@ class AlistStorage(iNetworkStorage):
             return io.BytesIO(await resp.read())
         
     async def get_url(self, file: CollectionFile) -> str:
+        if self._public_webdav_endpoint:
+            return f"{self._public_webdav_endpoint}{str(self.get_path(file))}"
         info = await self.__info_file(file)
         return '' if info.size == -1 else info.raw_url
     
@@ -425,9 +456,9 @@ class AlistStorage(iNetworkStorage):
         result = await self.__action_data(
             "put",
             "/api/fs/put",
-            content.getbuffer(),
+            content.getvalue(),
             {
-                "File-Path": str((self.get_path(file), print(self.get_path(file)))[0]),
+                "File-Path": urlparse.quote(str(self.get_path(file))),
             }
         )
         return result.code == 200
@@ -484,7 +515,8 @@ class WebDavFile:
         return len(self.data.getbuffer())
 
 class WebDavStorage(iNetworkStorage):
-    def __init__(self, path: str, username: str, password: str, endpoint: str, weight: int = 0, list_concurrent: int = 32):
+    type = "webdav"
+    def __init__(self, path: str, username: str, password: str, endpoint: str, weight: int = 0, list_concurrent: int = 32, public_endpoint: str = "", retries: int = 3):
         super().__init__(path, username, password, endpoint, weight, list_concurrent)
         self.client = webdav3_client.Client({
             "webdav_hostname": endpoint,
@@ -492,6 +524,7 @@ class WebDavStorage(iNetworkStorage):
             "webdav_password": password,
             "User-Agent": config.USER_AGENT
         })
+        self.public_endpoint = public_endpoint
         self.client_lock = asyncio.Lock()
         self.session = aiohttp.ClientSession(
             auth=aiohttp.BasicAuth(username, password),
@@ -499,28 +532,47 @@ class WebDavStorage(iNetworkStorage):
                 "User-Agent": config.USER_AGENT
             }
         )
+        urlobject = urlparse.urlparse(f"{self.public_endpoint or self.endpoint}")
+        self.base_url = f"{urlobject.scheme}://{urlparse.quote(self.username)}:{urlparse.quote(self.password)}@{urlobject.hostname}:{urlobject.port}{urlobject.path}"
+        self.retries = retries
+
+    @staticmethod
+    def from_config(config: dict[str, Any]):
+        path = config["path"]
+        username = config["username"]
+        password = config["password"]
+        endpoint = config["endpoint"]
+        weight = config.get("weight", 0)
+        list_concurrent = config.get("list_concurrent", 32)
+        public_endpoint = config.get("public_endpoint", "")
+        retries = config.get("retries", 3)
+        return WebDavStorage(path, username, password, endpoint, weight, list_concurrent, public_endpoint, retries)
 
     async def list_files(self, pbar: WrapperTQDM) -> set[File]:
         async def get_files(root_id: int) -> list[WebDavFileInfo]:
             root = self.path / DOWNLOAD_DIR / f"{root_id:02x}"
-            try:
-                async with sem:
-                    result = await self.client.list(
-                        str(root),
-                        True
-                    )
-                return [WebDavFileInfo(
-                    created=utils.parse_isotime_to_timestamp(r["created"]),
-                    modified=utils.parse_gmttime_to_timestamp(r["modified"]),
-                    name=r["name"],
-                    size=int(r["size"])
-                ) for r in result if not r["isdir"]]
-            except webdav3_exceptions.RemoteResourceNotFound:
-                ...
-            except:
-                logger.traceback()
-            finally:
-                pbar.update(1)
+            retries = 0
+            while retries < self.retries:
+                try:
+                    async with sem:
+                        result = await self.client.list(
+                            str(root),
+                            True
+                        )
+                    return [WebDavFileInfo(
+                        created=utils.parse_isotime_to_timestamp(r["created"]),
+                        modified=utils.parse_gmttime_to_timestamp(r["modified"]),
+                        name=r["name"],
+                        size=int(r["size"])
+                    ) for r in result if not r["isdir"]]
+                except webdav3_exceptions.RemoteResourceNotFound:
+                    retries += 1
+                    ...
+                except:
+                    logger.traceback()
+                    retries += 1
+                finally:
+                    pbar.update(1)
             return []
 
         sem = asyncio.Semaphore(self.list_concurrent)
@@ -541,8 +593,9 @@ class WebDavStorage(iNetworkStorage):
     
     async def _info_file(self, file: CollectionFile) -> WebDavFileInfo:
         key = hash(file)
-        if key in self.cache:
-            return self.cache[key]
+        res = self.cache.get(key)
+        if res is not cache.EMPTY:
+            return res
         try:
             res = await self.client.info(str(self.get_path(file)))
         except:
@@ -589,7 +642,6 @@ class WebDavStorage(iNetworkStorage):
                 if d:
                     await self.client.mkdir(d)
                 d += "/"
-
     
     async def get_file(self, file: CollectionFile) -> WebDavFile:
         # by old code
@@ -600,8 +652,7 @@ class WebDavStorage(iNetworkStorage):
 
         # replace url to basic auth url
 
-        urlobject = urlparse.urlparse(f"{self.endpoint}")
-        url = f"{urlobject.scheme}://{urlparse.quote(self.username)}:{urlparse.quote(self.password)}@{urlobject.hostname}:{urlobject.port}{urlobject.path}{self.get_path(file)}"
+        url = f"{self.base_url}{self.get_path(file)}"
         f.url = url
         return f
     
@@ -617,3 +668,33 @@ class WebDavStorage(iNetworkStorage):
             logger.traceback()
             return False
         return True
+    
+
+def init_storage(config: Any) -> Optional[iStorage]:
+    if not isinstance(config, dict) or "type" not in config or config["type"] not in abstract_storages:
+        return None
+    try:
+        return abstract_storages[config["type"]].from_config(config)
+    except:
+        logger.traceback()
+        return None
+
+abstract_storages: dict[str, type[iStorage]] = {}
+
+T = TypeVar("T")
+
+def find_subclasses(base_class: type[T]) -> list[type[T]]:
+    subclasses = []
+    for name, obj in inspect.getmembers(inspect.getmodule(base_class)):
+        if inspect.isclass(obj) and issubclass(obj, base_class) and obj!= base_class:
+            subclasses.append(obj)
+    return subclasses
+
+async def init():
+    for istorage in find_subclasses(iStorage):
+        if istorage.type == iStorage.type:
+            continue
+        abstract_storages[istorage.type] = istorage
+
+    logger.debug("Storage init complete")
+    logger.debug(f"Found {len(abstract_storages)} storage types: {', '.join(abstract_storages.keys())}")

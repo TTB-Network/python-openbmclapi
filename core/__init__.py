@@ -10,6 +10,7 @@ from . import cluster
 from . import scheduler
 from . import dashboard
 from . import database
+from . import storages
 
 _WAITLOCK = utils.CountLock()
 _START_RUNTIME = time.monotonic()
@@ -29,6 +30,7 @@ async def main():
     await asyncio.gather(*[
         call(m, "init") for m in (
             scheduler,
+            storages,
             database,
             dashboard,
             cluster,

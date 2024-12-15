@@ -67,6 +67,8 @@ class StorageManager:
         self.check_type_file = config.const.check_type
         self.cache_filelist: defaultdict[storages.iStorage, defaultdict[str, storages.File]] = defaultdict(defaultdict) # type: ignore
 
+        self.retries = 3
+
     def init(self):
         scheduler.run_repeat_later(self._check_available, 1, 120)
 
@@ -112,7 +114,11 @@ class StorageManager:
         return len(self.available_storages) > 0
     
     async def write_file(self, file: File, content: bytes):
-        return all(await asyncio.gather(*(asyncio.create_task(storage.write_file(convert_file_to_storage_file(file), io.BytesIO(content))) for storage in self.available_storages)))
+        return all(await asyncio.gather(*(asyncio.create_task(self._write_file(
+            file,
+            io.BytesIO(content),
+            storage
+        )) for storage in self.available_storages)))
 
     async def get_missing_files(self, files: set[File]) -> set[File | Any]:
         function = None
@@ -272,6 +278,18 @@ class StorageManager:
                 return c_storage
             return self.get_width_storage(c_storage=c_storage or current_storage)
 
+    async def _write_file(self, file: File, content: io.BytesIO, storage: storages.iStorage):
+        if await self._check_exists(file, storage) and await self._check_size(file, storage):
+            return True
+        retries = 0
+        while retries < self.retries:
+            try:
+                if await storage.write_file(convert_file_to_storage_file(file), content):
+                    return True
+            except:
+                retries += 1
+        return False
+
 @dataclass
 class OpenBMCLAPIConfiguration:
     source: str
@@ -398,6 +416,10 @@ class FileListManager:
     async def sync(self):
         scheduler.cancel(self.task)
         result = await self.fetch_filelist()
+        if not result:
+            logger.tsuccess("cluster.success.no_missing_files")
+            self.run_task()
+            return
 
         missing = await self.clusters.storage_manager.get_missing_files(result)
 
@@ -1102,15 +1124,8 @@ async def init():
         return
     config_storages = config_clusters = config.Config.get("storages")
     for cstorage in config_storages:
-        type = cstorage['type']
-        if type == "local":
-            storage = storages.LocalStorage(cstorage['path'], cstorage.get("weight", 0))
-        elif type == "alist":
-            storage = storages.AlistStorage(cstorage['path'], cstorage.get("username"), cstorage['password'], cstorage['endpoint'], cstorage.get('weight', 0), cstorage.get('link_concurrent', 32))
-        elif type == "webdav":
-            storage = storages.WebDavStorage(cstorage['path'], cstorage.get("username"), cstorage['password'], cstorage['endpoint'], cstorage.get('weight', 0), cstorage.get('link_concurrent', 32))
-        else:
-            logger.terror("cluster.error.unspported_storage", type=type, path=cstorage['path'])
+        storage = storages.init_storage(cstorage)
+        if not storage:
             continue
         clusters.storage_manager.add_storage(storage)
     if config.const.measure_storage:
@@ -1235,10 +1250,10 @@ async def _(request: aweb.Request):
             )
             return aweb.Response(status=403)
         try:
-            file = await clusters.storage_manager.get_file(hash)
+            file = await asyncio.wait_for(asyncio.create_task(clusters.storage_manager.get_file(hash)), 5)
         except:
             logger.ttraceback("cluster.error.get_file", hash=hash)
-            file = await clusters.storage_manager.get_file(hash, True)
+            file = await asyncio.create_task(clusters.storage_manager.get_file(hash, True))
         if file is None:
             db.add_response(
                 address,

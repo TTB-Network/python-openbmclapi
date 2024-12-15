@@ -10,7 +10,7 @@ from typing import Any, Optional, Callable
 from aiohttp import web
 from aiohttp.web_urldispatcher import SystemRoute
 
-from core import config, scheduler, units, utils
+from core import config, scheduler, server, units, utils
 from .logger import logger
 
 from cryptography import x509
@@ -290,7 +290,7 @@ async def start_public_server():
     port = get_public_port()
     if port == 0:
         port = await get_free_port()
-    public_server = await asyncio.start_server(public_handle, '0.0.0.0', port)
+    public_server = await server.create_server(public_handle, '0.0.0.0', port)
 
     await public_server.start_serving()
 
@@ -346,20 +346,20 @@ async def start_private_server(
         client.load_verify_locations(cert)
         client.hostname_checks_common_name = False
         client.check_hostname = False
-    server = await asyncio.start_server(
+    _server = await server.create_server(
         private_handle,
         '0.0.0.0',
         await get_free_port(),
         ssl=context
     )
-    await server.start_serving()
+    await _server.start_serving()
     privates[private_key] = PrivateSSLServer(
-        server,
+        _server,
         context,
         client,
         domains,
     )
-    logger.tdebug("web.debug.ssl_port", port=server.sockets[0].getsockname()[1])
+    logger.tdebug("web.debug.ssl_port", port=_server.sockets[0].getsockname()[1])
 
 def get_certificate_domains(
     cert: Path
@@ -402,7 +402,6 @@ def get_server_port(server: Optional[asyncio.Server]):
         return server.sockets[0].getsockname()[1]
     except:
         return None
-
 
 async def _check_server(
     server: CheckServer
