@@ -311,3 +311,33 @@ class ServiceError:
 
 
 wrapper_tqdms: deque[WrapperTQDM] = deque()
+
+
+def retry(max_retries: int = 3, delay: float = 1.0):
+    def decorator(func):
+        @functools.wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            retries = 0
+            while retries < max_retries:
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    retries += 1
+                    if retries >= max_retries:
+                        raise e
+                    await asyncio.sleep(delay)
+        @functools.wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            retries = 0
+            while retries < max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    retries += 1
+                    if retries >= max_retries:
+                        raise e
+                    time.sleep(delay)
+        if asyncio.iscoroutinefunction(func):
+            return async_wrapper
+        return sync_wrapper
+    return decorator

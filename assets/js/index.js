@@ -450,12 +450,17 @@ class SwitchElement extends Element {
         this.$bar.style("left", `${left}px`).style("width", `${width}px`);
         if (oldindex == this.index) return this;
         this.origin.dispatchEvent(new CustomEvent("change", {
-            detail: {
-                index: index,
-                button: this.$buttons[index]
-            }
+            detail: this.current
         }))
         return this;
+    }
+
+    get current() {
+        return {
+            index: this.index,
+            instanceButton: this.$buttons[this.index],
+            button: this._buttons[this.index]
+        }
     }
 }
 
@@ -551,7 +556,9 @@ class TemplateEchartElement extends Element {
     constructor() {
         super("div")
         this.instance = echarts.init(this.origin)
-        this.formatter = this._format_number_unit
+        this.formatters = [
+            this._format_number_unit,
+        ]
         this.type = EchartType.DATA
         this.setOption({
             stateAnimation: {
@@ -564,8 +571,11 @@ class TemplateEchartElement extends Element {
             }
         })
     }
-    setFormatter(formatter) {
-        this.formatter = formatter || this._format_number_unit
+    setFormatter(formatter, index = 0) {
+        if (index >= this.formatters.length) {
+            this.formatters.push(formatter)
+        }
+        this.formatters[index] = formatter
         return this
     }
     setOption(option) {
@@ -605,11 +615,11 @@ class TemplateEchartElement extends Element {
         return this
     }
     _e_templates(params) {
-        const value_formatter = this.formatter
         const data_label = this.type == EchartType.LABEL
         const templates = `<div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;">` + (data_label ? '' : `<span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:{color};"></span>`) + `<span style="font-size:14px;color:#666;font-weight:400;margin-left:2px">{name}</span><span style="float:right;margin-left:20px;font-size:14px;color:#666;font-weight:900">{value}</span><div style="clear:both"></div></div><div style="clear:both"></div></div>`
         var template = ''
         for (const data of (Array.isArray(params) ? params : [params])) {
+            let value_formatter = this.formatters[data.seriesIndex] || this.formatters[0]
             let value = isNaN(data.value) ? 0 : data.value
             template += templates.replace("{color}", data.color).replace("{name}", `${data.seriesName}${data_label ? `(${data.data.label})` : ""}`).replace("{value}", value_formatter ? value_formatter(value) : value)
         }
@@ -640,7 +650,13 @@ $i18n.addLanguageTable("zh_CN", {
     "unit.hour": "%value% 时",
     "unit.day": "%value% 天",
     "dashboard.title.qps": "5 分钟请求数",
-    "switch.dashboard.cluster.:all:": "所有节点"
+    "switch.dashboard.cluster.:all:": "所有节点",
+    "dashboard.title.storage.today": "今日请求存储",
+    "dashboard.title.storage.30days": "30 天请求存储",
+    "dashboard.title.cluster.today": "今日请求节点",
+    "dashboard.title.cluster.30days": "30 天请求节点",
+    "dashboard.value.unit.bytes": "请求量",
+    "dashboard.value.unit.hits": "请求数"
 
 })
 $style.setTheme("light", {
@@ -1200,10 +1216,112 @@ async function load() {
                 $dashboard_locals.cluster_switch = new SwitchElement().addButtons("switch.dashboard.cluster.:all:").addEventListener("change", (event) => { 
                 })
                 $dashboard_locals.storage_echarts = {}
+                $dashboard_locals.statistics_keys = ref({
+                    clusters: [],
+                    storages: []
+                }, {
+                    timeout: 50,
+                    async handler(obj) {
+                        console.log(obj)
+                    }
+                })
+                const get_keys = (data) => {
+                    var res = [];
+                    for (var key of Object.keys(data)) {
+                        if (key == ":all:") continue
+                        res.push(key)
+                    }
+                    return res
+                }
                 $dashboard_locals.storage_data = ref({}, {
                     timeout: 50,
                     handler(obj) {
-                        console.log(obj)
+                        $dashboard_locals.statistics_keys.clusters = get_keys(obj.object.cluster)
+                        $dashboard_locals.statistics_keys.storages = get_keys(obj.object.storage)
+
+                        const storage_key = $dashboard_locals.storage_switch.current.button.split(".").reverse()[0]
+                        const cluster_key = $dashboard_locals.cluster_switch.current.button.split(".").reverse()[0]
+
+                        const data = {
+                            cluster: obj.object.cluster[cluster_key],
+                            storage: obj.object.storage[storage_key]
+                        }
+                        const mappings = {
+                            "hourly": "today",
+                            "daily": "30days"
+                        }
+                        const mappings_unit = {
+                            "hourly": (n) => $i18n.t("unit.hour", { value: n }),
+                            "daily": (n) => $i18n.t("unit.day", { value: n })
+                        }
+                        const mappings_formatter = {
+                            "hits": Tools.formatSimpleNumber,
+                            "bytes": Tools.formatBytes
+                        }
+                        for (const [key, value] of Object.entries(data)) {
+                            for (const [time, response] of Object.entries(value)) {
+                                const instance = $dashboard_locals.storage_echarts[`${key}_${mappings[time]}`]
+                                var resp = response
+                                if (time == "hourly") {
+                                    for (let i = 0; i < 24; i++) {
+                                        if (resp[i]) continue
+                                        resp[i] = null
+                                    }
+                                    resp = Object.fromEntries(
+                                        Object.keys(resp).sort((a, b) => parseInt(a) - parseInt(b)).map(v => [v, resp[v]])
+                                    )
+                                } else {
+                                    var server_time = $dashboard_locals.info_runtime
+                                    var datetime = server_time.current_time - server_time.diff / 1000.0 + (+new Date() - server_time.resp_timestamp) / 1000.0;
+                                    const previous = (datetime + (datetime % (24 * 3600)) - 86400 * 30);
+                                    const res = {}
+                                    for (let i = 0; i < 30; i++) {
+                                        var d = Tools.formatDate(new Date((previous + i * 86400) * 1000.0))
+                                        if (resp[d]) res[d] = resp[d]
+                                        else res[d] = null
+                                    }
+                                    resp = res
+                                }
+                                console.log(resp)
+                                var option = {
+                                    color: [
+                                        $style.getThemeValue("echarts-color-0"),
+                                        $style.getThemeValue("echarts-color-1"),
+                                    ],
+                                    xAxis: {
+                                        data: Object.keys(resp).map(
+                                            mappings_unit[time]
+                                        )
+                                    },
+                                    yAxis: [
+                                        {
+                                            name: $i18n.t("dashboard.value.unit.bytes"),
+                                            type: 'value',
+                                            max: Math.max(10, ...Object.values(resp).map(v => v?.bytes)),
+                                        },
+                                        {
+                                            name: $i18n.t("dashboard.value.unit.hits"),
+                                            type: 'value',
+                                            max: Math.max(10, ...Object.values(resp).map(v => v?.hits)),
+                                        },
+                                    ],
+                                    series: [{
+                                        name: $i18n.t("dashboard.value.unit.bytes"),
+                                        data: Object.values(resp).map(v => v?.bytes),
+                                        type: 'line',
+                                        smooth: true,
+                                    }, {
+                                        name: $i18n.t("dashboard.value.unit.hits"),
+                                        data: Object.values(resp).map(v => v?.hits),
+                                        type: 'line',
+                                        smooth: true,
+                                    }]
+                                }
+                                instance.base.setFormatter(mappings_formatter.bytes, 0)
+                                instance.base.setFormatter(mappings_formatter.hits, 1)
+                                instance.base.setOption(option)
+                            }
+                        }
                     }
                 })
                 $dashboard_locals.storages_info = Tools.createFlexElement().append(
@@ -1372,38 +1490,33 @@ async function load() {
                     qps.echart.setOption(option)
                 }
 
-                // for (const instance of [
-                //     "days_hits",
-                //     "days_bytes",
-                //     "today_hits",
-                //     "today_bytes"
-                // ]) {
-                //     var option = {
-                //         /*color: [
-                //             $style.getThemeValue("echarts-color-0"),
-                //         ],*/
-                //         tooltip: {
-                //             trigger: 'axis'
-                //         },
-                //         grid: {
-                //             left: '3%',
-                //             right: '4%',
-                //             bottom: '3%',
-                //             top: '20%',
-                //             containLabel: true
-                //         },
-                //         xAxis: {
-                //             type: 'category',
-                //         },
-                //         yAxis: {
-                //             type: 'value',
-                //             min: 1,
-                //             max: 10
-                //         },
-                //         series: []
-                //     };
-                //     $dashboard_locals.storage_echarts[instance].echart.setOption(option)
-                // }
+                for (const instance of Object.values($dashboard_locals.storage_echarts)) {
+                    var option = {
+                        color: [
+                            $style.getThemeValue("echarts-color-0"),
+                        ],
+                        tooltip: {
+                            trigger: 'axis'
+                        },
+                        grid: {
+                            left: '5%',
+                            right: '4%',
+                            bottom: '3%',
+                            top: '20%',
+                            containLabel: true
+                        },
+                        xAxis: {
+                            type: 'category',
+                        },
+                        yAxis: {
+                            type: 'value',
+                            min: 1,
+                            max: 10
+                        },
+                        series: []
+                    };
+                    instance.echart.setOption(option)
+                }
             }
             // share 
             (() => {
@@ -1556,11 +1669,6 @@ async function load() {
                             $dashboard_locals.system_info_cpu.value = resp.cpu.toFixed(1) + "%"
                             $dashboard_locals.system_info_cpu_load.value = resp.loads.toFixed(1) + "%"
                         }, 1000)
-                        $channel.send("storage_keys").then((resp) => {
-                            $dashboard_locals.storage_switch.addButtons(
-                                ...resp.map((val) => "switch.dashboard.storage." + val.data.type)
-                            )
-                        })
 
                     } else {
                         $dashboard_locals.container.append(

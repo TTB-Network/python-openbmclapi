@@ -5,25 +5,28 @@ import yaml
 import os
 
 defaults = {
-    "advanced.lang": "zh_cn",
-    "advanced.debug": False,
-    "advanced.sync_interval": 600,
-    "advanced.base_url": "https://openbmclapi.bangbang93.com",
-    "advanced.dashboard_rank_clusters_url": "https://bd.bangbang93.com/openbmclapi/metric/rank",
-    "advanced.threads": 128,
-    "advanced.ssl_dir": ".ssl",
-    "advanced.host": "",
-    "advanced.ssl_cert": "",
-    "advanced.ssl_key": "",
-    "advanced.check_sign": True,
-    "advanced.check_type": "size",
-    "advanced.auto_sync_assets": True,
-    "advanced.github_token": "",
-    "advanced.measure_storage": False,
+    "advanced": {
+        "lang": "zh_cn",
+        "debug": False,
+        "sync_interval": 600,
+        "base_url": "https://openbmclapi.bangbang93.com",
+        "dashboard_rank_clusters_url": "https://bd.bangbang93.com/openbmclapi/metric/rank",
+        "threads": 128,
+        "ssl_dir": ".ssl",
+        "host": "",
+        "ssl_cert": "",
+        "ssl_key": "",
+        "check_sign": True,
+        "check_type": "size",
+        "auto_sync_assets": True,
+        "github_token": "",
+        "measure_storage": False,
+    },
     "web": {
         "port": -1,
         "public_port": 6543,
-        "x_forwarded_for": 0
+        "x_forwarded_for": 0,
+        "backlog": 1024
     },
     "clusters": [
         {
@@ -42,9 +45,6 @@ defaults = {
         "type": "sqlite",
         "url": "./database.db"
     },
-    "tunnel": {
-        "type": "none",
-    }
 }
 
 
@@ -167,6 +167,13 @@ class Const:
     @property
     def rank_clusters_url(self):
         return Config.get("advanced.dashboard_rank_clusters_url") or "https://bd.bangbang93.com/openbmclapi/metric/rank"
+    
+    @property
+    def backlog(self):
+        backlog = Config.get("web.backlog", 0)
+        if not isinstance(backlog, int):
+            backlog = 100
+        return min(backlog, 100)
 
 const = Const()
 

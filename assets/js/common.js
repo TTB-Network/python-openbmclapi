@@ -847,12 +847,14 @@ function parseJWT(token) {
         return null
     }
 }
-function ref(object, params) {
+function ref(object, params = {}) {
     var handler = params.handler || function () { };
     var timeout = params.timeout || 0
     var task = null;
+    var old_object;
     return new Proxy(object, {
         set(target, key, value) {
+            if (old_object == null) old_object = Object.assign({}, object)
             target[key] = value
             if (timeout > 0) {
                 if (task) {
@@ -862,15 +864,18 @@ function ref(object, params) {
                     handler({
                         key,
                         value,
-                        object
+                        object,
+                        before: old_object
                     })
                     task = null
+                    old_object = null;
                 }, timeout)
             } else {
                 handler({
                     key,
                     value,
-                    object
+                    object,
+                    before: old_object
                 })
             }
             return true
