@@ -591,7 +591,7 @@ class TemplateEchartElement extends Element {
             options.yAxis = {
                 ...option['yAxis'],
                 axisLabel: {
-                    formatter: (params) => this.formatter(params)
+                    formatter: (params) => this.formatters[0](params)
                 }
             }
         }
@@ -1252,7 +1252,7 @@ async function load() {
                         }
                         const mappings_unit = {
                             "hourly": (n) => $i18n.t("unit.hour", { value: n }),
-                            "daily": (n) => $i18n.t("unit.day", { value: n })
+                            "daily": (n) => n,//$i18n.t("unit.day", { value: n })
                         }
                         const mappings_formatter = {
                             "hits": Tools.formatSimpleNumber,
@@ -1297,12 +1297,13 @@ async function load() {
                                         {
                                             name: $i18n.t("dashboard.value.unit.bytes"),
                                             type: 'value',
-                                            max: Math.max(10, ...Object.values(resp).map(v => v?.bytes)),
+                                            //max: Math.max(10, ...Object.values(resp).map(v => v?.bytes)),
                                         },
                                         {
+                                            position: "right",
                                             name: $i18n.t("dashboard.value.unit.hits"),
                                             type: 'value',
-                                            max: Math.max(10, ...Object.values(resp).map(v => v?.hits)),
+                                            //max: Math.max(10, ...Object.values(resp).map(v => v?.hits)),
                                         },
                                     ],
                                     series: [{
@@ -1315,6 +1316,7 @@ async function load() {
                                         data: Object.values(resp).map(v => v?.hits),
                                         type: 'line',
                                         smooth: true,
+                                        yAxisIndex: 1
                                     }]
                                 }
                                 instance.base.setFormatter(mappings_formatter.bytes, 0)
@@ -1359,7 +1361,7 @@ async function load() {
                             instance
                         )
                     }),
-                ).child(2).minWidth(720)
+                ).child(2).minWidth(1280)
 
                 $dashboard_locals.clusters_info = Tools.createFlexElement().append(
                     Tools.createPanel(({
@@ -1396,7 +1398,7 @@ async function load() {
                             instance
                         )
                     }),
-                ).child(2).minWidth(720)
+                ).child(2).minWidth(1280)
 
                 var statistics = createElement("div").append(
                     createElement("div").classes("pre-switch-container").append(
@@ -1511,7 +1513,6 @@ async function load() {
                         yAxis: {
                             type: 'value',
                             min: 1,
-                            max: 10
                         },
                         series: []
                     };
