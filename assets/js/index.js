@@ -1272,8 +1272,11 @@ async function load() {
                                     )
                                 } else {
                                     var server_time = $dashboard_locals.info_runtime
+                                    console.log(server_time)
+                                    //    return int((t - ((t + UTC) % 86400) - 86400 * day) / 3600)
                                     var datetime = server_time.current_time - server_time.diff / 1000.0 + (+new Date() - server_time.resp_timestamp) / 1000.0;
-                                    const previous = (datetime + (datetime % (24 * 3600)) - 86400 * 30);
+                                    const previous = (datetime + ((datetime) % 86400) - 86400 * 30);
+                                    console.log(resp)
                                     const res = {}
                                     for (let i = 0; i < 30; i++) {
                                         var d = Tools.formatDate(new Date((previous + i * 86400) * 1000.0))
@@ -1410,12 +1413,14 @@ async function load() {
                     ),
                     $dashboard_locals.clusters_info
                 )
-
-                var observer = new ResizeObserver(() => {
-                    for (var instance of Object.values($dashboard_locals.storage_echarts)) {
-                        instance.echart.resize();
-                    }
-                })
+                const echarts_resize = () => {
+                    requestAnimationFrame(() => {
+                        for (var instance of Object.values($dashboard_locals.storage_echarts)) {
+                            instance.echart.resize();
+                        }
+                    })
+                }
+                var observer = new ResizeObserver(echarts_resize)
 
                 observer.observe(statistics.origin);
 
