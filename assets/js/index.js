@@ -92,6 +92,17 @@ class Menu extends Element {
         this.$menus = {}
         this._render_task = null
         this.route_handler_lock = null;
+
+        const [
+            x, y
+        ] = [
+            document.body.getBoundingClientRect().width,
+            document.body.getBoundingClientRect().height
+        ]
+        // if is phone, hide menu
+        if (x < 1280 || y > x) {
+            this.toggle()
+        }
     }
     toggle() {
         super.toggle("hidden")
@@ -984,7 +995,6 @@ async function load() {
     const $menu = new Menu()
     const $menu_variables = {};
     $menu.add("dashboard", "a", (...args) => {
-        console.log("triggered")
         if (!$menu_variables.dashboard) {
             $menu_variables.dashboard = {};
         }
@@ -1272,11 +1282,9 @@ async function load() {
                                     )
                                 } else {
                                     var server_time = $dashboard_locals.info_runtime
-                                    console.log(server_time)
                                     //    return int((t - ((t + UTC) % 86400) - 86400 * day) / 3600)
                                     var datetime = server_time.current_time - server_time.diff / 1000.0 + (+new Date() - server_time.resp_timestamp) / 1000.0;
-                                    const previous = (datetime + ((datetime) % 86400) - 86400 * 30);
-                                    console.log(resp)
+                                    const previous = (datetime + (datetime % 86400) - 86400 * 29);
                                     const res = {}
                                     for (let i = 0; i < 30; i++) {
                                         var d = Tools.formatDate(new Date((previous + i * 86400) * 1000.0))
@@ -1285,7 +1293,6 @@ async function load() {
                                     }
                                     resp = res
                                 }
-                                console.log(resp)
                                 var option = {
                                     color: [
                                         $style.getThemeValue("echarts-color-0"),
