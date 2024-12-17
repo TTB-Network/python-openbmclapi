@@ -353,13 +353,16 @@ class Style {
         var before = this._current_theme;
         this._current_theme = name || Object.keys(this._themes)[0];
         this.render();
-        if (before == null || before != this._current_theme) window.dispatchEvent(new CustomEvent("theme-changed", {detail: this._current_theme}));
+        if (before == null || before != this._current_theme) window.dispatchEvent(new CustomEvent(THEMECHANGEEVENT, {detail: this._current_theme}));
     }
     getThemeValue(key) {
         return (this._themes[this._current_theme] || {})[key];
     }
     setTheme(name, style) {
         this._themes[name] = style;
+    }
+    get isDark() {
+        return this._current_theme == "dark";
     }
 }
 class SVGContainers {
@@ -1039,6 +1042,7 @@ class ObjectID {
         //return new ObjectID(ObjectID.PACKINT_RANDOM(date.getTime() / 1000, ObjectID._randomBytes()));
     }
 }
+const THEMECHANGEEVENT = "themechange";
 export {
     Element,
     SVGContainers,
@@ -1057,5 +1061,6 @@ export {
     ref,
     calcElementHeight,
     calcElementWidth,
-    ObjectID
+    ObjectID,
+    THEMECHANGEEVENT
 }
