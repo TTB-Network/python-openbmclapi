@@ -427,6 +427,9 @@ class SwitchElement extends Element {
                 this.select(button_index);
             });
             this.$buttons.push($button);
+            if (this.index == button_index) {
+                $button.classes("active");
+            }
         }
         this.$main.append(...this.$buttons)
         if (this._render_next_index != null) {
@@ -579,7 +582,7 @@ class TemplateEchartElement extends Element {
             tooltip: {
                 trigger: 'axis',
                 formatter: (params) => this._e_templates(params)
-            }
+            },
         })
     }
     setFormatter(formatter, index = 0) {
@@ -598,13 +601,40 @@ class TemplateEchartElement extends Element {
                 formatter: (params) => this._e_templates(params)
             }
         }
-        if ('yAxis' in option && !('axisLabel' in option['yAxis'])) {
+        if ('yAxis' in option) {
+            var o = {}
+            if (!('axisLabel' in option['yAxis'])) o.axisLabel = {
+                formatter: (params) => this.formatters[0](params)
+            }
+            if (!('splitLine' in option['yAxis'])) o.splitLine = {
+                color: $style.getThemeValue("dark-color"),
+                type: "dashed"
+            }
             options.yAxis = {
                 ...option['yAxis'],
-                axisLabel: {
-                    formatter: (params) => this.formatters[0](params)
+                ...o
+            }
+        }
+        if ('xAxis' in option) {
+            var func = (o) => {
+                return {
+                    ...o,
+                    splitLine: {
+                        color: $style.getThemeValue("dark-color"),
+                        type: "dashed"
+                    }
                 }
             }
+            var to = []
+            if (!Array.isArray(option['xAxis'])) {
+                to.push(option['xAxis'])
+            } else {
+                to = option['xAxis']
+            }
+            for (var i = 0; i < to.length; i++) {
+                to[i] = func(to[i])
+            }
+            options.xAxis = to.length == 1 ? to[0] : to
         }
         this.instance.setOption(options)
         return this
@@ -1222,10 +1252,13 @@ async function load() {
                 // storage
 
                 $dashboard_locals.storage_switch = new SwitchElement().addButtons("switch.dashboard.storage.:all:").addEventListener("change", (event) => {
+                    $dashboard_locals.storage_data.refresh = true
                 })
                 $dashboard_locals.cluster_switch = new SwitchElement().addButtons("switch.dashboard.cluster.:all:").addEventListener("change", (event) => { 
+                    $dashboard_locals.storage_data.refresh = true
                 })
                 $dashboard_locals.storage_echarts = {}
+                $dashboard_locals.statistics_key_data = {}
                 $dashboard_locals.statistics_keys = ref({
                     clusters: [],
                     storages: []
@@ -1233,6 +1266,26 @@ async function load() {
                     timeout: 50,
                     async handler(obj) {
                         console.log(obj)
+                        const mappings = {
+                            "cluster": (n) => {
+                                return n
+                            },
+                            "storage": (n) => {
+                                return n
+                            }
+                        }
+                        for (
+                            const key of [
+                                "cluster",
+                                "storage"
+                            ]
+                        ) {
+                            var section = $dashboard_locals[`${key}_switch`]
+                            var obj_key = `${key}s`
+                            var value = mappings[key]
+                            section.removeButtons(...obj.before[obj_key])
+                            section.addButtons(...obj.object[obj_key])
+                        }
                     }
                 })
                 const get_keys = (data) => {
@@ -1248,6 +1301,9 @@ async function load() {
                     handler(obj) {
                         $dashboard_locals.statistics_keys.clusters = get_keys(obj.object.cluster)
                         $dashboard_locals.statistics_keys.storages = get_keys(obj.object.storage)
+
+                        $dashboard_locals.statistics_keys.clusters_name = $dashboard_locals.statistics_key_data.clusters
+                        $dashboard_locals.statistics_keys.storages_name = $dashboard_locals.statistics_key_data.storages
 
                         const storage_key = $dashboard_locals.storage_switch.current.button.split(".").reverse()[0]
                         const cluster_key = $dashboard_locals.cluster_switch.current.button.split(".").reverse()[0]
@@ -1269,9 +1325,10 @@ async function load() {
                             "bytes": Tools.formatBytes
                         }
                         for (const [key, value] of Object.entries(data)) {
+                            value.hourly = value.hourly || {}
                             for (const [time, response] of Object.entries(value)) {
                                 const instance = $dashboard_locals.storage_echarts[`${key}_${mappings[time]}`]
-                                var resp = response
+                                var resp = response || {}
                                 if (time == "hourly") {
                                     for (let i = 0; i < 24; i++) {
                                         if (resp[i]) continue
@@ -1558,6 +1615,7 @@ async function load() {
                 }, 5000)
                 window.addEventListener("theme-changed", () => {
                     $dashboard_locals.qps_data.resp = $dashboard_locals.qps_data.resp;
+                    $dashboard_locals.storage_data.refresh = true;
                 })
             })();
 
@@ -1593,7 +1651,7 @@ async function load() {
                         $dashboard_locals.statistics_task = Tools.runTask(setInterval, async () => {
                             // 并发获取
                             const responses = {}
-                            for (const key of ["storage_statistics_daily", "cluster_statistics_daily", "storage_statistics_hourly", "cluster_statistics_hourly"])
+                            for (const key of ["storage_statistics_daily", "cluster_statistics_daily", "storage_statistics_hourly", "cluster_statistics_hourly", "storage_keys", "clusters_name"])
                                 responses[key] = await $channel.send(key);
         
                             // set fileinfo 
@@ -1673,6 +1731,12 @@ async function load() {
                             for (const [statistics_type, data] of Object.entries(temp_response)) {
                                 $dashboard_locals.storage_data[statistics_type] = data
                             }
+                            var t = {}
+                            for (const {id, data} of responses.storage_keys) {
+                                t[id] = data
+                            }
+                            $dashboard_locals.statistics_key_data.clusters = responses.clusters_name
+                            $dashboard_locals.statistics_key_data.storages = t
                         }, 30000)
                         clearInterval($dashboard_locals.basic_task_system_info)
                         $dashboard_locals.basic_task_system_info = Tools.runTask(setInterval, async () => {
