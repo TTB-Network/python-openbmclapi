@@ -16,7 +16,7 @@
     "clusters.error.downloading": "下载时候出错，原因 [${type}] 报错 [${error}]，文件 [${file_path} ${file_hash}(${file_size})] 下载后的哈希值 [${hash}]，主机 [${host}] 下载时候的历史记录：${responses}",
     "web.debug.local_port": "内部开放端口为 [${port}]",
     "web.debug.ssl_port": "内部 SSL 开放端口为 [${port}]",
-    "web.success.public_port": "当前 Web 服务器在 [${port}] 端口上开启",
+    "web.success.public_port": "当前 Web 服务器在 [${port}] 端口上开启，已开启 [${current}/${total}]",
     "web.error.any": "Web 服务器出错 ${e}",
     "web.debug.request_info": "${host} | ${time} | ${address} | ${method} ${status} | ${real_path} - ${user_agent}",
     "web.debug.check_server": "一共有 [${servers}] 个服务器准备检查",

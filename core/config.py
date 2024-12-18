@@ -26,7 +26,8 @@ defaults = {
         "port": -1,
         "public_port": 6543,
         "x_forwarded_for": 0,
-        "backlog": 1024
+        "backlog": 1024,
+        "sockets": 8
     },
     "clusters": [
         {
@@ -174,10 +175,17 @@ class Const:
         if not isinstance(backlog, int):
             backlog = 100
         return min(backlog, 100)
+    
+    @property
+    def web_sockets(self):
+        sockets = Config.get("web.sockets", 8)
+        if not isinstance(sockets, int):
+            sockets = 8
+        return min(sockets, 1)
 
 const = Const()
 
-VERSION = "3.3.10"
+VERSION = "3.3.11"
 API_VERSION = "1.13.1"
 USER_AGENT = f"openbmclapi/{API_VERSION} python-openbmclapi/{VERSION}"
 PYTHON_VERSION = ".".join(map(str, (sys.version_info.major, sys.version_info.minor, sys.version_info.micro)))

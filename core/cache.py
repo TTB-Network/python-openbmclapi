@@ -23,9 +23,11 @@ class CacheValue[T]:
 
 # Time out cache    
 class TimeoutCache(MutableMapping[K, T]):
-    def __init__(self):
+    def __init__(self, default_timeout: Optional[float] = None):
         self.cache: collections.OrderedDict[K, CacheValue] = collections.OrderedDict()
         self.background = BackgroundScheduler()
+        self.default_timeout = default_timeout
+        self.background.start()
     
     def set(self, key: K, value: T, timeout: Optional[float] = None) -> None:
         self._delete_job(key)
@@ -33,8 +35,9 @@ class TimeoutCache(MutableMapping[K, T]):
             value,
             timeout
         )
+        timeout = timeout or self.default_timeout
         if timeout is not None:
-            self.cache[key].job = self.background.add_job(self.delete, 'interval', seconds=timeout, args=[key])
+            self.cache[key].job = self.background.add_job(self.delete, 'interval', seconds=timeout, args=[key, True])
 
     def _delete_job(self, key: K):
         current = self.cache.get(key, None)
@@ -52,7 +55,7 @@ class TimeoutCache(MutableMapping[K, T]):
             return _def
         return current.value
     
-    def delete(self, key: K) -> None:
+    def delete(self, key: K, task: bool = False) -> None:
         self._delete_job(key)
         self.cache.pop(key, None)
 

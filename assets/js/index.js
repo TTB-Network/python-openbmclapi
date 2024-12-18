@@ -16,7 +16,7 @@ import {
 } from './common.js'
 
 import './config.js'
-
+const UTC_OFFSET = 3600 * 8
 class Menu extends Element {
     constructor() {
         super("div").classes("menu-side")
@@ -192,7 +192,6 @@ class Menu extends Element {
         this.route_handler_lock?.()
     }
 }
-
 class Channel {
     constructor() {
         this.url = window.location.protocol + "//" + window.location.host + "/api";
@@ -309,7 +308,6 @@ class Channel {
         return window.__CONFIG__.support.websocket;
     }
 }
-
 class SwitchElement extends Element {
     constructor() {
         super("div").classes("switch-container");
@@ -481,7 +479,6 @@ class SwitchElement extends Element {
         }
     }
 }
-
 class FlexElement extends Element {
     constructor() {
         super("div").classes("flex-container")
@@ -707,7 +704,6 @@ class TemplateEchartElement extends Element {
         return this
     }
 }
-
 const $configuration = new Configuration();
 const $ElementManager = new ElementManager();
 const $style = new Style($configuration);
@@ -1385,10 +1381,11 @@ async function load() {
                                         Object.keys(resp).sort((a, b) => parseInt(a) - parseInt(b)).map(v => [v, resp[v]])
                                     )
                                 } else {
+                                    console.log(resp)
                                     var server_time = $dashboard_locals.info_runtime
                                     //    return int((t - ((t + UTC) % 86400) - 86400 * day) / 3600)
                                     var datetime = server_time.current_time - server_time.diff / 1000.0 + (+new Date() - server_time.resp_timestamp) / 1000.0;
-                                    const previous = (datetime + (datetime % 86400) - 86400 * 29);
+                                    const previous = (datetime + ((datetime + UTC_OFFSET) % 86400) - 86400 * 30);
                                     const res = {}
                                     for (let i = 0; i < 30; i++) {
                                         var d = Tools.formatDate(new Date((previous + i * 86400) * 1000.0))

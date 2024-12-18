@@ -1,6 +1,6 @@
 import abc
 import asyncio
-from collections import deque
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 import hashlib
 import inspect
@@ -109,17 +109,19 @@ Range = lambda: range(0, 256)
 
 class iStorage(metaclass=abc.ABCMeta):
     type: str = "_interface"
-    def __init__(self, path: str, weight: int = 0, list_concurrent: int = 32):
+    def __init__(
+        self, 
+        path: str, 
+        weight: int = 0, 
+        list_concurrent: int = 32, 
+        name: Optional[str] = None
+    ):
         self.path = FilePath(path)
         self.weight = weight
         self.list_concurrent = list_concurrent
         self.current_weight = 0
+        self._name = name
     
-    @staticmethod
-    @abc.abstractmethod
-    def from_config(config: dict[str, Any]):
-        raise NotImplementedError("from_config not implemented")
-
     @property
     @abc.abstractmethod
     def unique_id(self):
@@ -165,16 +167,13 @@ class iStorage(metaclass=abc.ABCMeta):
 class LocalStorage(iStorage):
     type = "local"
 
-    def __init__(self, path: str, weight: int = 0, list_concurrent: int = 32):
-        super().__init__(path, weight, list_concurrent)
+    def __init__(self, path: str, weight: int = 0, list_concurrent: int = 32, name: Optional[str] = None):
+        super().__init__(path, weight, list_concurrent, name)
         self.async_executor = ThreadPoolExecutor(max_workers=list_concurrent)
 
     @staticmethod
     def from_config(config: dict[str, Any]):
-        path = config["path"]
-        weight = config.get("weight", 0)
-        list_concurrent = config.get("list_concurrent", 32)
-        return LocalStorage(path, weight, list_concurrent)
+        return LocalStorage(config["path"], config.get("weight", 0), config.get("list_concurrent", 32), config.get("name"))
 
     @property
     def unique_id(self):
@@ -239,13 +238,22 @@ class LocalStorage(iStorage):
         return os.path.getmtime(Path(str(path)))
 
 class iNetworkStorage(iStorage):
-
-    def __init__(self, path: str, username: str, password: str, endpoint: str, weight: int = 0, list_concurrent: int = 32):
-        super().__init__(path, weight, list_concurrent)
+    def __init__(
+        self, 
+        path: str, 
+        username: str, 
+        password: str, 
+        endpoint: str, 
+        weight: int = 0, 
+        list_concurrent: int = 32, 
+        name: Optional[str] = None,
+        cache_timeout: float = 60,
+    ):
+        super().__init__(path, weight, list_concurrent, name)
         self.username = username
         self.password = password
         self.endpoint = endpoint.rstrip("/")
-        self.cache = cache.TimeoutCache()
+        self.cache = cache.TimeoutCache(cache_timeout)
 
     @property
     def unique_id(self):
@@ -280,8 +288,20 @@ class AlistError(Exception):
 class AlistStorage(iNetworkStorage):
     type = "alist"
 
-    def __init__(self, path: str, username: str, password: str, endpoint: str, weight: int = 0, list_concurrent: int = 32, retries: int = 3, public_webdav_endpoint: str = ""):
-        super().__init__(path, username, password, endpoint, weight, list_concurrent)
+    def __init__(
+        self, 
+        path: str, 
+        username: str, 
+        password: str, 
+        endpoint: str, 
+        weight: int = 0, 
+        list_concurrent: int = 32, 
+        name: Optional[str] = None,
+        cache_timeout: float = 60,
+        retries: int = 3, 
+        public_webdav_endpoint: str = ""
+    ):
+        super().__init__(path, username, password, endpoint, weight, list_concurrent, name, cache_timeout)
         self.retries = retries
         self.last_token: Optional[AlistToken] = None
         self.session = aiohttp.ClientSession(
@@ -292,18 +312,6 @@ class AlistStorage(iNetworkStorage):
         if public_webdav_endpoint:
             urlobject = urlparse.urlparse(public_webdav_endpoint)
             self._public_webdav_endpoint = f"{urlobject.scheme}://{urlparse.quote(self.username)}:{urlparse.quote(self.password)}@{urlobject.netloc}{urlobject.path}"
-
-    @staticmethod
-    def from_config(config: dict[str, Any]):
-        path = config["path"]
-        username = config["username"]
-        password = config["password"]
-        endpoint = config["endpoint"]
-        weight = config.get("weight", 0)
-        list_concurrent = config.get("list_concurrent", 32)
-        retries = config.get("retries", 3)
-        public_webdav_endpoint = config.get("public_webdav_endpoint", "")
-        return AlistStorage(path, username, password, endpoint, weight, list_concurrent, retries, public_webdav_endpoint)
 
     async def _get_token(self):
         if self.last_token is None or self.last_token.expires < time.monotonic():
@@ -516,8 +524,20 @@ class WebDavFile:
 
 class WebDavStorage(iNetworkStorage):
     type = "webdav"
-    def __init__(self, path: str, username: str, password: str, endpoint: str, weight: int = 0, list_concurrent: int = 32, public_endpoint: str = "", retries: int = 3):
-        super().__init__(path, username, password, endpoint, weight, list_concurrent)
+    def __init__(
+        self, 
+        path: str, 
+        username: str, 
+        password: str, 
+        endpoint: str, 
+        weight: int = 0, 
+        list_concurrent: int = 32,
+        name: Optional[str] = None, 
+        cache_timeout: int = 60,
+        public_endpoint: str = "", 
+        retries: int = 3
+    ):
+        super().__init__(path, username, password, endpoint, weight, list_concurrent, name, cache_timeout)
         self.client = webdav3_client.Client({
             "webdav_hostname": endpoint,
             "webdav_login": username,
@@ -535,18 +555,6 @@ class WebDavStorage(iNetworkStorage):
         urlobject = urlparse.urlparse(f"{self.public_endpoint or self.endpoint}")
         self.base_url = f"{urlobject.scheme}://{urlparse.quote(self.username)}:{urlparse.quote(self.password)}@{urlobject.hostname}:{urlobject.port}{urlobject.path}"
         self.retries = retries
-
-    @staticmethod
-    def from_config(config: dict[str, Any]):
-        path = config["path"]
-        username = config["username"]
-        password = config["password"]
-        endpoint = config["endpoint"]
-        weight = config.get("weight", 0)
-        list_concurrent = config.get("list_concurrent", 32)
-        public_endpoint = config.get("public_endpoint", "")
-        retries = config.get("retries", 3)
-        return WebDavStorage(path, username, password, endpoint, weight, list_concurrent, public_endpoint, retries)
 
     async def list_files(self, pbar: WrapperTQDM) -> set[File]:
         async def get_files(root_id: int) -> list[WebDavFileInfo]:
@@ -670,16 +678,32 @@ class WebDavStorage(iNetworkStorage):
         return True
     
 
+@dataclass
+class Parameter:
+    name: str
+    type: type
+    default: Any = inspect._empty
+
 def init_storage(config: Any) -> Optional[iStorage]:
     if not isinstance(config, dict) or "type" not in config or config["type"] not in abstract_storages:
         return None
     try:
-        return abstract_storages[config["type"]].from_config(config)
+        abstract_storage = abstract_storages[config["type"]]
+        args = abstract_storage_args[abstract_storage]
+        params = {}
+        for arg in args:
+            if arg.name in config:
+                params[arg.name] = config[arg.name]
+            elif arg.default != inspect._empty:
+                params[arg.name] = arg.default
+
+        return abstract_storage(**params)
     except:
         logger.traceback()
         return None
 
 abstract_storages: dict[str, type[iStorage]] = {}
+abstract_storage_args: defaultdict[type[iStorage], list[Parameter]] = defaultdict(list)
 
 T = TypeVar("T")
 
@@ -695,6 +719,24 @@ async def init():
         if istorage.type == iStorage.type:
             continue
         abstract_storages[istorage.type] = istorage
+        arg = inspect.getfullargspec(istorage.__init__)
+        args = arg.args[1:]
+        # defaults 默认的长度和位置都是从后往前数的，
+        # 填充一些空的在前面
+        defaults = [
+            inspect._empty for _ in range(len(args) - len(arg.defaults or []))
+        ]
+        defaults.extend(arg.defaults or [])
+        for idx, arg_name in enumerate(args):
+            if arg_name == "self":
+                continue
+            abstract_storage_args[istorage].append(
+                Parameter(
+                    name=arg_name,
+                    type=arg.annotations.get(arg_name, Any),
+                    default=defaults[idx]
+                )
+            )
 
     logger.debug("Storage init complete")
     logger.debug(f"Found {len(abstract_storages)} storage types: {', '.join(abstract_storages.keys())}")

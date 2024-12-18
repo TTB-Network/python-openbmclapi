@@ -1,5 +1,5 @@
 import asyncio
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass
 import io
 import os
@@ -125,7 +125,7 @@ routes = web.RouteTableDef()
 
 runner: Optional[web.AppRunner] = None
 site: Optional[web.TCPSite] = None
-public_server: Optional[asyncio.Server] = None
+public_servers: deque[asyncio.Server] = deque()
 privates: dict[tuple[str, str], PrivateSSLServer] = {}
 
 time_qps: defaultdict[int, int] = defaultdict(int)
@@ -181,7 +181,8 @@ async def init():
 
     await start_tcp_site()
 
-    await start_public_server()
+    for _ in range(8):
+        await start_public_server()
 
     scheduler.run_repeat_later(
         check_server,
@@ -276,22 +277,29 @@ async def public_handle(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
         writer.close()
     ...
 
-async def start_public_server():
-    global public_server
-    if public_server is not None:
-        public_server.close()
-        try:
-            await asyncio.wait_for(public_server.wait_closed(), timeout=5)
-        except:
-            ...
-    port = get_public_port()
-    if port == 0:
-        port = await get_free_port()
-    public_server = await create_server(public_handle, '0.0.0.0', port)
+async def start_public_server(count: int = 8):
+    global public_servers
+    removes = []
+    for server in public_servers:
+        if not server.is_serving() or len(server.sockets) == 0:
+            server.close()
+            try:
+                await asyncio.wait_for(server.wait_closed(), timeout=5)
+            except:
+                ...
+            removes.append(server)
+    for server in removes:
+        public_servers.remove(server)
+    for _ in range(len(public_servers), count):
+        port = get_public_port()
+        if port == 0:
+            port = await get_free_port()
+        server = await create_server(public_handle, '0.0.0.0', port)
 
-    await public_server.start_serving()
+        await server.start_serving()
+        public_servers.append(server)
 
-    logger.tsuccess("web.success.public_port", port=public_server.sockets[0].getsockname()[1])
+        logger.tsuccess("web.success.public_port", port=server.sockets[0].getsockname()[1], current=len(public_servers), total=count)
 
 def get_public_port():
     port = int(config.const.port)
@@ -373,8 +381,8 @@ async def check_server():
     servers: list[CheckServer] = []
     if site is not None:
         servers.append(CheckServer(site, site._port, start_tcp_site))
-    if public_server is not None:
-        servers.append(CheckServer(public_server, get_server_port(public_server), start_public_server))
+    for server in public_servers:
+        servers.append(CheckServer(server, get_server_port(server), start_public_server))
     if privates:
         for hash, server in privates.items():
             servers.append(CheckServer(server.server, get_server_port(server.server), start_private_server, server.key, (
@@ -508,7 +516,7 @@ async def create_server(
     host=None, port=None,
     *, family=socket.AF_UNSPEC,
     flags=socket.AI_PASSIVE, backlog=config.const.backlog,
-    ssl=None, reuse_address=None, reuse_port=None,
+    ssl=None, reuse_address=True, reuse_port=None,
     ssl_handshake_timeout=None,
     ssl_shutdown_timeout=None,
 ):
