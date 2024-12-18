@@ -293,19 +293,21 @@ async def start_public_server(count: int = config.const.web_sockets):
             removes.append(server)
     for server in removes:
         public_servers.remove(server)
-    with tqdm(total=count - len(public_servers)) as pbar:
-        for _ in range(len(public_servers), count):
-            port = get_public_port()
-            if port == 0:
-                port = await get_free_port()
-            server = await create_server(public_handle, '0.0.0.0', port)
+    port = 0
+    async def start():
+        nonlocal port
+        port = get_public_port()
+        if port == 0:
+            port = await get_free_port()
 
-            await server.start_serving()
-            public_servers.append(server)
-            pbar.update(1)
-            pbar.set_postfix_str(f"Port [{port}]")
+        server = await create_server(public_handle, '0.0.0.0', port)
 
-        logger.tsuccess("web.success.public_port", port=port, current=len(public_servers), total=count)
+        await server.start_serving()
+        public_servers.append(server)
+    await asyncio.gather(*(
+        asyncio.create_task(start()) for _ in range(count - len(public_servers))
+    ))
+    logger.tsuccess("web.success.public_port", port=port, current=len(public_servers), total=count)
 
 
 def get_public_port():
