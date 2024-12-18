@@ -174,14 +174,14 @@ class Const:
         backlog = Config.get("web.backlog", 0)
         if not isinstance(backlog, int):
             backlog = 100
-        return min(backlog, 100)
+        return max(backlog, 100)
     
     @property
     def web_sockets(self):
         sockets = Config.get("web.sockets", 8)
         if not isinstance(sockets, int):
             sockets = 8
-        return min(sockets, 1)
+        return max(sockets, 1)
 
 const = Const()
 

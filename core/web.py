@@ -10,6 +10,7 @@ import time
 from typing import Any, Coroutine, Optional, Callable
 from aiohttp import web
 from aiohttp.web_urldispatcher import SystemRoute
+from tqdm import tqdm
 
 from core import config, scheduler, units, utils
 from .logger import logger
@@ -25,6 +26,9 @@ class CheckServer:
     start_handle: Callable
     client: Optional[ssl.SSLContext] = None
     args: tuple[Any, ...] = ()
+
+    def __hash__(self) -> int:
+        return hash(self.object)
 
 @dataclass
 class PrivateSSLServer:
@@ -289,16 +293,20 @@ async def start_public_server(count: int = config.const.web_sockets):
             removes.append(server)
     for server in removes:
         public_servers.remove(server)
-    for _ in range(len(public_servers), count):
-        port = get_public_port()
-        if port == 0:
-            port = await get_free_port()
-        server = await create_server(public_handle, '0.0.0.0', port)
+    with tqdm(total=count - len(public_servers)) as pbar:
+        for _ in range(len(public_servers), count):
+            port = get_public_port()
+            if port == 0:
+                port = await get_free_port()
+            server = await create_server(public_handle, '0.0.0.0', port)
 
-        await server.start_serving()
-        public_servers.append(server)
+            await server.start_serving()
+            public_servers.append(server)
+            pbar.update(1)
+            pbar.set_postfix_str(f"Port [{port}]")
 
-        logger.tsuccess("web.success.public_port", port=server.sockets[0].getsockname()[1], current=len(public_servers), total=count)
+        logger.tsuccess("web.success.public_port", port=port, current=len(public_servers), total=count)
+
 
 def get_public_port():
     port = int(config.const.port)
@@ -380,7 +388,8 @@ async def check_server():
     servers: list[CheckServer] = []
     if site is not None:
         servers.append(CheckServer(site, site._port, start_tcp_site))
-    for server in public_servers:
+    if public_servers:
+        server = public_servers[0]
         servers.append(CheckServer(server, get_server_port(server), start_public_server))
     if privates:
         for hash, server in privates.items():
@@ -388,14 +397,15 @@ async def check_server():
                 Path(hash[0]),
                 Path(hash[1])
             )))
+    servers = list(set(servers))
     
     #logger.tdebug("web.debug.check_server", servers=len(servers))
     results = await asyncio.gather(*[asyncio.create_task(_check_server(server)) for server in servers])
     for server, result in zip(servers, results):
         if result:
             continue
-        await server.start_handle()
         logger.twarning("web.warning.server_down", port=server.port)
+        await server.start_handle()
 
 def get_server_port(server: Optional[asyncio.Server]):
     if server is None:
