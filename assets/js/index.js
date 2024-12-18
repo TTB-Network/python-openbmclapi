@@ -429,6 +429,7 @@ class SwitchElement extends Element {
                 this.select(button_index);
             });
             this.$buttons.push($button);
+            this.select(button_index);
             if (this.index == button_index) {
                 $button.classes("active");
             }
