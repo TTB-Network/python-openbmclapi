@@ -181,8 +181,7 @@ async def init():
 
     await start_tcp_site()
 
-    for _ in range(8):
-        await start_public_server()
+    await start_public_server()
 
     scheduler.run_repeat_later(
         check_server,
@@ -277,7 +276,7 @@ async def public_handle(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
         writer.close()
     ...
 
-async def start_public_server(count: int = 8):
+async def start_public_server(count: int = config.const.web_sockets):
     global public_servers
     removes = []
     for server in public_servers:
