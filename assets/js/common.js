@@ -36,6 +36,23 @@ class Utils {
             return!obj;
         }
     }
+    static equals(a, b) {
+        if (a === b) return true;
+        if (a == null || b == null) return false;
+        if (a !== a && b !== b) return true; // NaN === NaN
+        if (typeof a === 'object' && typeof b === 'object') {
+            var aIsArray = Array.isArray(a);
+            var bIsArray = Array.isArray(b);
+            if (aIsArray && bIsArray) {
+                return a.length === b.length && a.every((item, index) => this.equals(item, b[index]));
+            } else if (!aIsArray && !bIsArray) {
+                var aKeys = Object.keys(a);
+                var bKeys = Object.keys(b);
+                return aKeys.length === bKeys.length && aKeys.every(key => this.equals(a[key], b[key]));
+            }
+        }
+        return false;
+    }
 }
 class I18NManager {
     constructor() {

@@ -127,6 +127,13 @@ class iStorage(metaclass=abc.ABCMeta):
     def unique_id(self):
         raise NotImplementedError("unique_id not implemented")
 
+    @property
+    def name(self):
+        if self._name is None:
+            return self.unique_id
+        else:
+            return self._name
+
     def __repr__(self):
         return f"{self.type}({self.path})"
 

@@ -429,9 +429,8 @@ class SwitchElement extends Element {
                 this.select(button_index);
             });
             this.$buttons.push($button);
-            this.select(button_index);
             if (this.index == button_index) {
-                $button.classes("active");
+                this._render_bar()
             }
         }
         this.$main.append(...this.$buttons)
@@ -443,6 +442,26 @@ class SwitchElement extends Element {
             })
         }
     }
+    _render_bar() {
+        requestAnimationFrame(() => {
+            var index = this.index;
+            var buttons_width = this.$buttons.map(e => calcElementWidth(e));
+            var left = 0;
+            var width = 0;
+            if (index >= 0 && index < this.$buttons.length) {
+                left = buttons_width.slice(0, index).reduce((a, b) => a + b, 0);
+                width = buttons_width[index];
+                this.$buttons.forEach(e => {
+                    if (e === this.$buttons[index]) {
+                        e.classes("active");
+                    } else {
+                        e.removeClasses("active")
+                    }
+                })
+            }
+            this.$bar.style("left", `${left}px`).style("width", `${width}px`);
+        })
+    }
     select(index) {
         if (this._render_task || this.$buttons.length == 0) {
             this._render_next_index = index;
@@ -450,21 +469,7 @@ class SwitchElement extends Element {
         };
         var oldindex = this.index;
         this.index = index;
-        var buttons_width = this.$buttons.map(e => calcElementWidth(e));
-        var left = 0;
-        var width = 0;
-        if (index >= 0 && index < this.$buttons.length) {
-            left = buttons_width.slice(0, index).reduce((a, b) => a + b, 0);
-            width = buttons_width[index];
-            this.$buttons.forEach(e => {
-                if (e === this.$buttons[index]) {
-                    e.classes("active");
-                } else {
-                    e.removeClasses("active")
-                }
-            })
-        }
-        this.$bar.style("left", `${left}px`).style("width", `${width}px`);
+        this._render_bar()
         if (oldindex == this.index) return this;
         this.origin.dispatchEvent(new CustomEvent("change", {
             detail: this.current
@@ -731,7 +736,12 @@ $i18n.addLanguageTable("zh_CN", {
     "dashboard.title.cluster.today": "今日请求节点",
     "dashboard.title.cluster.30days": "30 天请求节点",
     "dashboard.value.unit.bytes": "请求量",
-    "dashboard.value.unit.hits": "请求数"
+    "dashboard.value.unit.hits": "请求数",
+    "dashboard.switch.storage.local": "本地存储 [%path%]",
+    "dashboard.switch.storage.alist": "Alist [%url%%path%]",
+    "dashboard.switch.storage.webdav": "WebDAV [%url%%path%]",
+    "dashboard.switch.storage.undefined": "未知存储",
+    "dashboard.switch.storage._interface": "奇怪的存储",
 
 })
 $style.setTheme("light", {
@@ -1299,15 +1309,14 @@ async function load() {
                 }, {
                     timeout: 50,
                     async handler(obj) {
-                        console.log(obj)
                         const mappings = {
                             "cluster": (n) => {
                                 return obj.object.clusters_name[n] || n
                             },
                             "storage": (n) => {
                                 var data = obj.object.storages_name[n] || {}
-                                console.log(data, n)
-                                return $i18n.t(`dashboard.switch.storage.${data.type}`)
+                                if (data.name === undefined || data.name == null || data.name == n) return $i18n.t(`dashboard.switch.storage.${data.type}`, data)
+                                return data.name
                             }
                         }
                         for (
@@ -1319,6 +1328,7 @@ async function load() {
                             var section = $dashboard_locals[`${key}_switch`]
                             var obj_key = `${key}s`
                             var value = mappings[key]
+                            if (Utils.equals(obj.object[obj_key], obj.before[obj_key])) continue
                             section.removeButtons(...section.getButtons().slice(1))
                             section.addButtons(...obj.object[obj_key].map(e => value(e)))
                         }
@@ -1350,7 +1360,6 @@ async function load() {
 
                         const storage_key = $dashboard_locals.storage_switch.current.index == 0 ? ":all:" : $dashboard_locals.statistics_keys.storages[$dashboard_locals.storage_switch.current.index - 1]
                         const cluster_key = $dashboard_locals.cluster_switch.current.index == 0 ? ":all:" : $dashboard_locals.statistics_keys.clusters[$dashboard_locals.cluster_switch.current.index - 1]
-                        console.log(storage_key, cluster_key, $dashboard_locals.statistics_keys.storages_name)
                         if (!obj.object.cluster || !obj.object.storage) return
                         const data = {
                             cluster: obj.object.cluster[cluster_key],
@@ -1382,7 +1391,6 @@ async function load() {
                                         Object.keys(resp).sort((a, b) => parseInt(a) - parseInt(b)).map(v => [v, resp[v]])
                                     )
                                 } else {
-                                    console.log(resp)
                                     var server_time = $dashboard_locals.info_runtime
                                     //    return int((t - ((t + UTC) % 86400) - 86400 * day) / 3600)
                                     var datetime = server_time.current_time - server_time.diff / 1000.0 + (+new Date() - server_time.resp_timestamp) / 1000.0;
@@ -1434,7 +1442,6 @@ async function load() {
                                         yAxisIndex: 1
                                     }]
                                 }
-                                console.log(option)
                                 instance.base.setFormatter(mappings_formatter.bytes, 0)
                                 instance.base.setFormatter(mappings_formatter.hits, 1)
                                 instance.base.setOption(option)

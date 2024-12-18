@@ -279,8 +279,9 @@ def init_storages_key(*storage: storages.iStorage):
         data = {
             "type": s.type,
             "path": str(s.path),
+            "name": str(s.name)
         }
-        if isinstance(s, storages.AlistStorage):
+        if isinstance(s, (storages.iNetworkStorage)):
             data["url"] = s.endpoint
         content = json.dumps(data, separators=(',', ':'))
         
@@ -291,6 +292,8 @@ def init_storages_key(*storage: storages.iStorage):
         )
         if q.count() == 0:
             session.add(r)
+        else:
+            q.update({"data": content})
     session.commit()
 
 
