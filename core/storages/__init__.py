@@ -706,7 +706,6 @@ def init_storage(config: Any) -> Optional[iStorage]:
                 params[arg.name] = config[arg.name]
             elif arg.default != inspect._empty:
                 params[arg.name] = arg.default
-        print(params, config)
         return abstract_storage(**params)
     except:
         logger.traceback()
