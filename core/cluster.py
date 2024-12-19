@@ -147,12 +147,13 @@ class StorageManager:
             unit_scale=True,
         )) as pbar:
             missing_files = set()
-            waiting_files: asyncio.Queue[File] = asyncio.Queue()
+            waiting_files: defaultdict[storages.iStorage, asyncio.Queue[File]] = defaultdict(lambda: asyncio.Queue[File]())
             
-            for file in files:
-                waiting_files.put_nowait(file)
+            for storage in self.available_storages:
+                for file in files:
+                    waiting_files[storage].put_nowait(file)
             
-            await asyncio.gather(*(self._get_missing_file_storage(function, missing_files, waiting_files, storage, pbar) for storage in self.available_storages))
+            await asyncio.gather(*(self._get_missing_file_storage(function, missing_files, waiting_files[storage], storage, pbar) for storage in self.available_storages))
             
             # clear cache_list
             self.cache_filelist.clear()
@@ -197,6 +198,7 @@ class StorageManager:
         )
         if await self.available() and not use_master:
             storage = self.get_width_storage()
+            print(storage)
             if isinstance(storage, storages.LocalStorage) and await storage.exists(storage_file):
                 file = LocalStorageFile(
                     hash,
@@ -267,7 +269,7 @@ class StorageManager:
 
     def get_width_storage(self, c_storage: Optional[storages.iStorage] = None) -> storages.iStorage:
         current_storage = self.available_storages[0]
-        if current_storage.current_weight > current_storage.weight:
+        if current_storage.current_weight < current_storage.weight:
             current_storage.current_weight += 1
             return current_storage
         else:

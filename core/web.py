@@ -294,7 +294,7 @@ async def start_public_server(count: int = config.const.web_sockets):
     for server in removes:
         public_servers.remove(server)
     port = 0
-    async def start():
+    async def _start():
         nonlocal port
         port = get_public_port()
         if port == 0:
@@ -304,9 +304,14 @@ async def start_public_server(count: int = config.const.web_sockets):
 
         await server.start_serving()
         public_servers.append(server)
-    await asyncio.gather(*(
-        asyncio.create_task(start()) for _ in range(count - len(public_servers))
-    ))
+    def start():
+        nonlocal _start
+        return asyncio.gather(*(
+            asyncio.create_task(_start()) for _ in range(count - len(public_servers))
+        ))
+    if port == 0:
+        public_servers.clear()
+        await start()
     logger.tsuccess("web.success.public_port", port=port, current=len(public_servers), total=count)
 
 

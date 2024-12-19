@@ -265,6 +265,9 @@ class iNetworkStorage(iStorage):
     @property
     def unique_id(self):
         return hashlib.md5(f"{self.type},{self.path},{self.endpoint}".encode("utf-8")).hexdigest()
+    
+    def __repr__(self):
+        return f"{self.__class__.__name__}(path={self.path}, endpoint={self.endpoint})"
 
 @dataclass
 class AlistResult:
@@ -703,7 +706,7 @@ def init_storage(config: Any) -> Optional[iStorage]:
                 params[arg.name] = config[arg.name]
             elif arg.default != inspect._empty:
                 params[arg.name] = arg.default
-
+        print(params, config)
         return abstract_storage(**params)
     except:
         logger.traceback()
