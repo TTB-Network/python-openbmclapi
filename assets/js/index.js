@@ -742,6 +742,10 @@ $i18n.addLanguageTable("zh_CN", {
     "dashboard.switch.storage.webdav": "WebDAV [%url%%path%]",
     "dashboard.switch.storage.undefined": "未知存储",
     "dashboard.switch.storage._interface": "奇怪的存储",
+    "dashboard.value.storage.total.today": "今日存储 %hits% | %bytes%",
+    "dashboard.value.cluster.total.today": "今日节点 %hits% | %bytes%",
+    "dashboard.value.storage.total.30days": "30 天存储 %hits% | %bytes%",
+    "dashboard.value.cluster.total.30days": "30 天节点 %hits% | %bytes%"
 
 })
 $style.setTheme("light", {
@@ -928,7 +932,11 @@ $style.addAll({
         line-height: 1.5;
         color: var(--value-color);
         font-size: 24px;
-    `
+    `,
+    ".label-text .flex-between": {
+        "flex-direction": "row",
+        "justify-content": "space-between"
+    }
 })
 class Tools {
     static formatTime(seconds) {
@@ -1445,83 +1453,59 @@ async function load() {
                                 instance.base.setFormatter(mappings_formatter.bytes, 0)
                                 instance.base.setFormatter(mappings_formatter.hits, 1)
                                 instance.base.setOption(option)
+
+                                instance.total_params.hits = Tools.formatSimpleNumber(Object.values(resp).map(v => v?.hits || 0).reduce((a, b) => a + b, 0))
+                                instance.total_params.bytes = Tools.formatBytes(Object.values(resp).map(v => v?.bytes || 0).reduce((a, b) => a + b, 0))
                             }
                         }
                     }
                 })
-                $dashboard_locals.storages_info = Tools.createFlexElement().append(
-                    Tools.createPanel(({
-                        panel
-                    }) => {
-                        var instance = Tools.createEchartElement(({
-                            echart, base
-                        }) => {
-                            base.style("min-height", "180px")
-                            base.style("width", "100%")
-                            $dashboard_locals.storage_echarts.storage_today = {
-                                echart, base
-                            }
-                        })
-                        panel.append(
-                            createElement("p").classes("title").i18n("dashboard.title.storage.today"),
-                            instance
+                for (const locals_info_key of [
+                    "storage", 
+                    "cluster"
+                ]) {
+                    const info = Tools.createFlexElement()
+                    for (const time of [
+                        "today",
+                        "30days"
+                    ]) {
+                        info.append(
+                            Tools.createPanel(({
+                                panel
+                            }) => {
+                                var instance = Tools.createEchartElement(({
+                                    echart, base
+                                }) => {
+                                    base.style("min-height", "180px")
+                                    base.style("width", "100%")
+                                    $dashboard_locals.storage_echarts[`${locals_info_key}_${time}`] = {
+                                        echart, base
+                                    }
+                                })
+                                var current = createElement("p").i18n(`dashboard.value.${locals_info_key}.total.${time}`)
+                                var params = ref({
+                                    hits: 0,
+                                    bytes: "0iB"
+                                }, {
+                                    handler(obj) {
+                                        current.t18n(obj.object)
+                                    },
+                                    trigger: true
+                                })
+                                panel.classes("label-text").append(
+                                    createElement("p").classes("title", "flex-between").append(
+                                        createElement("p").i18n(`dashboard.title.${locals_info_key}.${time}`),
+                                        current
+                                    ),
+                                    instance
+                                )
+                                $dashboard_locals.storage_echarts[`${locals_info_key}_${time}`].total_params = params
+                            })
                         )
-                    }),
-                    Tools.createPanel(({
-                        panel
-                    }) => {
-                        var instance = Tools.createEchartElement(({
-                            echart, base
-                        }) => {
-                            base.style("min-height", "180px")
-                            base.style("width", "100%")
-                            $dashboard_locals.storage_echarts.storage_30days = {
-                                echart, base
-                            }
-                        })
-                        panel.append(
-                            createElement("p").classes("title").i18n("dashboard.title.storage.30days"),
-                            instance
-                        )
-                    }),
-                ).child(2).minWidth(1280)
-
-                $dashboard_locals.clusters_info = Tools.createFlexElement().append(
-                    Tools.createPanel(({
-                        panel
-                    }) => {
-                        var instance = Tools.createEchartElement(({
-                            echart, base
-                        }) => {
-                            base.style("min-height", "180px")
-                            base.style("width", "100%")
-                            $dashboard_locals.storage_echarts.cluster_today = {
-                                echart, base
-                            }
-                        })
-                        panel.append(
-                            createElement("p").classes("title").i18n("dashboard.title.cluster.today"),
-                            instance
-                        )
-                    }),
-                    Tools.createPanel(({
-                        panel
-                    }) => {
-                        var instance = Tools.createEchartElement(({
-                            echart, base
-                        }) => {
-                            base.style("min-height", "180px")
-                            base.style("width", "100%")
-                            $dashboard_locals.storage_echarts.cluster_30days = {
-                                echart, base
-                            }
-                        })
-                        panel.append(
-                            createElement("p").classes("title").i18n("dashboard.title.cluster.30days"),
-                            instance
-                        )
-                    }),
-                ).child(2).minWidth(1280)
+                    }
+                    $dashboard_locals[`${locals_info_key}s_info`] = info.child(2).minWidth(1280)
+                    console.log(info)
+                }
 
                 var statistics = createElement("div").append(
                     createElement("div").classes("pre-switch-container").append(

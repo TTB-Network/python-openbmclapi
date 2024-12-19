@@ -870,8 +870,18 @@ function parseJWT(token) {
 function ref(object, params = {}) {
     var handler = params.handler || function () { };
     var timeout = params.timeout || 0
+    var trigger = params.trigger || false;
     var task = null;
     var old_object;
+    if (trigger) {
+        old_object = Object.assign({}, object)
+        handler({
+            key: undefined,
+            value: undefined,
+            object,
+            before: old_object
+        })
+    }
     return new Proxy(object, {
         set(target, key, value) {
             if (old_object == null) old_object = Object.assign({}, object)
