@@ -198,7 +198,6 @@ class StorageManager:
         )
         if await self.available() and not use_master:
             storage = self.get_width_storage()
-            print(storage)
             if isinstance(storage, storages.LocalStorage) and await storage.exists(storage_file):
                 file = LocalStorageFile(
                     hash,
