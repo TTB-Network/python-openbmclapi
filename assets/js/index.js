@@ -742,10 +742,10 @@ $i18n.addLanguageTable("zh_CN", {
     "dashboard.switch.storage.webdav": "WebDAV [%url%%path%]",
     "dashboard.switch.storage.undefined": "未知存储",
     "dashboard.switch.storage._interface": "奇怪的存储",
-    "dashboard.value.storage.total.today": "今日存储 %hits% | %bytes%",
-    "dashboard.value.cluster.total.today": "今日节点 %hits% | %bytes%",
-    "dashboard.value.storage.total.30days": "30 天存储 %hits% | %bytes%",
-    "dashboard.value.cluster.total.30days": "30 天节点 %hits% | %bytes%"
+    "dashboard.value.storage.total.today": "共请求 %hits% | 共请求流量 %bytes%",
+    "dashboard.value.cluster.total.today": "共请求 %hits% | 共请求流量 %bytes%",
+    "dashboard.value.storage.total.30days": "共请求 %hits% | 共请求流量 %bytes%",
+    "dashboard.value.cluster.total.30days": "共请求 %hits% | 共请求流量 %bytes%"
 
 })
 $style.setTheme("light", {
