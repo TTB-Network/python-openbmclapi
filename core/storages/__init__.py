@@ -386,6 +386,7 @@ class AlistStorage(iNetworkStorage):
                 raise
     
     async def list_files(self, pbar: WrapperTQDM) -> set[File]:
+        @utils.retry(5, 10)
         async def get_files(root_id: int):
             root = self.path / DOWNLOAD_DIR / f"{root_id:02x}"
             try:
@@ -567,6 +568,7 @@ class WebDavStorage(iNetworkStorage):
         self.retries = retries
 
     async def list_files(self, pbar: WrapperTQDM) -> set[File]:
+        @utils.retry(5, 10)
         async def get_files(root_id: int) -> list[WebDavFileInfo]:
             root = self.path / DOWNLOAD_DIR / f"{root_id:02x}"
             retries = 0

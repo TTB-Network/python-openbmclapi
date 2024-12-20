@@ -14,7 +14,7 @@ from typing import Any, Callable, Optional
 
 from tqdm import tqdm
 
-from core import logger
+from core.logger import logger
 
 
 class CountLock:

@@ -885,7 +885,7 @@ class Cluster:
             self.retry()
 
     def retry(self):
-        delay = ((self.enable_count  + 1) ** 2) * 60
+        delay = min(3600, ((self.enable_count  + 1) ** 2) * 60)
         self.delay_enable_task = scheduler.run_later(self.enable, delay)
         logger.tinfo("cluster.info.cluster.retry_enable", cluster=self.id, delay=units.format_count_datetime(delay))
             
