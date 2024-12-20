@@ -77,9 +77,6 @@ class StorageManager:
             res = False
             try:
                 res = await asyncio.wait_for(self.__check_available(storage), 10)
-            except asyncio.TimeoutError:
-                if storage in self.available_storages:
-                    self.available_storages.remove(storage)
             except:
                 logger.ttraceback("storage.error.check_available", type=storage.type, path=storage.path, url=getattr(storage, "url", None))
                 if storage in self.available_storages:
@@ -94,12 +91,19 @@ class StorageManager:
             self.check_available.release()
         else:
             self.check_available.acquire()
+            logger.twarning("storage.warning.unavailable", storages=len(self.storages))
         
     async def __check_available(self, storage: storages.iStorage):
         file = MeasureFile(
             0
         )
         if not await storage.exists(file):
+            await storage.write_file(
+                file,
+                io.BytesIO(CHECK_FILE_CONTENT.encode("utf-8")),
+            )
+        elif await storage.get_size(file) != len(CHECK_FILE_CONTENT):
+            await storage.delete_file(file)
             await storage.write_file(
                 file,
                 io.BytesIO(CHECK_FILE_CONTENT.encode("utf-8")),
