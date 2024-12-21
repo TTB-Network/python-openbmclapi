@@ -672,6 +672,8 @@ class ClusterManager:
         if not self.initialized:
             return
         for cluster in self.clusters:
+            if cluster.delay_enable_task is not None:
+                continue
             await cluster.enable()
 
     async def disable(self):
