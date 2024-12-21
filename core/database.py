@@ -2,12 +2,13 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
 import json
+import threading
 import time
 from typing import Optional
 import pyzstd
 from sqlalchemy import create_engine, Column, Integer, String, LargeBinary
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session as ORMSession
 from sqlalchemy.orm.decl_api import DeclarativeMeta
 
 from core import logger, scheduler, storages, utils
@@ -99,13 +100,19 @@ class StatusType(Enum):
 class Session:
     def __init__(self):
         self.session = sessionmaker(bind=engine)()
+        self.lock = threading.Lock()
 
     def __del__(self):
         self.session.close()
         del self.session    
 
-    def get_session(self):
+    def __enter__(self):
+        self.lock.acquire()
         return self.session
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.session.commit()
+        self.lock.release()
     
 SESSION = Session()
 FILE_CACHE: defaultdict[FileStatisticsKey, FileStatistics] = defaultdict(lambda: FileStatistics())
@@ -127,10 +134,9 @@ def add_response(ip: str, type: StatusType, user_agent: str):
 def get_hour():
     return int(time.time() // 3600)
 
-def _commit_storage(hour: int, storage: Optional[str], hits: int, bytes: int):
+def _commit_storage(session: ORMSession, hour: int, storage: Optional[str], hits: int, bytes: int):
     if hits == bytes == 0:
         return False
-    session = SESSION.get_session()
     q = session.query(StorageStatisticsTable).filter_by(hour=hour, storage=storage)
     r = q.first() or StorageStatisticsTable(hour=hour, storage=storage, hits=str(0), bytes=str(0))
     if q.count() == 0:
@@ -143,10 +149,9 @@ def _commit_storage(hour: int, storage: Optional[str], hits: int, bytes: int):
     )
     return True
 
-def _commit_cluster(hour: int, cluster: str, hits: int, bytes: int):
+def _commit_cluster(session: ORMSession, hour: int, cluster: str, hits: int, bytes: int):
     if hits == bytes == 0:
         return False
-    session = SESSION.get_session()
     q = session.query(ClusterStatisticsTable).filter_by(hour=hour, cluster=cluster)
     r = q.first() or ClusterStatisticsTable(hour=hour, cluster=cluster, hits=str(0), bytes=str(0))
     if q.count() == 0:
@@ -159,10 +164,9 @@ def _commit_cluster(hour: int, cluster: str, hits: int, bytes: int):
     )
     return True
 
-def _commit_response(hour: int, ip_tables: defaultdict[str, int], user_agents: defaultdict[str, int], success: int = 0, forbidden: int = 0, redirect: int = 0, not_found: int = 0, error: int = 0, partial: int = 0):
+def _commit_response(session: ORMSession, hour: int, ip_tables: defaultdict[str, int], user_agents: defaultdict[str, int], success: int = 0, forbidden: int = 0, redirect: int = 0, not_found: int = 0, error: int = 0, partial: int = 0):
     if ip_tables == {}:
         return False
-    session = SESSION.get_session()
     q = session.query(ResponseTable).filter_by(hour=hour)
     r = q.first() or ResponseTable(hour=hour, ip_tables=b'', user_agents=b'', success=str(0), forbidden=str(0), redirect=str(0), not_found=str(0), error=str(0), partial=str(0))
     if q.count() == 0:
@@ -171,7 +175,7 @@ def _commit_response(hour: int, ip_tables: defaultdict[str, int], user_agents: d
     origin_user_agents: defaultdict[str, int] = decompress(r.user_agents) # type: ignore
     for ip, count in ip_tables.items():
         origin_ip_tables[ip] += count
-    
+
     for user_agent, count in user_agents.items():
         origin_user_agents[user_agent] += count
     q.update(
@@ -220,27 +224,26 @@ def commit():
         total_storages = 0
         cache = FILE_CACHE.copy()
         response_cache = RESPONSE_CACHE.copy()
-        session = SESSION.get_session()
-        clusters: defaultdict[tuple[int, str], FileStatistics] = defaultdict(lambda: FileStatistics(0, 0))
-        for key, value in cache.items():
-            hour = key.hour
-            cluster = key.cluster_id
-            storage = key.storage_id
-            hits = value.hits
-            bytes = value.bytes
-            if _commit_storage(hour, storage, hits, bytes):
-                total_hits += hits
-                total_bytes += bytes
-                total_storages += 1
-                clusters[(hour, cluster)].hits += hits
-                clusters[(hour, cluster)].bytes += bytes
-        for cluster, value in clusters.items():
-            _commit_cluster(cluster[0], cluster[1], value.hits, value.bytes)
+        with SESSION as session:
+            clusters: defaultdict[tuple[int, str], FileStatistics] = defaultdict(lambda: FileStatistics(0, 0))
+            for key, value in cache.items():
+                hour = key.hour
+                cluster = key.cluster_id
+                storage = key.storage_id
+                hits = value.hits
+                bytes = value.bytes
+                if _commit_storage(session, hour, storage, hits, bytes):
+                    total_hits += hits
+                    total_bytes += bytes
+                    total_storages += 1
+                    clusters[(hour, cluster)].hits += hits
+                    clusters[(hour, cluster)].bytes += bytes
+            for cluster, value in clusters.items():
+                _commit_cluster(session,cluster[0], cluster[1], value.hits, value.bytes)
 
-        for hour, value in response_cache.items():
-            _commit_response(hour, value.ip_tables, value.user_agents, value.success, value.forbidden, value.redirect, value.not_found, value.error, value.partial)
+            for hour, value in response_cache.items():
+                _commit_response(session,hour, value.ip_tables, value.user_agents, value.success, value.forbidden, value.redirect, value.not_found, value.error, value.partial)
 
-        session.commit()
         old_keys = []
         for key, value in cache.items():
             FILE_CACHE[key].hits -= value.hits
@@ -274,27 +277,27 @@ def commit():
         logger.terror("database.error.write")
 
 def init_storages_key(*storage: storages.iStorage):
-    session = SESSION.get_session()
-    for s in storage:
-        data = {
-            "type": s.type,
-            "path": str(s.path),
-            "name": str(s.name)
-        }
-        if isinstance(s, (storages.iNetworkStorage)):
-            data["url"] = s.endpoint
-        content = json.dumps(data, separators=(',', ':'))
-        
-        q = session.query(StorageUniqueIDTable).filter(StorageUniqueIDTable.unique_id == s.unique_id)
-        r = q.first() or StorageUniqueIDTable(
-            unique_id = s.unique_id,
-            data = content
-        )
-        if q.count() == 0:
-            session.add(r)
-        else:
-            q.update({"data": content})
-    session.commit()
+    with SESSION as session:
+        for s in storage:
+            data = {
+                "type": s.type,
+                "path": str(s.path),
+                "name": str(s.name)
+            }
+            if isinstance(s, (storages.iNetworkStorage)):
+                data["url"] = s.endpoint
+            content = json.dumps(data, separators=(',', ':'))
+
+            q = session.query(StorageUniqueIDTable).filter(StorageUniqueIDTable.unique_id == s.unique_id)
+            r = q.first() or StorageUniqueIDTable(
+                unique_id = s.unique_id,
+                data = content
+            )
+            if q.count() == 0:
+                session.add(r)
+            else:
+                q.update({"data": content})
+        session.commit()
 
 
 async def init():

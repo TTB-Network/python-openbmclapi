@@ -355,8 +355,8 @@ async def handle_api(
             units.format_time(q._ + start_timestamp): q for q in counter.all_system_info if q._ > c - total
         }
     if event == "storage_keys":
-        session = db.SESSION.get_session()
-        q = session.query(db.StorageUniqueIDTable)
+        with db.SESSION as session:
+            q = session.query(db.StorageUniqueIDTable)
         return [
             {
                 "id": item.unique_id,
@@ -365,35 +365,35 @@ async def handle_api(
         ]
     if event == "cluster_statistics_hourly":
         hour = get_query_day_tohour(0)
-        session = db.SESSION.get_session()
-        q = session.query(db.ClusterStatisticsTable).filter(
-            db.ClusterStatisticsTable.hour >= hour
-        ).order_by(db.ClusterStatisticsTable.hour, db.ClusterStatisticsTable.cluster)
-        hourly_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
-        for item in q.all():
-            hourly_data[item.cluster].append( # type: ignore
-                APIStatistics(
-                    item.hour - hour,# type: ignore
-                    int(item.bytes), # type: ignore
-                    int(item.hits), # type: ignore
+        with db.SESSION as session:
+            q = session.query(db.ClusterStatisticsTable).filter(
+                db.ClusterStatisticsTable.hour >= hour
+            ).order_by(db.ClusterStatisticsTable.hour, db.ClusterStatisticsTable.cluster)
+            hourly_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
+            for item in q.all():
+                hourly_data[item.cluster].append( # type: ignore
+                    APIStatistics(
+                        item.hour - hour,# type: ignore
+                        int(item.bytes), # type: ignore
+                        int(item.hits), # type: ignore
+                    )
                 )
-            )
         return hourly_data
     
     if event == "cluster_statistics_daily":
         hour = get_query_day_tohour(30)
-        session = db.SESSION.get_session()
-        q = session.query(db.ClusterStatisticsTable).filter(
-            db.ClusterStatisticsTable.hour >= hour
-        ).order_by(db.ClusterStatisticsTable.hour, db.ClusterStatisticsTable.cluster)
-        temp_data: defaultdict[str, defaultdict[int, APIStatistics]] = defaultdict(lambda: defaultdict(lambda: APIStatistics("", 0, 0)))
-        for item in q.all():
-            cluster_id = str(item.cluster)
-            hits = int(item.hits)  # type: ignore
-            bytes = int(item.bytes) # type: ignore
-            day = (int(item.hour) + UTC // 3600) // 24 # type: ignore
-            temp_data[cluster_id][day].bytes += bytes
-            temp_data[cluster_id][day].hits += hits
+        with db.SESSION as session:
+            q = session.query(db.ClusterStatisticsTable).filter(
+                db.ClusterStatisticsTable.hour >= hour
+            ).order_by(db.ClusterStatisticsTable.hour, db.ClusterStatisticsTable.cluster)
+            temp_data: defaultdict[str, defaultdict[int, APIStatistics]] = defaultdict(lambda: defaultdict(lambda: APIStatistics("", 0, 0)))
+            for item in q.all():
+                cluster_id = str(item.cluster)
+                hits = int(item.hits)  # type: ignore
+                bytes = int(item.bytes) # type: ignore
+                day = (int(item.hour) + UTC // 3600) // 24 # type: ignore
+                temp_data[cluster_id][day].bytes += bytes
+                temp_data[cluster_id][day].hits += hits
         days_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
         for cluster_id, data in temp_data.items():
             for day, item in data.items():
@@ -402,35 +402,35 @@ async def handle_api(
 
     if event == "storage_statistics_hourly":
         hour = get_query_day_tohour(0)
-        session = db.SESSION.get_session()
-        q = session.query(db.StorageStatisticsTable).filter(
-            db.StorageStatisticsTable.hour >= hour
-        ).order_by(db.StorageStatisticsTable.hour)
-        hourly_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
-        for item in q.all():
-            hourly_data[item.storage].append( # type: ignore
-                APIStatistics(
-                    int(item.hour - hour), # type: ignore
-                    int(item.bytes), # type: ignore
-                    int(item.hits), # type: ignore
+        with db.SESSION as session:
+            q = session.query(db.StorageStatisticsTable).filter(
+                db.StorageStatisticsTable.hour >= hour
+            ).order_by(db.StorageStatisticsTable.hour)
+            hourly_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
+            for item in q.all():
+                hourly_data[item.storage].append( # type: ignore
+                    APIStatistics(
+                        int(item.hour - hour), # type: ignore
+                        int(item.bytes), # type: ignore
+                        int(item.hits), # type: ignore
+                    )
                 )
-            )
         return hourly_data
     
     if event == "storage_statistics_daily":
         hour = get_query_day_tohour(30)
-        session = db.SESSION.get_session()
-        q = session.query(db.StorageStatisticsTable).filter(
-            db.StorageStatisticsTable.hour >= hour
-        ).order_by(db.StorageStatisticsTable.hour)
-        temp_data: defaultdict[str, defaultdict[int, APIStatistics]] = defaultdict(lambda: defaultdict(lambda: APIStatistics("", 0, 0)))
-        for item in q.all():
-            storage_id = str(item.storage)
-            hits = int(item.hits)  # type: ignore
-            bytes = int(item.bytes) # type: ignore
-            day = (int(item.hour) + UTC // 3600) // 24 # type: ignore
-            temp_data[storage_id][day].bytes += bytes
-            temp_data[storage_id][day].hits += hits
+        with db.SESSION as session:
+            q = session.query(db.StorageStatisticsTable).filter(
+                db.StorageStatisticsTable.hour >= hour
+            ).order_by(db.StorageStatisticsTable.hour)
+            temp_data: defaultdict[str, defaultdict[int, APIStatistics]] = defaultdict(lambda: defaultdict(lambda: APIStatistics("", 0, 0)))
+            for item in q.all():
+                storage_id = str(item.storage)
+                hits = int(item.hits)  # type: ignore
+                bytes = int(item.bytes) # type: ignore
+                day = (int(item.hour) + UTC // 3600) // 24 # type: ignore
+                temp_data[storage_id][day].bytes += bytes
+                temp_data[storage_id][day].hits += hits
         days_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
         for storage_id, data in temp_data.items():
             for day, item in data.items():
@@ -439,47 +439,47 @@ async def handle_api(
     
     if event == "response_hourly":
         hour = get_query_day_tohour(30)
-        session = db.SESSION.get_session()
-        q = session.query(db.ResponseTable).filter(
-            db.ResponseTable.hour >= hour
-        ).order_by(db.ResponseTable.hour)
-        
-        resp_hourly_data: list[APIResponseStatistics] = []
-        for item in q.all():
-            resp_hourly_data.append(APIResponseStatistics(
-                int(str(item.hour - hour)),
-                int(str(item.success)),
-                int(str(item.partial)),
-                int(str(item.forbidden)),
-                int(str(item.not_found)),
-                int(str(item.error)),
-                int(str(item.redirect)),
-            ))
+        with db.SESSION as session:
+            q = session.query(db.ResponseTable).filter(
+                db.ResponseTable.hour >= hour
+            ).order_by(db.ResponseTable.hour)
+
+            resp_hourly_data: list[APIResponseStatistics] = []
+            for item in q.all():
+                resp_hourly_data.append(APIResponseStatistics(
+                    int(str(item.hour - hour)),
+                    int(str(item.success)),
+                    int(str(item.partial)),
+                    int(str(item.forbidden)),
+                    int(str(item.not_found)),
+                    int(str(item.error)),
+                    int(str(item.redirect)),
+                ))
         return resp_hourly_data
 
     if event == "response_daily":
         day = get_query_day_tohour(30)
-        session = db.SESSION.get_session()
-        q = session.query(db.ResponseTable).filter(
-            db.ResponseTable.hour >= day
-        ).order_by(db.ResponseTable.hour)
+        with db.SESSION as session:
+            q = session.query(db.ResponseTable).filter(
+                db.ResponseTable.hour >= day
+            ).order_by(db.ResponseTable.hour)
 
-        temp_resp_data: defaultdict[int, APIResponseStatistics] = defaultdict(lambda: APIResponseStatistics("", 0, 0, 0, 0, 0, 0))
-        for item in q.all():
-            success = int(str(item.success))
-            partial = int(str(item.partial))
-            forbidden = int(str(item.forbidden))
-            not_found = int(str(item.not_found))
-            error = int(str(item.error))
-            redirect = int(str(item.redirect))
-            day = (int(item.hour) + UTC // 3600) // 24 # type: ignore
+            temp_resp_data: defaultdict[int, APIResponseStatistics] = defaultdict(lambda: APIResponseStatistics("", 0, 0, 0, 0, 0, 0))
+            for item in q.all():
+                success = int(str(item.success))
+                partial = int(str(item.partial))
+                forbidden = int(str(item.forbidden))
+                not_found = int(str(item.not_found))
+                error = int(str(item.error))
+                redirect = int(str(item.redirect))
+                day = (int(item.hour) + UTC // 3600) // 24 # type: ignore
 
-            temp_resp_data[day].success += success
-            temp_resp_data[day].partial += partial
-            temp_resp_data[day].forbidden += forbidden
-            temp_resp_data[day].not_found += not_found
-            temp_resp_data[day].error += error
-            temp_resp_data[day].redirect += redirect
+                temp_resp_data[day].success += success
+                temp_resp_data[day].partial += partial
+                temp_resp_data[day].forbidden += forbidden
+                temp_resp_data[day].not_found += not_found
+                temp_resp_data[day].error += error
+                temp_resp_data[day].redirect += redirect
 
         resp_daily_data: list[APIResponseStatistics] = []
         for day, item in temp_resp_data.items():
@@ -506,15 +506,15 @@ async def handle_api(
         if isinstance(req_data, int):
             day = req_data
         day = max(1, min(30, day))
-        session = db.SESSION.get_session()
-        q = session.query(db.ResponseTable).filter(
-            db.ResponseTable.hour >= get_query_day_tohour(day)
-        ).order_by(db.ResponseTable.hour)
-        ua_data: defaultdict[str, int] = defaultdict(int)
-        for item in q.all():
-            user_agents = db.decompress(item.user_agents)  # type: ignore
-            for ua, count in user_agents.items():
-                ua_data[ua] += count
+        with db.SESSION as session:
+            q = session.query(db.ResponseTable).filter(
+                db.ResponseTable.hour >= get_query_day_tohour(day)
+            ).order_by(db.ResponseTable.hour)
+            ua_data: defaultdict[str, int] = defaultdict(int)
+            for item in q.all():
+                user_agents = db.decompress(item.user_agents)  # type: ignore
+                for ua, count in user_agents.items():
+                    ua_data[ua] += count
         return ua_data
 
     if event == "warden":
@@ -554,16 +554,16 @@ def get_query_hour_tohour(hour: int):
     return int((t - ((t + UTC) % 3600) - 3600 * hour) / 3600)
 
 def query_geo_address(day: int):
-    session = db.SESSION.get_session()
-    q = session.query(db.ResponseTable).filter(
-        db.ResponseTable.hour >= get_query_day_tohour(day)
-    ).order_by(db.ResponseTable.hour)
-    merge_ip_tables: defaultdict[str, int] = defaultdict(int)
-    geo_data: defaultdict[str, int] = defaultdict(int)
-    for item in q.all():
-        ip_tables = db.decompress(item.ip_tables) # type: ignore
-        for ip, count in ip_tables.items():
-            merge_ip_tables[ip] += count
+    with db.SESSION as session:
+        q = session.query(db.ResponseTable).filter(
+            db.ResponseTable.hour >= get_query_day_tohour(day)
+        ).order_by(db.ResponseTable.hour)
+        merge_ip_tables: defaultdict[str, int] = defaultdict(int)
+        geo_data: defaultdict[str, int] = defaultdict(int)
+        for item in q.all():
+            ip_tables = db.decompress(item.ip_tables) # type: ignore
+            for ip, count in ip_tables.items():
+                merge_ip_tables[ip] += count
     for ip, count in merge_ip_tables.items():
         address = query_address(ip)
         geo_data[address] += count

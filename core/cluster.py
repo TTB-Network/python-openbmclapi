@@ -89,9 +89,15 @@ class StorageManager:
         logger.debug(f"Available storages: {len(self.available_storages)}")
         if len(self.available_storages) > 0:
             self.check_available.release()
+            await clusters.enable()
         else:
             self.check_available.acquire()
-            logger.twarning("storage.warning.unavailable", storages=len(self.storages))
+            logger.twarning("storage.warning.storage.unavailable", storages=len(self.storages))
+            if any((
+                cluster.enabled for cluster in clusters.clusters
+            )):
+                logger.twarning("storage.warning.storage.unavailable.for.clusters")
+                await clusters.disable()
         
     async def __check_available(self, storage: storages.iStorage):
         file = MeasureFile(
@@ -183,14 +189,14 @@ class StorageManager:
         if storage in self.cache_filelist:
             file_hash = file.hash
             return file_hash in self.cache_filelist[storage]
-        return await storage.exists(convert_file_to_storage_file(file))
+        return False #await storage.exists(convert_file_to_storage_file(file))
     async def _check_size(self, file: File, storage: storages.iStorage):
         if storage in self.cache_filelist:
             file_hash = file.hash
             return file_hash in self.cache_filelist[storage] and self.cache_filelist[storage][file_hash].size == file.size
-        return await self._check_exists(file, storage) and await storage.get_size(convert_file_to_storage_file(file)) == file.size
+        return False #await self._check_exists(file, storage) and await storage.get_size(convert_file_to_storage_file(file)) == file.size
     async def _check_hash(self, file: File, storage: storages.iStorage):
-        return await self._check_exists(file, storage) and utils.equals_hash(file.hash, (await storage.read_file(convert_file_to_storage_file(file))).getvalue())
+        return False #await self._check_exists(file, storage) and utils.equals_hash(file.hash, (await storage.read_file(convert_file_to_storage_file(file))).getvalue())
 
     async def get_file(self, hash: str, use_master: bool = False):
         file = None
@@ -268,6 +274,15 @@ class StorageManager:
                     if got_hash == hash:
                         break
                     logger.terror("cluster.error.download_hash", got_hash=got_hash, hash=hash, content=body.decode("utf-8", "ignore")[:64])  
+        if got_hash == hash:
+            scheduler.run_later(
+                self.write_file,
+                1,
+                (
+                    file,
+                    body
+                )
+            )
         return file
 
     def get_width_storage(self, c_storage: Optional[storages.iStorage] = None) -> storages.iStorage:
@@ -618,6 +633,7 @@ class ClusterManager:
         self.file_manager = FileListManager(self)
         self.storage_manager = StorageManager(self)
         self.clusters_certificate: dict[str, ClusterCertificate] = {}
+        self.initialized = False
 
     def add_cluster(self, cluster: 'Cluster'):
         self.cluster_id_tables[cluster.id] = cluster
@@ -644,10 +660,26 @@ class ClusterManager:
         # check files
         await self.file_manager.sync()
 
+        # init measure
+        await init_measure()
+
         # start job
 
+        self.initialized = True
+        await self.enable()
+
+    async def enable(self):
+        if not self.initialized:
+            return
         for cluster in self.clusters:
             await cluster.enable()
+
+    async def disable(self):
+        await asyncio.gather(*(
+            cluster.disable()
+            for cluster in self.clusters
+        ))
+
 
     def get_cluster_by_id(self, id: Optional[str] = None) -> Optional['Cluster']:
         return self.cluster_id_tables.get(id or "", None)
@@ -798,7 +830,8 @@ class Cluster:
             key.write(result.ack["key"])
 
     async def enable(self):
-        cert = await clusters.get_certificates(self.id)
+        if self.enabled:
+            return
         scheduler.cancel(self.delay_enable_task)
         if self.want_enable:
             return
@@ -1065,6 +1098,9 @@ CHECK_FILE = File(
 MEASURES_HASH: dict[int, str] = {
 }
 MEASURE_BUFFER: bytes = b'\x00'
+DEFAULT_MEASURES = [
+    10
+]
 
 routes = web.routes
 aweb = web.web
@@ -1081,9 +1117,10 @@ def convert_file_to_storage_file(file: File) -> SFile:
 def init_measure_block(size: int):
     MEASURES_HASH[size] = hashlib.md5(MEASURE_BUFFER * 1024 * 1024 * size).hexdigest()
 
-async def init_measure(maxsize: int = 50):
-    for i in range(1, maxsize, 10):
-        init_measure_block(i)
+async def init_measure():
+    for size in DEFAULT_MEASURES:
+        init_measure_block(size)
+    await init_measure_files()
 
 async def init_measure_file(
     storage: storages.iStorage,
@@ -1107,7 +1144,8 @@ async def init_measure_file(
         logger.ttraceback("cluster.error.init_measure_file", path=storage.path, type=storage.type, size=units.format_bytes(size * 1024 * 1024), hash=hash)
     return False
 async def init_measure_files():
-    results = await asyncio.gather(*[init_measure_file(storage, size, MEASURES_HASH[size]) for storage in clusters.storage_manager.storages for size in MEASURES_HASH])
+    await clusters.storage_manager.available()
+    results = await asyncio.gather(*[asyncio.create_task(init_measure_file(storage, size, MEASURES_HASH[size])) for storage in clusters.storage_manager.available_storages for size in MEASURES_HASH])
     logger.debug(results)
 
 async def init():
@@ -1226,7 +1264,11 @@ async def _(request: aweb.Request):
     except:
         logger.traceback()
         return aweb.Response(status=400)
-    
+
+@utils.retry(3, 1)
+async def get_file(hash: str):
+    return await asyncio.wait_for(asyncio.create_task(clusters.storage_manager.get_file(hash)), 5)
+
 @routes.get("/download/{hash}")
 async def _(request: aweb.Request):
     try:
@@ -1255,7 +1297,7 @@ async def _(request: aweb.Request):
             )
             return aweb.Response(status=403)
         try:
-            file = await asyncio.wait_for(asyncio.create_task(clusters.storage_manager.get_file(hash)), 5)
+            file = await asyncio.create_task(get_file(hash))
         except:
             logger.ttraceback("cluster.error.get_file", hash=hash)
             file = await asyncio.create_task(clusters.storage_manager.get_file(hash, True))

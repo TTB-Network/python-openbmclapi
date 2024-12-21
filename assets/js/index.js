@@ -1402,7 +1402,7 @@ async function load() {
                                     var server_time = $dashboard_locals.info_runtime
                                     //    return int((t - ((t + UTC) % 86400) - 86400 * day) / 3600)
                                     var datetime = server_time.current_time - server_time.diff / 1000.0 + (+new Date() - server_time.resp_timestamp) / 1000.0;
-                                    const previous = (datetime + ((datetime + UTC_OFFSET) % 86400) - 86400 * 30);
+                                    const previous = (datetime - ((datetime + UTC_OFFSET) % 86400) - 86400 * 29);
                                     const res = {}
                                     for (let i = 0; i < 30; i++) {
                                         var d = Tools.formatDate(new Date((previous + i * 86400) * 1000.0))
@@ -1504,7 +1504,6 @@ async function load() {
                         )
                     }
                     $dashboard_locals[`${locals_info_key}s_info`] = info.child(2).minWidth(1280)
-                    console.log(info)
                 }
 
                 var statistics = createElement("div").append(
@@ -1668,6 +1667,7 @@ async function load() {
 
                 $dashboard_locals.system_info_connection.value = Tools.formatSimpleNumber(0)
                 $dashboard_locals.system_info_cpu.value = Tools.formatSimpleNumber(0)
+                $dashboard_locals.system_info_cpu_load.value = "0.0%"
                 $dashboard_locals.system_info_memory.value = Tools.formatBytes(0)
                 
             }
@@ -1855,12 +1855,13 @@ async function load() {
         $container.style("height", "auto")
         var container = calcElementHeight($container)
         var height = Math.max(height, container)
-        $container.style("height", `${height}px`)
+        //$container.style("height", `${height}px`)
         $menu.style("top", `${header}px`)
         $main.style("margin-top", `${header}px`)
         $main.styleProperty("--height", `${header}px`)
     });
     observer.observe($app.origin, { childList: true, subtree: true });
+    observer.observe($container.origin, { childList: true, subtree: true });
 
     $router.init()
 

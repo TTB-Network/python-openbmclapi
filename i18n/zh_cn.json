@@ -57,5 +57,6 @@
     "database.error.unable.to.decompress": "无法解压数据库，数据：%{data}",
     "storage.error.check_available": "存储 [${type}] [${path}] [${url}] 检查可用性出错，原因：",
     "dashboard.info.new_version": "当前版本 [${current}] 发现新版本 [${latest}]",
-    "storage.warning.unavailable": "当前无可用存储，已加载的存储 [${storages}] 个"
+    "storage.warning.storage.unavailable": "当前无可用存储，已加载的存储 [${storages}] 个",
+    "storage.warning.storage.unavailable.for.clusters": "当前无可用存储，对节点执行下线操作"
 }
