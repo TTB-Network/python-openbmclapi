@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import io
 import os
 from pathlib import Path
+import random
 import socket
 import ssl
 import time
@@ -91,15 +92,11 @@ async def middleware(request: web.Request, handler: Any) -> web.Response:
             pass
         setattr(request, "custom_address", address)
         start = time.perf_counter_ns()
+        if config.const.disallow_public_dashboard and not address in ALLOW_IP and all(not request.path.startswith(path) for path in WHITELIST_PATHS):
+            return await asyncio.create_task(special_response())
         resp: web.Response = None # type: ignore
         try:
             resp = await asyncio.create_task(handler(request))
-            #if not isinstance(resp, web.WebSocketResponse):
-            #    if not resp.prepared:
-            #        await resp.prepare(request)
-            #await resp.write_eof()
-            #resp.force_close()
-            #resp.force_close()
             return resp
         finally:
             status = 500
@@ -114,10 +111,64 @@ async def middleware(request: web.Request, handler: Any) -> web.Response:
             logger.tdebug("web.debug.request_info", time=units.format_count_time(end - start, 4).rjust(16), host=request.host, address=(address).rjust(16), user_agent=request.headers.get("User-Agent"), real_path=request.raw_path, method=request.method.ljust(9), status=status)
     finally:
         request.match_info.current_app = old_app
+
+async def special_response():
+    if random.randint(0, 100) >= 10:
+        await asyncio.sleep(random.randint(30, 180))
+    status = random.choice(list(DISALLOW_PUBLIC_DASHBOARD.keys()))
+    return web.Response(status=status, text=DISALLOW_PUBLIC_DASHBOARD[status])
 REQUEST_BUFFER = 4096
 IO_BUFFER = 16384
 FINDING_FILTER = "127.0.0.1"
 CHECK_PORT_SECRET = os.urandom(8)
+WHITELIST_PATHS = [
+    "/download"
+    "/measure"
+]
+ALLOW_IP = [
+    "127.0.0.1",
+    "::1"
+]
+DISALLOW_PUBLIC_DASHBOARD: dict[int, str] = {
+    500: "Internal Server Error",
+    502: "Bad Gateway",
+    503: "Service Unavailable",
+    504: "Gateway Timeout",
+    505: "HTTP Version Not Supported",
+    506: "Variant Also Negotiates",
+    507: "Insufficient Storage",
+    508: "Loop Detected",
+    510: "Not Extended",
+    511: "Network Authentication Required",
+    400: "Bad Request",
+    401: "Unauthorized",
+    402: "Payment Required",
+    403: "Forbidden",
+    404: "Not Found",
+    405: "Method Not Allowed",
+    406: "Not Acceptable",
+    407: "Proxy Authentication Required",
+    408: "Request Timeout",
+    409: "Conflict",
+    410: "Gone",
+    411: "Length Required",
+    412: "Precondition Failed",
+    413: "Payload Too Large",
+    414: "URI Too Long",
+    415: "Unsupported Media Type",
+    416: "Range Not Satisfiable",
+    417: "Expectation Failed",
+    418: "I'm a teapot",
+    421: "Misdirected Request",
+    422: "Unprocessable Entity",
+    423: "Locked",
+    424: "Failed Dependency",
+    426: "Upgrade Required",
+    428: "Precondition Required",
+    429: "Too Many Requests",
+    431: "Request Header Fields Too Large",
+    451: "Unavailable For Legal Reasons"
+}
 ip_tables: dict[tuple[str, int], tuple[str, int]] = {}
 ip_count: defaultdict[tuple[str, int], int] = defaultdict(int)
 app = web.Application(

@@ -21,6 +21,7 @@ defaults = {
         "auto_sync_assets": True,
         "github_token": "",
         "measure_storage": False,
+        "disallow_public_dashboard": False,
     },
     "web": {
         "port": -1,
@@ -182,10 +183,14 @@ class Const:
         if not isinstance(sockets, int):
             sockets = 8
         return max(sockets, 1)
+    
+    @property
+    def disallow_public_dashboard(self):
+        return Config.get("advanced.disallow_public_dashboard", False) or False
 
 const = Const()
 
-VERSION = "3.3.17"
+VERSION = "3.3.18"
 API_VERSION = "1.13.1"
 USER_AGENT = f"openbmclapi/{API_VERSION} python-openbmclapi/{VERSION}"
 PYTHON_VERSION = ".".join(map(str, (sys.version_info.major, sys.version_info.minor, sys.version_info.micro)))
