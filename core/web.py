@@ -92,7 +92,7 @@ async def middleware(request: web.Request, handler: Any) -> web.Response:
             pass
         setattr(request, "custom_address", address)
         start = time.perf_counter_ns()
-        if config.const.disallow_public_dashboard and not address in ALLOW_IP and all(not request.path.startswith(path) for path in WHITELIST_PATHS):
+        if config.const.disallow_public_dashboard and not address in ALLOW_IP and not all(not request.path.startswith(path) for path in WHITELIST_PATHS):
             return await asyncio.create_task(special_response())
         resp: web.Response = None # type: ignore
         try:
@@ -122,8 +122,8 @@ IO_BUFFER = 16384
 FINDING_FILTER = "127.0.0.1"
 CHECK_PORT_SECRET = os.urandom(8)
 WHITELIST_PATHS = [
-    "/download"
-    "/measure"
+    "/download/"
+    "/measure/"
 ]
 ALLOW_IP = [
     "127.0.0.1",
