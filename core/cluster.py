@@ -3,6 +3,7 @@ import asyncio
 from collections import defaultdict, deque
 from dataclasses import asdict, dataclass
 import datetime
+import enum
 import hashlib
 import hmac
 import io
@@ -627,12 +628,93 @@ class FileListManager:
             logger.ttraceback("cluster.error.configuration", cluster=cluster.id)
             return {}
 
+@dataclass
+class ClusterLoggerSchema:
+    type: "ClusterLoggerType"
+    cluster_id: str
+    event: str
+    data: Any
+    time: datetime.datetime
+
+class ClusterLoggerType(enum.Enum):
+    emit = "emit"
+    response = "response"
+
+class ClusterLogger:
+    def __init__(
+        self,
+        dir: str = logger.dir,
+        prefix: str = "cluster",
+        emit_filter: Callable[[str], bool] = lambda x: False,
+        callback_filter: Callable[[str], bool] = lambda x: x in ("request-cert", ),
+    ):
+        self._dir = dir
+        self._prefix = prefix
+        self._emit_filter = emit_filter
+        self._callback_filter = callback_filter
+
+    @property
+    def file_path(self):
+        if not hasattr(self, "_file_path"):
+            current_time = datetime.datetime.now()
+            self._file_path = Path(
+                self._dir,
+                f"{self._prefix}_{current_time.year}-{current_time.month}-{current_time.day}.log"
+            )
+        return self._file_path
+    
+    def emit(self, cluster_id: str, event: str, data: Any):
+        if self._emit_filter(event):
+            data = "(This data is filtered)"
+        self._write(ClusterLoggerType.emit, cluster_id, event, data)
+
+    def callback(self, cluster_id: str, event: str, data: Any):
+        if self._callback_filter(event):
+            data = "(This data is filtered)"
+        self._write(ClusterLoggerType.response, cluster_id, event, data)
+
+    def _write(self, type: ClusterLoggerType, cluster_id: str, event: str, data: Any):
+        with open(self.file_path, "a") as f:
+            f.write(json.dumps(
+                {
+                    "type": type.value,
+                    "cluster_id": cluster_id,
+                    "event": event,
+                    "data": data,
+                    "time": datetime.datetime.now().isoformat()
+                }
+            ) + "\n")
+
+    def _list_files(self):
+        return list(Path(self._dir).glob(f"{self._prefix}_*.log"))
+    
+    def _read_file(self, file: Path) -> list[ClusterLoggerSchema]:
+        res = []
+        with open(file, "r") as f:
+            for line in f:
+                if not line:
+                    continue
+                data = json.loads(line)
+                obj = ClusterLoggerSchema(**data)
+                obj.type = ClusterLoggerType(obj.type)
+                res.append(obj)
+        return res
+    
+    def read(self) -> list[ClusterLoggerSchema]:
+        res: list[ClusterLoggerSchema] = []
+        for file in self._list_files():
+            res.extend(self._read_file(file))
+        res.sort(key=lambda x: x.time)
+        return res
+
+
 class ClusterManager:
     def __init__(self):
         self.cluster_id_tables: dict[str, 'Cluster'] = {}
         self.file_manager = FileListManager(self)
         self.storage_manager = StorageManager(self)
         self.clusters_certificate: dict[str, ClusterCertificate] = {}
+        self.event_logger = ClusterLogger()
         self.initialized = False
 
     def add_cluster(self, cluster: 'Cluster'):
@@ -682,7 +764,6 @@ class ClusterManager:
             for cluster in self.clusters
         ))
 
-
     def get_cluster_by_id(self, id: Optional[str] = None) -> Optional['Cluster']:
         return self.cluster_id_tables.get(id or "", None)
 
@@ -702,8 +783,6 @@ class ClusterManager:
             return None
         return main
         
-
-
     async def get_certificates(self, cluster_id: Optional[str] = None):
         if config.const.ssl_cert and config.const.ssl_key:
             main = ClusterCertificate(
@@ -835,6 +914,8 @@ class Cluster:
         if self.enabled:
             return
         scheduler.cancel(self.delay_enable_task)
+        if not await clusters.storage_manager.available():
+            return
         if self.want_enable:
             return
         self.want_enable = True
@@ -968,36 +1049,34 @@ class ClusterSocketIO:
     def setup_handlers(self):
         @self.sio.on("connect") # type: ignore
         async def _() -> None:
+            clusters.event_logger.callback(self.cluster.id, "connect", None)
             logger.tdebug("cluster.debug.socketio.connected", cluster=self.cluster.id)
 
         @self.sio.on("disconnect") # type: ignore
         async def _() -> None:
+            clusters.event_logger.callback(self.cluster.id, "disconnect", None)
             logger.tdebug("cluster.debug.socketio.disconnected", cluster=self.cluster.id)
 
         @self.sio.on("message") # type: ignore
         async def _(message: Any):
+            clusters.event_logger.callback(self.cluster.id, "message", message)
             if isinstance(message, dict) and "message" in message:
                 message = message["message"]
             logger.tinfo("cluster.info.socketio.message", cluster=self.cluster.id, message=message)
 
         @self.sio.on("exception") # type: ignore
         async def _(message: Any):
+            clusters.event_logger.callback(self.cluster.id, "exception", message)
             if isinstance(message, dict) and "message" in message:
                 message = message["message"]
             logger.terror("cluster.error.socketio.message", cluster=self.cluster.id, message=message)
 
         @self.sio.on("warden-error") # type: ignore
         async def _(message: Any):
-            with open(f"{logger.dir}/warden-error.log", "a") as f:
-                f.write(json.dumps({
-                    "time": datetime.datetime.now().isoformat(),
-                    "cluster": self.cluster.id,
-                    "message": message,
-                }) + "\n")
+            clusters.event_logger.callback(self.cluster.id, "warden-error", message)
             if isinstance(message, dict) and "message" in message:
                 message = message["message"]
             logger.terror("cluster.error.socketio.warden", cluster=self.cluster.id, message=message)
-
 
     async def disconnect(self):
         await self.sio.disconnect()
@@ -1011,10 +1090,15 @@ class ClusterSocketIO:
         fut = asyncio.get_event_loop().create_future()
 
         async def callback(data: tuple[Any, Any]):
+            clusters.event_logger.callback(self.cluster.id, event, {
+                "err": data[0],
+                "ack": data[1] if len(data) > 1 else None
+            })
             fut.set_result(SocketIOEmitResult(data[0], data[1] if len(data) > 1 else None))
         await self.sio.emit(
             event, data, callback=callback
         )
+        clusters.event_logger.emit(self.cluster.id, event, data)
         timeout_task = None
         if timeout is not None:
             timeout_task = scheduler.run_later(lambda: not fut.done() and fut.set_exception(asyncio.TimeoutError), timeout)

@@ -1,5 +1,6 @@
 import sys
 import traceback
+from typing import Optional
 from loguru import logger as Logger
 from .config import const
 
@@ -45,8 +46,7 @@ class Loglogger:
     def traceback(self, *args, **kwargs):
         if args and kwargs:
             self._log_with_args("ERROR", *args, **kwargs)
-        error = traceback.format_exc()
-        self.log.error(error)
+        self._log_with_args("ERROR", "\n" + traceback.format_exc())
 
     def tinfo(self, key: str, *args, **kwargs):
         self._log_with_args("INFO", locale.t(
@@ -73,8 +73,7 @@ class Loglogger:
             self._log_with_args("ERROR", locale.t(
                 key, *args, **kwargs
             ))
-        error = traceback.format_exc()
-        self.log.error(error)
+        self._log_with_args("ERROR", "\n" + traceback.format_exc())
 
 logger = Loglogger()
 

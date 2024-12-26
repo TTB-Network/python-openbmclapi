@@ -519,7 +519,8 @@ function createElement(object) {
     return new Element(object);
 }
 class RouteEvent {
-    constructor(instance, before_route, current_route, params = {}) {
+    constructor(manager, instance, before_route, current_route, params = {}) {
+        this.manager = manager
         this.instance = instance;
         this.current_route = current_route
         this.before_route = before_route
@@ -527,79 +528,17 @@ class RouteEvent {
     }
 }
 class Router {
-    constructor(route_prefix = "/") {
+    constructor(
+        route_prefix = "/",
+    ) {
         this._route_prefix = route_prefix.replace(/\/+$/, "")
-        this._before_handlers = []
-        this._after_handlers = []
-        this._current_path = null; //this._get_current_path()
         this._routes = []
+        this._beforeHandlers = []
+        this._afterHandlers = []
+        this._current_path = null
     }
-    init() {
-        window.addEventListener("popstate", () => {
-            this._popstate_handler()
-        })
-        window.addEventListener("click", (e) => {
-            if (e.target.tagName == "A") {
-                const href = e.target.getAttribute("href")
-                const url = new URL(href, window.location.origin);
-                if (url.origin != window.location.origin) return;
-                e.preventDefault()
-                if (url.pathname.startsWith(this._route_prefix)) {
-                    this._popstate_handler(url.pathname)
-                }
-            }
-        })
-        this._popstate_handler()
-    }
-    page(path) {
-        this._popstate_handler(path)
-    }
-    _get_current_path() {
-        return window.location.pathname
-    }
-    async _popstate_handler(path) {
-        const new_path = (path ?? this._get_current_path()).replace(this._route_prefix, "") || "/"
-        const old_path = this._current_path
-        if (old_path == new_path) return;
-        window.history.pushState(null, '', this._route_prefix + new_path)
-        this._current_path = new_path
-        this._before_handlers.forEach(handler => {
-            try {
-                handler(new RouteEvent(this, old_path, new_path))
-            } catch (e) {
-                console.log(e)
-            }
-        })
-        try {
-            // get route
-            var routes = this._routes.filter(x => x.path.test(new_path))
-            if (routes) {
-                routes.forEach(route => {
-                    var params = route.path.exec(new_path).slice(1).reduce((acc, cur, i) => {
-                        acc[route.params[i]] = cur
-                        return acc
-                    }, {})
-                    var handler = route ? route.handler : null
-                    if (handler) {
-                        try {
-                            handler(new RouteEvent(this, old_path, new_path, params))
-                        } catch (e) {
-                            console.log(e)
-                        }
-                    }
-                })
-                
-            }
-        } catch (e) {
-            console.log(e)
-        }
-        this._after_handlers.forEach(handler => {
-            try {
-                handler(new RouteEvent(this, old_path, new_path))
-            } catch (e) {
-                console.log(e)
-            }
-        })
+    get _getCurrentPath() {
+        return window.location.pathname.replace(this._route_prefix, "") || "/"
     }
     on(path, handler) {
         // path {xxx}
@@ -617,14 +556,165 @@ class Router {
         this._routes.sort((a, b) => b.path.length - a.path.length)
         return this
     }
-    before_handler(handler) {
+    beforeHandler(handler) {
         if (handler == null) this;
-        this._before_handlers.push(handler)
+        this._beforeHandlers.push(handler)
         return this
     }
-    after_handler(handler) {
+    afterHandler(handler) {
         if (handler == null) this;
-        this._after_handlers.push(handler)
+        this._afterHandlers.push(handler)
+        return this
+    }
+
+}
+class RouterManager {
+    constructor(
+        route_prefix = "/",
+    ) {
+        this._routes = [
+            new Router(route_prefix)
+        ]
+    }
+    init() {
+        window.addEventListener("popstate", () => {
+            this._popstateHandler()
+        })
+        window.addEventListener("click", (e) => {
+            if (e.target.tagName == "A") {
+                const href = e.target.getAttribute("href")
+                const url = new URL(href, window.location.origin);
+                if (url.origin != window.location.origin) return;
+                e.preventDefault()
+                if (url.pathname.startsWith(this._route_prefix)) {
+                    this._popstateHandler(url.pathname)
+                }
+            }
+        })
+        this._popstateHandler()
+    }
+    get _getCurrentPath() {
+        return window.location.pathname
+    }
+    _popstateHandler(path) {
+        path = path || this._getCurrentPath
+        const matchRoutes = []
+        for (const router of this._routes) {
+            if (path.startsWith(router._route_prefix)) {
+                matchRoutes.push(router)
+            }
+        }
+        if (!matchRoutes.length) matchRoutes.push(this._routes[0])
+        const handlers = {
+            before: [],
+            route: [],
+            after: []
+        };
+        var router = null;
+        for (const r of matchRoutes) {
+            let new_path = path.replace(r._route_prefix, "") || "/"
+            var match_routes = r._routes.filter(x => x.path.test(new_path))
+            if (match_routes.length) {
+                router = r
+                break
+            }
+        }
+        router = router || matchRoutes[0]
+        const old_path = router._current_path
+        const new_path = path.replace(router._route_prefix, "") || "/"
+        if (new_path == router._current_path) return;
+        router._current_path = new_path
+        window.history.pushState(null, '', router._route_prefix + new_path)
+        for (const handler of router._beforeHandlers) {
+            handlers.before.push(handler)
+        }
+
+        // route
+        for (const route of router._routes.filter(x => x.path.test(new_path))) {
+            handlers.route.push(route)
+        }
+        // after
+        for (const handler of router._afterHandlers) {
+            handlers.after.push(handler)
+        }
+        this._run(handlers, {
+            manager: this,
+            router,
+            old_path: old_path,
+            new_path: new_path,
+        })
+    }
+    _run(handlers = {
+        before: [],
+        route: [],
+        after: []
+    }, options = {
+        manager: this,
+        router: null,
+        old_path: null,
+        new_path: null,
+    }) {
+        var preHandle = (
+            preHandlers
+        ) => {
+            preHandlers.forEach(handler => {
+                try {
+                    handler(new RouteEvent(
+                        options.manager,
+                        options.router,
+                        options.old_path,
+                        options.new_path,
+                    ))
+                } catch (e) {
+                    console.error(e)
+                }
+            })
+        }
+        preHandle(handlers.before)
+        try {
+            handlers.route.forEach(route => {
+                var params = route.path.exec(options.new_path).slice(1).reduce((acc, cur, i) => {
+                    acc[route.params[i]] = cur
+                    return acc
+                }, {})
+                var handler = route ? route.handler : null
+                if (handler) {
+                    try {
+                        handler(new RouteEvent(
+                            options.manager,
+                            options.router,
+                            options.old_path,
+                            options.new_path,
+                            params
+                        ))
+                    } catch (e) {
+                        console.log(e)
+                    }
+                }
+            })
+        } catch (e) {
+            console.error(e)
+
+        }
+        preHandle(handlers.after)
+        return true
+    }
+    on(path, handler) {
+        this._routes[0].on(path, handler)
+        return this
+    }
+    beforeHandler(handler) {
+        this._routes[0].beforeHandler(handler)
+        return this
+    }
+    afterHandler(handler) {
+        this._routes[0].afterHandler(handler)
+        return this
+    }
+    page(path) {
+        this._popstateHandler(
+            this._routes[0]._route_prefix + path
+        )
         return this
     }
 }
@@ -1077,6 +1167,7 @@ export {
     createElement,
     Configuration,
     Router,
+    RouterManager,
     ElementManager,
     I18NManager,
     Style,

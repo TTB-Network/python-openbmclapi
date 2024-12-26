@@ -12,7 +12,8 @@ import {
     Utils,
     ObjectID,
     ref,
-    THEMECHANGEEVENT
+    THEMECHANGEEVENT,
+    RouterManager,
 } from './common.js'
 
 import './config.js'
@@ -129,7 +130,7 @@ class Menu extends Element {
             this._render()
         })
         var cur_key, cur_sub;
-        $router.before_handler(async (event) => {
+        $router.beforeHandler(async (event) => {
             if (this._render_task) await new Promise((resolve) => {
                 this.route_handler_lock = resolve
             })
@@ -200,11 +201,17 @@ class Channel {
             current: 0,
         };
         this.timeout = 10000
+        this._event_source_init()
         if (!this.support_websocket) return;
         this._ws_init();
         this._ws_initizalized = false;
         this._ws_callbacks = {};
         this._ws_timeouts = {}
+    }
+    // event source
+    _event_source_init() {
+        this._event_source = new EventSource(this.url + "_event");
+        
     }
     // websocket
     _ws_init() {
@@ -714,7 +721,7 @@ const $configuration = new Configuration();
 const $ElementManager = new ElementManager();
 const $style = new Style($configuration);
 const $i18n = new I18NManager();
-const $router = new Router("/pages");
+const $router = new RouterManager("/pages");
 globalThis.$channel = new Channel();
 $i18n.addLanguageTable("zh_CN", {
     "footer.powered_by": "由 %name% 提供服务支持",
@@ -1051,6 +1058,16 @@ class Tools {
         return `${d.getFullYear().toString().padStart(4, "0")}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`
     }
 }
+class UserAuth {
+    constructor() {
+        $router.on("/auth", () => {
+            // ...
+        })
+    }
+}
+
+const $userAuth = new UserAuth();
+
 async function load() {
     const $dom_body = new Element(document.body);
     const $theme = {
@@ -1822,7 +1839,7 @@ async function load() {
         clearInterval($dashboard_locals.qps_task)
     }
 
-    $router.before_handler(() => {
+    $router.beforeHandler(() => {
         while ($main.firstChild != null) {
             $main.removeChild($main.firstChild)
         }

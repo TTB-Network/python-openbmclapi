@@ -3,6 +3,7 @@ import base64
 from collections import defaultdict, deque
 from dataclasses import asdict, dataclass, fields, is_dataclass
 import datetime
+import enum
 import io
 import json
 import os
@@ -164,6 +165,49 @@ class APIResponseStatistics:
     error: int
     redirect: int
 
+@dataclass
+class SSEClient:
+    request: web.Request
+    resp: web.StreamResponse
+    fut: asyncio.Future
+
+class SSEEmiter:
+    def __init__(
+        self,
+        timeout: Optional[int] = None,
+    ):
+        self._timeout = timeout or 0
+        self._connections: deque[SSEClient] = deque()
+
+    async def push_request(
+        self,
+        request: web.Request,
+    ):
+        resp = web.StreamResponse(
+            headers={
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+            }
+        )
+        try:
+            await resp.prepare(request)
+            client = SSEClient(
+                request=request,
+                resp=resp,
+                fut=request.task or asyncio.get_event_loop().create_future()
+            )
+            self._connections.append(client)
+            try:
+                await client.fut
+            except:
+                self._connections.remove(client)
+            # wait request closed or timeout
+        except:
+            ...
+        return resp
+
 counter = Counter()
 process = psutil.Process(os.getpid())
 task: Optional[threading.Thread] = None
@@ -173,13 +217,16 @@ GITHUB_REPO = "TTB-Network/python-openbmclapi"
 UTC = 28800 # UTC + 8 hours (seconds)
 IPDB = ipdb.City("./ipipfree.ipdb")
 IPDB_CACHE: dict[str, str] = {}
+SSEEMIT = SSEEmiter()
 
-@route.get('/pages')
-@route.get("/pages/{tail:.*}")
+@route.get("/service-worker.js")
 async def _(request: web.Request):
-    return web.FileResponse("./assets/index.html")
+    return web.FileResponse("./assets/js/service-worker.js")
 
 @route.get('/')
+@route.get('/auth')
+@route.get('/pages')
+@route.get("/pages/{tail:.*}")
 async def _(request: web.Request):
     return web.FileResponse("./assets/index.html")
 
@@ -220,6 +267,10 @@ async def _(request: web.Request):
     except:
         return web.HTTPException()
 
+@route.get("/api_event") # sse
+async def _(request: web.Request):
+    return await SSEEMIT.push_request(request)
+
 @route.post("/api")
 async def _(request: web.Request):
     try:
@@ -240,6 +291,8 @@ class JSONEncoder(json.JSONEncoder):
             return o.strftime("%Y-%m-%d %H:%M:%S")
         if is_dataclass(o):
             return asdict(o) # type: ignore
+        if isinstance(o, enum.Enum):
+            return o.value
         return super().default(o)
 
 def json_dumps(data: Any, *args, **kwargs) -> str:
@@ -517,14 +570,17 @@ async def handle_api(
                     ua_data[ua] += count
         return ua_data
 
-    if event == "warden":
+    """if event == "warden":
         if not os.path.exists(f"{logger.dir}/warden-error.log"):
             return []
         with open(f"{logger.dir}/warden-error.log", "r") as f:
             content = f.read()
             return [
                 json.loads(line) for line in content.split("\n") if line
-            ]
+            ]"""
+    
+    if event == "clusters_event":
+        return cluster.clusters.event_logger.read()
 
     if event == "clusters_name":
         clusters: dict[str, str] = {}

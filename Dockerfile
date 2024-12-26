@@ -1,4 +1,4 @@
-FROM python:3.12
+FROM docker.1ms.run/library/python:3.12
 
 LABEL org.opencontainers.image.url https://python-openbmclapi.ttb-network.top/
 LABEL org.opencontainers.image.source https://github.com/TTB-Network/python-openbmclapi
