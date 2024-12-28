@@ -210,11 +210,21 @@ class Channel {
     // event source
     _event_source_init() {
         this._event_source = new EventSource(this.url + "_event");
-        this._event_source.onopen = (event) => {
-            console.log(event)
-        }
-        this._event_source.onmessage = (event) => {
-            console.log(event)
+        this._event_source.onmessage = (e) => {
+            const raw_data = JSON.parse(e.data);
+            const type = raw_data.event.split("_")[0];
+            const event = raw_data.event.slice(type.length + 1);
+            const data = raw_data.data;
+            window.dispatchEvent(new CustomEvent(`sse_${type}`, {
+                detail: {
+                    event,
+                    data,
+                }
+            }))
+            if (event.length == 0) return;
+            window.dispatchEvent(new CustomEvent(`sse_${type}_${event}`, {
+                detail: data
+            }))
         }
         
     }
@@ -238,9 +248,6 @@ class Channel {
         this._ws.onclose = () => {
             this._ws_initizalized = false;
             this._ws_reconnect();
-        }
-        this._ws.onerror = (event) => {
-            console.log("websocket error", event)
         }
     }
     _ws_reconnect() {
@@ -757,7 +764,16 @@ $i18n.addLanguageTable("zh_CN", {
     "dashboard.value.storage.total.today": "共请求 %hits% | 共请求流量 %bytes%",
     "dashboard.value.cluster.total.today": "共请求 %hits% | 共请求流量 %bytes%",
     "dashboard.value.storage.total.30days": "共请求 %hits% | 共请求流量 %bytes%",
-    "dashboard.value.cluster.total.30days": "共请求 %hits% | 共请求流量 %bytes%"
+    "dashboard.value.cluster.total.30days": "共请求 %hits% | 共请求流量 %bytes%",
+    "dashboard.value.status.clusters": "节点正常运行（%online%/%total%）",
+    "dashboard.value.status.cluster.status.checking_files": "检查文件中",
+    "dashboard.value.status.clusters.enabling": "启用节点中（%online%/%total%）",
+    "dashboard.value.status.cluster.status.listing_files": "列出存储文件中",
+    "dashboard.value.status.cluster.status.get_certificates": "正在获取证书中",
+    "dashboard.value.status.cluster.fetch_filelist": "获取文件列表中",
+    "dashboard.value.status.default": "加载中……",
+    "dashboard.value.status.storage.check_available": "检查可用存储",
+    "dashboard.value.status.cluster.status.sync": "同步文件中"
 
 })
 $style.setTheme("light", {
@@ -948,10 +964,41 @@ $style.addAll({
     ".label-text .flex-between": {
         "flex-direction": "row",
         "justify-content": "space-between"
+    },
+    ".info-progressbar": {
+        "display": "flex",
+        "margin-top": "8px",
+        "border-top": "1px solid var(--title-color)",
+        "padding-top": "8px"
+    },
+    ".info-progressbar.hidden": {
+        "display": "none"
+    },
+    ".info-progressbar .container-bar": {
+        "margin-left": "8px",
+        "margin-right": "8px",
+        "display": "flex",
+        "flex-grow": 1,
+        "align-items": "center",
+    },
+    ".info-progressbar .container-bar .bar": {
+        "padding": "2px",
+        "margin-left": "8px",
+        "height": "4px",
+        "background": "var(--main-color)",
+        "border-radius": "8px",
+        "width": "100%",
+        "transition": "width 0.5s ease-in-out"
     }
 })
 class Tools {
     static formatTime(seconds) {
+        if (seconds < 0 || seconds == null) return $i18n.t("format.count_time.days", {
+            day: "--",
+            hour: "--",
+            minute: "--",
+            second: "--",
+        })
         var s = Math.floor(seconds % 60)
         var m = Math.floor(seconds / 60 % 60)
         var h = Math.floor(seconds / 3600 % 24)
@@ -962,6 +1009,14 @@ class Tools {
             minute: m.toString().padStart(2, "0"),
             second: s.toString().padStart(2, "0"),
         })
+    }
+    static formatCountTime(seconds) {
+        if (seconds < 0 || seconds == null) return "--:--"
+        var s = Math.floor(seconds % 60)
+        var m = Math.floor(seconds / 60 % 60)
+        var h = Math.floor(seconds / 3600 % 24)
+        if (h > 0) return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
+        return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
     }
     static runTask(executor, handler, interval) {
         handler()
@@ -1024,6 +1079,22 @@ class Tools {
             title,
             value
         )
+    }
+    static createElementWithI18n(
+        tag,
+        options = {
+            key: "",
+            callback: () => { }
+        }
+    ) {
+        var element = createElement(tag)
+        var obj = ref({}, {
+            handler: (args) => {
+                element.t18n(key, args.object)
+            }
+        })
+        options.callback(obj)
+        return element
     }
     static formatSimpleNumber(number) {
         // convert number to belike: 100,000, if 100000.0, we are 100,000.0
@@ -1109,6 +1180,20 @@ async function load() {
             $dashboard_locals.advanced = [];
             // info
             (() => {
+                $dashboard_locals.info_progressbar_bar = {
+                    rate: createElement("p").classes("text"),
+                    bar: createElement("div").classes("bar"),
+                    desc: createElement("p").classes("text"),
+                    postfix: createElement("p").classes("text"),
+                }
+                $dashboard_locals.info_progressbar = createElement("div").classes("info-progressbar", "hidden").append(
+                    $dashboard_locals.info_progressbar_bar.desc,
+                    createElement("div").classes("container-bar").append(
+                        $dashboard_locals.info_progressbar_bar.rate,
+                        $dashboard_locals.info_progressbar_bar.bar,
+                    ),
+                    $dashboard_locals.info_progressbar_bar.postfix,
+                )
                 $dashboard_locals.info = Tools.createPanel(({ pre, panel }) => {
                     panel.append(
                         Tools.createFlexElement().append(
@@ -1134,11 +1219,12 @@ async function load() {
                                 i18n: {
                                     "zh_CN": {
                                         "dashboard.title.status": "当前状态",
-                                        "dashboard.value.status": "正常……？"
+                                        "dashboard.value.status": "%value%"
                                     }
                                 }
                             }),
-                        ).child(2).minWidth(680)
+                        ).child(2).minWidth(680),
+                        $dashboard_locals.info_progressbar
                     )
                 })
                 $dashboard_locals.info_runtime = ref({}, {
@@ -1167,6 +1253,74 @@ async function load() {
                         $dashboard_locals.info_runtime[key] = value
                     }
                 }, 5000)
+                const status_handlers = {
+                    "clusters_clusters": (data) => {
+                        return {
+                            "total": data.params.total,
+                            "online": data.count 
+                        }
+                    },
+                    "clusters_clusters.enabling": (data) => {
+                        return {
+                            "total": data.params.total,
+                            "online": data.count,
+                            "enabling": data.params.enabling
+                        }
+                    },
+                }
+                window.addEventListener("sse_status", event => {
+                    const obj = $dashboard_locals.status
+                    // 先 sort cluster 在前面，然后再storage
+                    const clusters = [];
+                    const storages = [];
+                    for (const item of event.detail.data) {
+                        if (item.name.startsWith("cluster")) clusters.push(item)
+                        else storages.push(item)
+                    }
+                    clusters.sort((a, b) => a.name.localeCompare(b.name))
+                    storages.sort((a, b) => a.name.localeCompare(b.name))
+                    var params = {}
+                    var key = "default";
+                    if (clusters.length != 0) {
+                        const cluster = clusters[0];
+                        key = cluster.name;
+                        params = (status_handlers["clusters_" + key] || (() => { }))(cluster) || {};
+                    } else if (storages.length != 0) {
+                        const storage = storages[0];
+                        key = storage.name;
+                        params = (status_handlers["storages_" + key] || (() => { }))(storage) || {};
+                    }
+                    obj.value = $i18n.t(`dashboard.value.status.${key}`, params)
+                    if (obj.value == `dashboard.value.status.${key}`) console.log(`dashboard.value.status.${key}`)
+                })
+                window.addEventListener("sse_progress", event => {
+                    const resp = event.detail.data;
+                    const isEmpty = resp.length == 0
+                    if (isEmpty) {
+                        $dashboard_locals.info_progressbar.classes("hidden")
+                        $dashboard_locals.info_progressbar_bar.bar.style("width", "0%")
+                        return
+                    }
+                    const data = resp[0];
+                    const rate = ((data.total == 0 || data.total < data.current ? 1 : data.current / data.total) * 100.0);
+                    $dashboard_locals.info_progressbar_bar.desc.text(data.desc)
+                    $dashboard_locals.info_progressbar_bar.rate.text(rate.toFixed(2) + "%")
+                    $dashboard_locals.info_progressbar_bar.bar.style("width", rate + "%")
+
+                    // calc elapsed time
+                    if (rate < 100) {
+                        var speed = (data.speed.slice(data.speed.length - 1) || [0])[0];
+                        var e = speed == 0 ? null : (data.total - data.current) / speed;
+                        var d = Tools.formatCountTime(e);
+                        var running = Tools.formatCountTime(data.current_time - data.start_time);
+                        var postfix = data.postfix == null ? "" : ", " + data.postfix;
+                        $dashboard_locals.info_progressbar_bar.postfix.text(`${data.current}/${data.total} [${running}<${d}, ${speed.toFixed(2)}${data.unit}/s${postfix}]`)
+                    }
+
+                    $dashboard_locals.info_progressbar.removeClasses("hidden")
+                    
+
+                })
             })();
             // basic
             (() => {

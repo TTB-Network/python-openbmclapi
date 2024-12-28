@@ -174,7 +174,7 @@ class SSEClient:
 @dataclass
 class SSEMessage:
     event: str
-    data: str
+    data: Any
     id: utils.ObjectId
 
 class SSEEmiter:
@@ -200,20 +200,48 @@ class SSEEmiter:
                 client,
                 message
             )
+
+    async def raw_send_client(
+        self,
+        client: SSEClient,
+        id: Optional[str] = None,
+        event: Optional[str] = None,
+        data: Optional[str] = None
+    ):
+        buffer = io.StringIO()
+        for item in {
+            "id": id,
+            "event": event,
+            "data": data
+        }.items():
+            if item[1] is not None:
+                buffer.write(f"{item[0]}: {item[1]}\n")
+        buffer.write("\n")
+        await client.resp.write(buffer.getvalue().encode("utf-8"))
+    
     async def send_client(
         self,
         client: SSEClient,
         message: SSEMessage
     ):
+        if client.fut.done():
+            await self.close_client(client)
+            return
+        if client.request.transport is None or client.request.transport.is_closing():
+            await self.close_client(client)
+            return
         try:
-            await client.resp.write(
-                (
-                    f"id: {message.id}\n"
-                    f"event: {message.event}\n"
-                    f"data: {message.data}\n\n"
-                ).encode("utf-8")
+            await self.raw_send_client(
+                client,
+                id=str(message.id),
+                event="message",
+                data=json_dumps(
+                    {
+                        "event": message.event,
+                        "data": message.data
+                    }
+                )
             )
-            await client.resp.drain()
         except:
             await self.close_client(client)
 
@@ -234,23 +262,31 @@ class SSEEmiter:
             client = SSEClient(
                 request=request,
                 resp=resp,
-                fut=request.task or self._loop.create_future()
+                fut=asyncio.get_event_loop().create_future()
             )
             await resp.prepare(request)
             self._connections.append(client)
             last_event_id: str = request.headers.get("Last-Event-ID", "0" * 24)
-            if last_event_id:
-                last_id = utils.ObjectId(last_event_id)
-                for message in self._cache.keys():
-                    if message.generation_time > last_id.generation_time:
-                        break
-                    await self.send_client(
-                        client,
-                        self._cache.get(message)
-                    )
+            last_id = utils.ObjectId(last_event_id)
+            for message in self._cache.keys():
+                if message.generation_time <= last_id.generation_time:
+                    break
+                await self.send_client(
+                    client,
+                    self._cache.get(message)
+                )
                     
             try:
-                await client.fut
+                tasks = [
+                    client.fut
+                ]
+                for t in (
+                    request.task,
+                    resp.task
+                ):
+                    if t is not None:
+                        tasks.append(t)
+                await asyncio.gather(*tasks)
             except:
                 await self.close_client(client)
             # wait request closed or timeout
@@ -265,7 +301,7 @@ class SSEEmiter:
     ):
         message = SSEMessage(
             event=event,
-            data=json_dumps(data),
+            data=data,
             id=utils.ObjectId()
         )
         self._cache.set(message.id, message)
@@ -278,9 +314,9 @@ class SSEEmiter:
         client: SSEClient
     ):
         try:
-            client.fut.set_result(None)
-            await client.resp.drain()
+            client.fut.cancel(None)
         except:
+            logger.traceback()
             self._connections.remove(client)
 
     async def close(
@@ -296,6 +332,7 @@ counter = Counter()
 process = psutil.Process(os.getpid())
 task: Optional[threading.Thread] = None
 running: int = 1
+status_task = None
 GITHUB_BASEURL = "https://api.github.com"
 GITHUB_REPO = "TTB-Network/python-openbmclapi"
 UTC = 28800 # UTC + 8 hours (seconds)
@@ -309,7 +346,6 @@ async def _(request: web.Request):
     return web.FileResponse("./assets/js/service-worker.js")
 
 @route.get('/')
-@route.get('/auth')
 @route.get('/pages')
 @route.get("/pages/{tail:.*}")
 async def _(request: web.Request):
@@ -691,11 +727,14 @@ async def push_tqdm():
     data = []
     for pbar in utils.wrapper_tqdms:
         data.append({
-            "desc": str(pbar.pbar.desc),
-            "total": str(pbar.pbar.total),
-            "current": str(pbar.pbar.n),
-            "unit": str(pbar.pbar.unit),
+            "desc": pbar.pbar.desc,
+            "total": pbar.pbar.total,
+            "current": pbar.pbar.n,
+            "unit": pbar.pbar.unit,
             "speed": list(pbar.speed),
+            "postfix": pbar.pbar.postfix,
+            "start_time": pbar.start_time,
+            "current_time": time.time()
         })
     if LAST_TQDM != bool(data) and not data:
         await SSEEMIT.push_message(
@@ -707,6 +746,26 @@ async def push_tqdm():
     await SSEEMIT.push_message(
         "progress", data
     )
+
+async def push_status():
+    global running
+    while running:
+        try:
+            await asyncio.wait_for(utils.status_manager.wait(), timeout=10)
+        except:
+            ...
+        await SSEEMIT.push_message(
+            "status", [
+                {
+                    "name": item.key,
+                    "count": item.count,
+                    "params": item.params,
+                    "start_time": None if item.timestamp == -1 else time.time() - item.timestamp - utils.get_start_runtime(),
+                }
+                for item in utils.status_manager.status
+            ]
+        )
+
 
 def get_query_day_tohour(day: int):
     t = int(time.time())
@@ -772,9 +831,10 @@ def record():
         counter.add(stats)
 
 async def init():
-    global task
+    global task, status_task
     task = threading.Thread(target=record)
     task.start()
+    status_task = asyncio.create_task(push_status())
     scheduler.run_repeat_later(
         push_tqdm,
         0, 
@@ -787,8 +847,10 @@ async def init():
     )
 
 async def unload():
-    global running
+    global running, status_task
     running = 0
+    if status_task is not None:
+        status_task.cancel()
     await SSEEMIT.close()
 
 async def fetch_github_repo():

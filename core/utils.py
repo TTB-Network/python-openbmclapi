@@ -195,6 +195,7 @@ class WrapperTQDM:
         self._rate = pbar.smoothing
         self.speed: deque[float] = deque(maxlen=int(1.0 / self._rate) * 30)
         self._n = pbar.n
+        self._start = time.monotonic()
         self._time = time.monotonic()
         self._last_time = self._time
         self._counter = None
@@ -211,15 +212,14 @@ class WrapperTQDM:
     def _count(self, sleep = True):
         while self._counter is not None:
             diff = (self.pbar.n - self._n) * (1.0 / ((time.monotonic() - self._last_time) or 1))
+            self._last_time = time.monotonic()
             self._n = self.pbar.n
             self.speed.append(
                 diff
             )
             if not sleep:
                 continue
-            time.sleep(self._rate)
-
-        
+            time.sleep(self._rate)      
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self in wrapper_tqdms:
@@ -235,8 +235,6 @@ class WrapperTQDM:
             self.speed.append(self.pbar.n / (time.monotonic() - self._time))
             self._time = time.monotonic()
         
-
-
     def set_postfix_str(self, s: str):
         self.pbar.set_postfix_str(s)
 
@@ -244,6 +242,80 @@ class WrapperTQDM:
         if self in wrapper_tqdms:
             wrapper_tqdms.remove(self)
         self.pbar.close()
+
+    @property
+    def start_time(self):
+        return (self._start - get_start_runtime()) + (time.time() - get_runtime())
+
+class Status:
+    def __init__(
+        self,
+        key: str,
+        **kwargs
+    ):
+        self.key = key
+        self.timestamp = -1
+        self.count = 0
+        self.params = kwargs
+
+    def __enter__(
+        self,
+    ):
+        self.enter()
+        return self
+    
+    def __exit__(
+        self,
+        exc_type,
+        exc_val,
+        exc_tb,
+    ):
+        self.exit()
+        
+    def enter(
+        self,
+    ):
+        self.count += 1
+        if self in status_manager.status:
+            return
+        self.timestamp = time.monotonic()
+        status_manager.status.appendleft(
+            self
+        )
+        status_manager.lock.release()
+
+    def exit(
+        self,
+    ):
+        self.count -= 1
+        if self.count > 0 or self not in status_manager.status:
+            return
+        self.timestamp = -1
+        status_manager.status.remove(
+            self
+        )
+        status_manager.lock.release()
+
+class StatusManager:
+    def __init__(
+        self,
+    ):
+        self.status: deque[Status] = deque()
+        self.lock = CountLock()
+
+    async def wait(self):
+        self.lock.acquire()
+        await self.lock.wait()
+        return self.status
+
+
+    def get_current_status(
+        self,
+        sorted_by_timestamp: bool = False
+    ):
+        if sorted_by_timestamp:
+            return sorted(self.status, key=lambda x: x.timestamp)
+        return self.status
 
 def check_sign(hash: str, secret: str, s: str, e: str) -> bool:
     return check_sign_without_time(hash, secret, s, e) and time.time() - 300 < int(e, 36)
@@ -277,8 +349,11 @@ def pause():
         pass
 
 def get_runtime():
+    return time.monotonic() - get_start_runtime()
+
+def get_start_runtime():
     from core import _START_RUNTIME
-    return time.monotonic() - _START_RUNTIME
+    return _START_RUNTIME
 
 def parse_isotime_to_timestamp(iso_format: str) -> float:
     return datetime.fromisoformat(iso_format).timestamp()
@@ -347,6 +422,7 @@ class ServiceError:
 
 
 wrapper_tqdms: deque[WrapperTQDM] = deque()
+status_manager: StatusManager = StatusManager()
 
 
 def retry(max_retries: int = 3, delay: float = 1.0):

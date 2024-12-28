@@ -74,51 +74,54 @@ class StorageManager:
         scheduler.run_repeat_later(self._check_available, 1, 120)
 
     async def _check_available(self):
-        for storage in self.storages:
-            err = None
-            res = False
-            try:
-                res = await asyncio.wait_for(self.__check_available(storage), 10)
-            except Exception as e:
-                logger.ttraceback("storage.error.check_available", type=storage.type, path=storage.path, url=getattr(storage, "url", None))
+        with utils.Status(
+            "storage.check_available",
+        ):
+            for storage in self.storages:
+                err = None
                 res = False
-                err = e
-            if res:
-                if storage not in self.available_storages:
-                    self.available_storages.append(storage)
+                try:
+                    res = await asyncio.wait_for(self.__check_available(storage), 10)
+                except Exception as e:
+                    logger.ttraceback("storage.error.check_available", type=storage.type, path=storage.path, url=getattr(storage, "url", None))
+                    res = False
+                    err = e
+                if res:
+                    if storage not in self.available_storages:
+                        self.available_storages.append(storage)
+                        await self.logger.logger(
+                            EventLoggerType.storage,
+                            "up",
+                            {
+                                "id": storage.unique_id,
+                                "type": storage.type,
+                                "name": storage.name
+                            }
+                        )
+                elif storage in self.available_storages:
+                    self.available_storages.remove(storage)
                     await self.logger.logger(
                         EventLoggerType.storage,
-                        "up",
+                        "down",
                         {
                             "id": storage.unique_id,
                             "type": storage.type,
-                            "name": storage.name
+                            "name": storage.name,
+                            "error": str(err)
                         }
                     )
-            elif storage in self.available_storages:
-                self.available_storages.remove(storage)
-                await self.logger.logger(
-                    EventLoggerType.storage,
-                    "down",
-                    {
-                        "id": storage.unique_id,
-                        "type": storage.type,
-                        "name": storage.name,
-                        "error": str(err)
-                    }
-                )
-        logger.debug(f"Available storages: {len(self.available_storages)}")
-        if len(self.available_storages) > 0:
-            self.check_available.release()
-            await clusters.enable()
-        else:
-            self.check_available.acquire()
-            logger.twarning("storage.warning.storage.unavailable", storages=len(self.storages))
-            if any((
-                cluster.enabled for cluster in clusters.clusters
-            )):
-                logger.twarning("storage.warning.storage.unavailable.for.clusters")
-                await clusters.disable()
+            logger.debug(f"Available storages: {len(self.available_storages)}")
+            if len(self.available_storages) > 0:
+                self.check_available.release()
+                await clusters.enable()
+            else:
+                self.check_available.acquire()
+                logger.twarning("storage.warning.storage.unavailable", storages=len(self.storages))
+                if any((
+                    cluster.enabled for cluster in clusters.clusters
+                )):
+                    logger.twarning("storage.warning.storage.unavailable.for.clusters")
+                    await clusters.disable()
         
     async def __check_available(self, storage: storages.iStorage):
         file = MeasureFile(
@@ -164,14 +167,18 @@ class StorageManager:
             function = self._check_exists
 
         await self.available()
-        with WrapperTQDM(tqdm(
+        with utils.Status(
+            "cluster.status.listing_files"
+        ), WrapperTQDM(tqdm(
             total=len(self.available_storages) * 256,
             desc="List Files",
             unit="dir",
             unit_scale=True
         )) as pbar:
             await asyncio.gather(*(self.get_storage_filelist(storage, pbar) for storage in self.available_storages))
-        with WrapperTQDM(tqdm(
+        with utils.Status(
+            "cluster.status.checking_files"
+        ), WrapperTQDM(tqdm(
             total=len(files) * len(self.available_storages),
             desc="Checking files",
             unit="file",
@@ -343,7 +350,6 @@ class StorageManager:
         return "+".join(res)
 
 
-
 @dataclass
 class OpenBMCLAPIConfiguration:
     source: str
@@ -462,7 +468,10 @@ class FileListManager:
             return []
 
     async def fetch_filelist(self) -> set[File]:
-        result_filelist = set().union(*await asyncio.gather(*(asyncio.create_task(self._get_filelist(cluster)) for cluster in self.clusters.clusters)))
+        with utils.Status(
+            "cluster.fetch_filelist",
+        ):
+            result_filelist = set().union(*await asyncio.gather(*(asyncio.create_task(self._get_filelist(cluster)) for cluster in self.clusters.clusters)))
         logger.tsuccess("cluster.success.fetch_filelist", total=units.format_number(len(result_filelist)), size=units.format_bytes(sum(f.size for f in result_filelist)))
         return result_filelist
 
@@ -506,7 +515,9 @@ class FileListManager:
             await file_queues.put(file)
         sessions: list[aiohttp.ClientSession] = []
         tasks = []
-        with DownloadStatistics(
+        with utils.Status(
+            "cluster.status.sync",
+        ), DownloadStatistics(
             total=total,
             size=size
         ) as pbar:
@@ -682,6 +693,13 @@ class EventLogger:
         self._dir = dir
         self._prefix = prefix
         self._sse_emiter = sse_emiter
+        self._cluster_event = (
+            "enable",
+            "disable",
+            "warden-error",
+            "message",
+            "exception"
+        )
 
     @property
     def file_path(self):
@@ -699,6 +717,8 @@ class EventLogger:
         event: str,
         data: Any
     ):
+        if event not in self._cluster_event:
+            return
         await self.logger(
             EventLoggerType.cluster,
             event,
@@ -715,6 +735,8 @@ class EventLogger:
         event: str,
         data: Any
     ):
+        if event not in self._cluster_event:
+            return
         await self.logger(
             EventLoggerType.cluster,
             event,
@@ -774,10 +796,20 @@ class ClusterManager:
         self.clusters_certificate: dict[str, ClusterCertificate] = {}
         self.event_logger = EventLogger()
         self.storage_manager = StorageManager(self)
+        self.status = utils.Status(
+            "clusters",   
+            total = 0
+        )
+        self.enabling = utils.Status(
+            "clusters.enabling",
+            total = 0
+        )
         self.initialized = False
 
     def add_cluster(self, cluster: 'Cluster'):
         self.cluster_id_tables[cluster.id] = cluster
+        self.status.params["total"] += 1
+        self.enabling.params["total"] += 1
 
     @property
     def clusters(self):
@@ -854,7 +886,10 @@ class ClusterManager:
                     main
                 ]
         if not self.clusters_certificate:
-            await asyncio.gather(*[cluster.request_cert() for cluster in self.clusters])
+            with utils.Status(
+                "cluster.status.get_certificates"
+            ):
+                await asyncio.gather(*[cluster.request_cert() for cluster in self.clusters])
             for cluster in self.clusters:
                 self.clusters_certificate[cluster.id] = cluster.certificate
         if cluster_id is None:
@@ -979,6 +1014,7 @@ class Cluster:
         if self.want_enable:
             return
         self.want_enable = True
+        clusters.enabling.enter()
         self.enable_count += 1
         logger.tinfo("cluster.info.want_enable", cluster=self.id)
         try:
@@ -998,12 +1034,14 @@ class Cluster:
         except:
             return
         finally:
+            clusters.enabling.exit()
             self.want_enable = False
         if result.err:
             self.socketio_error("enable", result)
             self.retry()
             return
         self.enabled = True
+        clusters.status.enter()
         self.enable_count = 0
         scheduler.cancel(self.keepalive_task)
         self.keepalive_task = scheduler.run_repeat_later(self.keepalive, 1, interval=60)
@@ -1053,6 +1091,7 @@ class Cluster:
             result = await self.socket_io.emit(
                 "disable"
             )
+            clusters.status.exit()
             if result.err:
                 self.socketio_error(
                     "disable",

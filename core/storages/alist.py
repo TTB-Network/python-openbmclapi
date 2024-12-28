@@ -155,6 +155,8 @@ class AlistStorage(iNetworkStorage):
                             **await resp.json()
                         )
                         return ((result.data or {}).get("content", None) or [])
+            except asyncio.CancelledError:
+                raise
             except:
                 logger.traceback()
             finally:
