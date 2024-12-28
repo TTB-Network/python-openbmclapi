@@ -4,7 +4,6 @@ import {
     ElementManager,
     Style,
     I18NManager,
-    Router,
     createElement,
     SVGContainers,
     calcElementHeight,
@@ -211,6 +210,12 @@ class Channel {
     // event source
     _event_source_init() {
         this._event_source = new EventSource(this.url + "_event");
+        this._event_source.onopen = (event) => {
+            console.log(event)
+        }
+        this._event_source.onmessage = (event) => {
+            console.log(event)
+        }
         
     }
     // websocket

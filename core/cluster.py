@@ -17,7 +17,7 @@ import aiohttp
 from tqdm import tqdm
 
 from . import web
-from . import utils, logger, config, scheduler, units, storages, i18n
+from . import utils, logger, config, scheduler, units, storages, i18n, dashboard
 from .storages import File as SFile, MeasureFile
 import socketio
 import urllib.parse as urlparse
@@ -55,13 +55,13 @@ class FailedFile:
     def __hash__(self) -> int:
         return hash(self.file)
     
-
 class StorageManager:
     def __init__(self, clusters: 'ClusterManager'):
         self.clusters = clusters
         self.storages: deque[storages.iStorage] = deque()
         self.available_storages: deque[storages.iStorage] = deque()
         self.check_available: utils.CountLock = utils.CountLock()
+        self.logger = clusters.event_logger
 
         self.check_available.acquire()
 
@@ -75,18 +75,38 @@ class StorageManager:
 
     async def _check_available(self):
         for storage in self.storages:
+            err = None
             res = False
             try:
                 res = await asyncio.wait_for(self.__check_available(storage), 10)
-            except:
+            except Exception as e:
                 logger.ttraceback("storage.error.check_available", type=storage.type, path=storage.path, url=getattr(storage, "url", None))
-                if storage in self.available_storages:
-                    self.available_storages.remove(storage)
+                res = False
+                err = e
             if res:
                 if storage not in self.available_storages:
                     self.available_storages.append(storage)
+                    await self.logger.logger(
+                        EventLoggerType.storage,
+                        "up",
+                        {
+                            "id": storage.unique_id,
+                            "type": storage.type,
+                            "name": storage.name
+                        }
+                    )
             elif storage in self.available_storages:
                 self.available_storages.remove(storage)
+                await self.logger.logger(
+                    EventLoggerType.storage,
+                    "down",
+                    {
+                        "id": storage.unique_id,
+                        "type": storage.type,
+                        "name": storage.name,
+                        "error": str(err)
+                    }
+                )
         logger.debug(f"Available storages: {len(self.available_storages)}")
         if len(self.available_storages) > 0:
             self.check_available.release()
@@ -191,11 +211,13 @@ class StorageManager:
             file_hash = file.hash
             return file_hash in self.cache_filelist[storage]
         return False #await storage.exists(convert_file_to_storage_file(file))
+    
     async def _check_size(self, file: File, storage: storages.iStorage):
         if storage in self.cache_filelist:
             file_hash = file.hash
             return file_hash in self.cache_filelist[storage] and self.cache_filelist[storage][file_hash].size == file.size
         return False #await self._check_exists(file, storage) and await storage.get_size(convert_file_to_storage_file(file)) == file.size
+    
     async def _check_hash(self, file: File, storage: storages.iStorage):
         return False #await self._check_exists(file, storage) and utils.equals_hash(file.hash, (await storage.read_file(convert_file_to_storage_file(file))).getvalue())
 
@@ -310,6 +332,17 @@ class StorageManager:
             except:
                 retries += 1
         return False
+
+    @property
+    def flavor_storage(self):
+        res = []
+        for storage in self.storages:
+            if storage.type in res:
+                continue
+            res.append(storage.type)
+        return "+".join(res)
+
+
 
 @dataclass
 class OpenBMCLAPIConfiguration:
@@ -427,7 +460,6 @@ class FileListManager:
         except:
             logger.ttraceback("cluster.error.fetch_filelist", cluster=cluster.id)
             return []
-
 
     async def fetch_filelist(self) -> set[File]:
         result_filelist = set().union(*await asyncio.gather(*(asyncio.create_task(self._get_filelist(cluster)) for cluster in self.clusters.clusters)))
@@ -586,6 +618,7 @@ class FileListManager:
         await self._report(self.failed_hash_urls[file.hash].urls)
         self.failed_hash_urls[file.hash].failed = 0
         self.failed_hash_urls[file.hash].urls = set()
+    
     async def _report(self, urls: set[tuple[URLResponse, ...]]):
         async def _r(urls: tuple[URLResponse, ...]):
             async with session.post(
@@ -603,7 +636,6 @@ class FileListManager:
             }
         ) as session:
             await asyncio.gather(*[_r(urls) for urls in urls])
-
 
     async def _get_configuration(self, cluster: 'Cluster'):
         try:
@@ -629,29 +661,27 @@ class FileListManager:
             return {}
 
 @dataclass
-class ClusterLoggerSchema:
-    type: "ClusterLoggerType"
+class EventLoggerSchema:
+    type: "EventLoggerType"
     cluster_id: str
     event: str
     data: Any
     time: datetime.datetime
 
-class ClusterLoggerType(enum.Enum):
-    emit = "emit"
-    response = "response"
+class EventLoggerType(enum.Enum):
+    cluster = "cluster"
+    storage = "storage"
 
-class ClusterLogger:
+class EventLogger:
     def __init__(
         self,
         dir: str = logger.dir,
-        prefix: str = "cluster",
-        emit_filter: Callable[[str], bool] = lambda x: False,
-        callback_filter: Callable[[str], bool] = lambda x: x in ("request-cert", ),
+        prefix: str = "event",
+        sse_emiter: dashboard.SSEEmiter = dashboard.SSEEMIT
     ):
         self._dir = dir
         self._prefix = prefix
-        self._emit_filter = emit_filter
-        self._callback_filter = callback_filter
+        self._sse_emiter = sse_emiter
 
     @property
     def file_path(self):
@@ -663,58 +693,87 @@ class ClusterLogger:
             )
         return self._file_path
     
-    def emit(self, cluster_id: str, event: str, data: Any):
-        if self._emit_filter(event):
-            data = "(This data is filtered)"
-        self._write(ClusterLoggerType.emit, cluster_id, event, data)
+    async def emit_cluster(
+        self,
+        cluster_id: str,
+        event: str,
+        data: Any
+    ):
+        await self.logger(
+            EventLoggerType.cluster,
+            event,
+            {
+                "cluster_id": cluster_id,
+                "type": "emit",
+                "data": data
+            }
+        )
 
-    def callback(self, cluster_id: str, event: str, data: Any):
-        if self._callback_filter(event):
-            data = "(This data is filtered)"
-        self._write(ClusterLoggerType.response, cluster_id, event, data)
+    async def callback_cluster(
+        self,
+        cluster_id: str,
+        event: str,
+        data: Any
+    ):
+        await self.logger(
+            EventLoggerType.cluster,
+            event,
+            {
+                "cluster_id": cluster_id,
+                "type": "callback",
+                "data": data
+            }
+        )
 
-    def _write(self, type: ClusterLoggerType, cluster_id: str, event: str, data: Any):
+    async def logger(
+        self,
+        type: EventLoggerType,
+        event: str,
+        data: Any
+    ):
+        buffer = {
+            "type": type.value,
+            "event": event,
+            "data": data
+        }
         with open(self.file_path, "a") as f:
             f.write(json.dumps(
-                {
-                    "type": type.value,
-                    "cluster_id": cluster_id,
-                    "event": event,
-                    "data": data,
-                    "time": datetime.datetime.now().isoformat()
-                }
+                buffer
             ) + "\n")
+        await self._sse_emiter.push_message(
+            f"{type.value}_{event}",
+            data
+        )
 
     def _list_files(self):
         return list(Path(self._dir).glob(f"{self._prefix}_*.log"))
     
-    def _read_file(self, file: Path) -> list[ClusterLoggerSchema]:
+    def _read_file(self, file: Path) -> list[EventLoggerSchema]:
         res = []
         with open(file, "r") as f:
             for line in f:
                 if not line:
                     continue
                 data = json.loads(line)
-                obj = ClusterLoggerSchema(**data)
-                obj.type = ClusterLoggerType(obj.type)
+                obj = EventLoggerSchema(**data)
+                obj.type = EventLoggerType(obj.type)
                 res.append(obj)
         return res
     
-    def read(self) -> list[ClusterLoggerSchema]:
-        res: list[ClusterLoggerSchema] = []
+    def read(self) -> list[EventLoggerSchema]:
+        res: list[EventLoggerSchema] = []
         for file in self._list_files():
             res.extend(self._read_file(file))
         res.sort(key=lambda x: x.time)
         return res
 
-
 class ClusterManager:
     def __init__(self):
         self.cluster_id_tables: dict[str, 'Cluster'] = {}
         self.file_manager = FileListManager(self)
-        self.storage_manager = StorageManager(self)
         self.clusters_certificate: dict[str, ClusterCertificate] = {}
-        self.event_logger = ClusterLogger()
+        self.event_logger = EventLogger()
+        self.storage_manager = StorageManager(self)
         self.initialized = False
 
     def add_cluster(self, cluster: 'Cluster'):
@@ -914,6 +973,7 @@ class Cluster:
         if self.enabled:
             return
         scheduler.cancel(self.delay_enable_task)
+        self.delay_enable_task = None
         if not await clusters.storage_manager.available():
             return
         if self.want_enable:
@@ -930,8 +990,8 @@ class Cluster:
                     "version": API_VERSION,
                     "noFastEnable": True,
                     "flavor": {
-                        "storage": "local",
-                        "runtime": f"python/{config.PYTHON_VERSION}"
+                        "storage": clusters.storage_manager.flavor_storage,
+                        "runtime": f"python/{config.PYTHON_VERSION} python-openbmclapi/{config.VERSION}"
                     }
                 }
             , 120)
@@ -1049,31 +1109,31 @@ class ClusterSocketIO:
     def setup_handlers(self):
         @self.sio.on("connect") # type: ignore
         async def _() -> None:
-            clusters.event_logger.callback(self.cluster.id, "connect", None)
+            await clusters.event_logger.callback_cluster(self.cluster.id, "connect", None)
             logger.tdebug("cluster.debug.socketio.connected", cluster=self.cluster.id)
 
         @self.sio.on("disconnect") # type: ignore
         async def _() -> None:
-            clusters.event_logger.callback(self.cluster.id, "disconnect", None)
+            await clusters.event_logger.callback_cluster(self.cluster.id, "disconnect", None)
             logger.tdebug("cluster.debug.socketio.disconnected", cluster=self.cluster.id)
 
         @self.sio.on("message") # type: ignore
         async def _(message: Any):
-            clusters.event_logger.callback(self.cluster.id, "message", message)
+            await clusters.event_logger.callback_cluster(self.cluster.id, "message", message)
             if isinstance(message, dict) and "message" in message:
                 message = message["message"]
             logger.tinfo("cluster.info.socketio.message", cluster=self.cluster.id, message=message)
 
         @self.sio.on("exception") # type: ignore
         async def _(message: Any):
-            clusters.event_logger.callback(self.cluster.id, "exception", message)
+            await clusters.event_logger.callback_cluster(self.cluster.id, "exception", message)
             if isinstance(message, dict) and "message" in message:
                 message = message["message"]
             logger.terror("cluster.error.socketio.message", cluster=self.cluster.id, message=message)
 
         @self.sio.on("warden-error") # type: ignore
         async def _(message: Any):
-            clusters.event_logger.callback(self.cluster.id, "warden-error", message)
+            await clusters.event_logger.callback_cluster(self.cluster.id, "warden-error", message)
             if isinstance(message, dict) and "message" in message:
                 message = message["message"]
             logger.terror("cluster.error.socketio.warden", cluster=self.cluster.id, message=message)
@@ -1090,15 +1150,27 @@ class ClusterSocketIO:
         fut = asyncio.get_event_loop().create_future()
 
         async def callback(data: tuple[Any, Any]):
-            clusters.event_logger.callback(self.cluster.id, event, {
-                "err": data[0],
-                "ack": data[1] if len(data) > 1 else None
+            if event in (
+                "request-cert",
+            ):
+                callback_data = (
+                    "None",
+                    "(The data is filtered.)"
+                )
+            else:
+                callback_data = (
+                    data[0],
+                    data[1] if len(data) > 1 else None
+                )
+            await clusters.event_logger.callback_cluster(self.cluster.id, event, {
+                "err": callback_data[0],
+                "ack": callback_data[1]
             })
             fut.set_result(SocketIOEmitResult(data[0], data[1] if len(data) > 1 else None))
         await self.sio.emit(
             event, data, callback=callback
         )
-        clusters.event_logger.emit(self.cluster.id, event, data)
+        await clusters.event_logger.emit_cluster(self.cluster.id, event, data)
         timeout_task = None
         if timeout is not None:
             timeout_task = scheduler.run_later(lambda: not fut.done() and fut.set_exception(asyncio.TimeoutError), timeout)
@@ -1229,6 +1301,7 @@ async def init_measure_file(
     except:
         logger.ttraceback("cluster.error.init_measure_file", path=storage.path, type=storage.type, size=units.format_bytes(size * 1024 * 1024), hash=hash)
     return False
+
 async def init_measure_files():
     await clusters.storage_manager.available()
     results = await asyncio.gather(*[asyncio.create_task(init_measure_file(storage, size, MEASURES_HASH[size])) for storage in clusters.storage_manager.available_storages for size in MEASURES_HASH])

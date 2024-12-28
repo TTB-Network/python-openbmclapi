@@ -1,21 +1,26 @@
 import asyncio
 import base64
+import binascii
 from collections import deque
 import collections
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, tzinfo
 import functools
 import hashlib
 import io
 import json
+import os
+from random import SystemRandom
 import re
+import struct
+import threading
 import time
-from typing import Any, Callable, Optional
+from typing import Any, Optional, Tuple, Type, Union
 
 from tqdm import tqdm
 
+from core import scheduler
 from core.logger import logger
-
 
 class CountLock:
     def __init__(self):
@@ -187,19 +192,50 @@ class Time:
 class WrapperTQDM:
     def __init__(self, pbar: tqdm):
         self.pbar = pbar
+        self._rate = pbar.smoothing
+        self.speed: deque[float] = deque(maxlen=int(1.0 / self._rate) * 30)
+        self._n = pbar.n
+        self._time = time.monotonic()
+        self._last_time = self._time
+        self._counter = None
     
     def __enter__(self):
         wrapper_tqdms.appendleft(self)
+        self._counter = threading.Thread(
+            target=self._count,
+        )
+        self._counter.start()
         self.pbar.__enter__()
         return self
+    
+    def _count(self, sleep = True):
+        while self._counter is not None:
+            diff = (self.pbar.n - self._n) * (1.0 / ((time.monotonic() - self._last_time) or 1))
+            self._n = self.pbar.n
+            self.speed.append(
+                diff
+            )
+            if not sleep:
+                continue
+            time.sleep(self._rate)
+
+        
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self in wrapper_tqdms:
             wrapper_tqdms.remove(self)
+        if self._counter:
+            self._counter = None
+        self._count(False)
         self.pbar.__exit__(exc_type, exc_val, exc_tb)
 
     def update(self, n: float | None = 1):
         self.pbar.update(n)
+        if time.monotonic() - self._time > 1:
+            self.speed.append(self.pbar.n / (time.monotonic() - self._time))
+            self._time = time.monotonic()
+        
+
 
     def set_postfix_str(self, s: str):
         self.pbar.set_postfix_str(s)
@@ -341,3 +377,139 @@ def retry(max_retries: int = 3, delay: float = 1.0):
             return async_wrapper
         return sync_wrapper
     return decorator
+
+_MAX_COUNTER_VALUE = 0xFFFFFF
+_PACK_INT = struct.Struct(">I").pack
+_PACK_INT_RANDOM = struct.Struct(">I5s").pack
+_UNPACK_INT = struct.Struct(">I").unpack
+def _raise_invalid_id(oid: str):
+    raise ValueError(
+        "%r is not a valid ObjectId, it must be a 12-byte input"
+        " or a 24-character hex string" % oid
+    )
+def _random_bytes() -> bytes:
+    """Get the 5-byte random field of an ObjectId."""
+    return os.urandom(5)
+class ObjectId:
+    _pid = os.getpid()
+    _inc = SystemRandom().randint(0, _MAX_COUNTER_VALUE)
+    _inc_lock = threading.Lock()
+    __random = _random_bytes()
+    __slots__ = ("__id",)
+    _type_marker = 7
+    def __init__(self, oid: Optional[Union[str, 'ObjectId', bytes]] = None) -> None:
+        if oid is None:
+            self.__generate()
+        elif isinstance(oid, bytes) and len(oid) == 12:
+            self.__id = oid
+        else:
+            self.__validate(oid)
+    @classmethod
+    def from_datetime(cls: Type['ObjectId'], generation_time: datetime) -> 'ObjectId':
+        oid = (
+            _PACK_INT(generation_time.timestamp() // 1)
+            + b"\x00\x00\x00\x00\x00\x00\x00\x00"
+        )
+        return cls(oid)
+    @classmethod
+    def is_valid(cls: Type['ObjectId'], oid: Any) -> bool:
+        if not oid:
+            return False
+        try:
+            ObjectId(oid)
+            return True
+        except (ValueError, TypeError):
+            return False
+    @classmethod
+    def _random(cls) -> bytes:
+        pid = os.getpid()
+        if pid != cls._pid:
+            cls._pid = pid
+            cls.__random = _random_bytes()
+        return cls.__random
+    def __generate(self) -> None:
+        with ObjectId._inc_lock:
+            inc = ObjectId._inc
+            ObjectId._inc = (inc + 1) % (_MAX_COUNTER_VALUE + 1)
+        self.__id = _PACK_INT_RANDOM(int(time.time()), ObjectId._random()) + _PACK_INT(inc)[1:4]
+    def __validate(self, oid: Any) -> None:
+        if isinstance(oid, ObjectId):
+            self.__id = oid.binary
+        elif isinstance(oid, str):
+            if len(oid) == 24:
+                try:
+                    self.__id = bytes.fromhex(oid)
+                except (TypeError, ValueError):
+                    _raise_invalid_id(oid)
+            else:
+                _raise_invalid_id(oid)
+        else:
+            raise TypeError(f"id must be an instance of (bytes, str, ObjectId), not {type(oid)}")
+    @property
+    def binary(self) -> bytes:
+        return self.__id
+    @property
+    def generation_time(self) -> datetime:
+        timestamp = _UNPACK_INT(self.__id[0:4])[0]
+        return datetime.fromtimestamp(timestamp, utc)
+    def __getstate__(self) -> bytes:
+        return self.__id
+    def __setstate__(self, value: Any) -> None:
+        if isinstance(value, dict):
+            oid = value["_ObjectId__id"]
+        else:
+            oid = value
+        if isinstance(oid, str):
+            self.__id = oid.encode("latin-1")
+        else:
+            self.__id = oid
+    def __str__(self) -> str:
+        return binascii.hexlify(self.__id).decode()
+    def __repr__(self) -> str:
+        return f"ObjectId('{self!s}')"
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, ObjectId):
+            return self.__id == other.binary
+        return NotImplemented
+    def __ne__(self, other: Any) -> bool:
+        if isinstance(other, ObjectId):
+            return self.__id != other.binary
+        return NotImplemented
+    def __lt__(self, other: Any) -> bool:
+        if isinstance(other, ObjectId):
+            return self.__id < other.binary
+        return NotImplemented
+    def __le__(self, other: Any) -> bool:
+        if isinstance(other, ObjectId):
+            return self.__id <= other.binary
+        return NotImplemented
+    def __gt__(self, other: Any) -> bool:
+        if isinstance(other, ObjectId):
+            return self.__id > other.binary
+        return NotImplemented
+    def __ge__(self, other: Any) -> bool:
+        if isinstance(other, ObjectId):
+            return self.__id >= other.binary
+        return NotImplemented
+    def __hash__(self) -> int:
+        return hash(self.__id)
+
+ZERO: timedelta = timedelta(0)
+class FixedOffset(tzinfo):
+    def __init__(self, offset: Union[float, timedelta], name: str) -> None:
+        if isinstance(offset, timedelta):
+            self.__offset = offset
+        else:
+            self.__offset = timedelta(minutes=offset)
+        self.__name = name
+    def __getinitargs__(self) -> Tuple[timedelta, str]:
+        return self.__offset, self.__name
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self.__offset!r}, {self.__name!r})"
+    def utcoffset(self, dt: Optional[datetime]) -> timedelta:
+        return self.__offset
+    def tzname(self, dt: Optional[datetime]) -> str:
+        return self.__name
+    def dst(self, dt: Optional[datetime]) -> timedelta:
+        return ZERO
+utc: FixedOffset = FixedOffset(0, "UTC")

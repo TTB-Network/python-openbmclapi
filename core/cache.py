@@ -28,6 +28,9 @@ class TimeoutCache(MutableMapping[K, T]):
         self.background = BackgroundScheduler()
         self.default_timeout = default_timeout
         self.background.start()
+
+    def keys(self):
+        return self.cache.keys()
     
     def set(self, key: K, value: T, timeout: Optional[float] = None) -> None:
         self._delete_job(key)

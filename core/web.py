@@ -571,7 +571,7 @@ class TCPClient(
         if self.writer is not None:
             self.writer.close()
             self.writer = None
-        if self.handle_task is not None:
+        if self.handle_task is not None and not self._loop.is_closed():
             self.handle_task.cancel()
             self.handle_task = None
         self.reader = None

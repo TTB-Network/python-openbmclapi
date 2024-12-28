@@ -1,7 +1,7 @@
 import asyncio
 import base64
 from collections import defaultdict, deque
-from dataclasses import asdict, dataclass, fields, is_dataclass
+from dataclasses import asdict, dataclass, field, fields, is_dataclass
 import datetime
 import enum
 import io
@@ -17,7 +17,7 @@ from typing import Any, Optional
 import aiohttp
 import psutil
 
-from core import cluster, config, logger, units
+from core import cache, cluster, config, logger, units
 import ipdb
 from . import utils
 
@@ -171,15 +171,54 @@ class SSEClient:
     resp: web.StreamResponse
     fut: asyncio.Future
 
+@dataclass
+class SSEMessage:
+    event: str
+    data: str
+    id: utils.ObjectId
+
 class SSEEmiter:
     def __init__(
         self,
         timeout: Optional[int] = None,
+        /,
+        loop = asyncio.get_event_loop()
     ):
         self._timeout = timeout or 0
         self._connections: deque[SSEClient] = deque()
+        self._cache: cache.TimeoutCache[utils.ObjectId, SSEMessage] = cache.TimeoutCache(
+            300
+        )
+        self._loop = loop
 
-    async def push_request(
+    async def send(
+        self,
+        message: SSEMessage
+    ):
+        for client in self._connections.copy():
+            await self.send_client(
+                client,
+                message
+            )
+    async def send_client(
+        self,
+        client: SSEClient,
+        message: SSEMessage
+    ):
+        try:
+            await client.resp.write(
+                (
+                    f"id: {message.id}\n"
+                    f"event: {message.event}\n"
+                    f"data: {message.data}\n\n"
+                ).encode("utf-8")
+            )
+            await client.resp.drain()
+        except:
+            await self.close_client(client)
+
+
+    async def request(
         self,
         request: web.Request,
     ):
@@ -192,21 +231,66 @@ class SSEEmiter:
             }
         )
         try:
-            await resp.prepare(request)
             client = SSEClient(
                 request=request,
                 resp=resp,
-                fut=request.task or asyncio.get_event_loop().create_future()
+                fut=request.task or self._loop.create_future()
             )
+            await resp.prepare(request)
             self._connections.append(client)
+            last_event_id: str = request.headers.get("Last-Event-ID", "0" * 24)
+            if last_event_id:
+                last_id = utils.ObjectId(last_event_id)
+                for message in self._cache.keys():
+                    if message.generation_time > last_id.generation_time:
+                        break
+                    await self.send_client(
+                        client,
+                        self._cache.get(message)
+                    )
+                    
             try:
                 await client.fut
             except:
-                self._connections.remove(client)
+                await self.close_client(client)
             # wait request closed or timeout
         except:
             ...
         return resp
+
+    async def push_message(
+        self,
+        event: str,
+        data: Any
+    ):
+        message = SSEMessage(
+            event=event,
+            data=json_dumps(data),
+            id=utils.ObjectId()
+        )
+        self._cache.set(message.id, message)
+        if not self._connections:
+            return
+        await self.send(message)
+
+    async def close_client(
+        self,
+        client: SSEClient
+    ):
+        try:
+            client.fut.set_result(None)
+            await client.resp.drain()
+        except:
+            self._connections.remove(client)
+
+    async def close(
+        self
+    ):
+        for client in self._connections.copy():
+            await self.close_client(client)
+
+        
+        
 
 counter = Counter()
 process = psutil.Process(os.getpid())
@@ -218,6 +302,7 @@ UTC = 28800 # UTC + 8 hours (seconds)
 IPDB = ipdb.City("./ipipfree.ipdb")
 IPDB_CACHE: dict[str, str] = {}
 SSEEMIT = SSEEmiter()
+LAST_TQDM = False
 
 @route.get("/service-worker.js")
 async def _(request: web.Request):
@@ -269,7 +354,7 @@ async def _(request: web.Request):
 
 @route.get("/api_event") # sse
 async def _(request: web.Request):
-    return await SSEEMIT.push_request(request)
+    return await SSEEMIT.request(request)
 
 @route.post("/api")
 async def _(request: web.Request):
@@ -601,6 +686,28 @@ async def handle_api(
 
     return None
 
+async def push_tqdm():
+    global LAST_TQDM
+    data = []
+    for pbar in utils.wrapper_tqdms:
+        data.append({
+            "desc": str(pbar.pbar.desc),
+            "total": str(pbar.pbar.total),
+            "current": str(pbar.pbar.n),
+            "unit": str(pbar.pbar.unit),
+            "speed": list(pbar.speed),
+        })
+    if LAST_TQDM != bool(data) and not data:
+        await SSEEMIT.push_message(
+            "progress", data
+        )
+    LAST_TQDM = bool(data)
+    if not data:
+        return
+    await SSEEMIT.push_message(
+        "progress", data
+    )
+
 def get_query_day_tohour(day: int):
     t = int(time.time())
     return int((t - ((t + UTC) % 86400) - 86400 * day) / 3600)
@@ -669,6 +776,11 @@ async def init():
     task = threading.Thread(target=record)
     task.start()
     scheduler.run_repeat_later(
+        push_tqdm,
+        0, 
+        0.5
+    )
+    scheduler.run_repeat_later(
         fetch_github_repo,
         5,
         interval=3600
@@ -677,6 +789,7 @@ async def init():
 async def unload():
     global running
     running = 0
+    await SSEEMIT.close()
 
 async def fetch_github_repo():
     async def get_dir_list(path: str = "/"):
@@ -736,6 +849,13 @@ async def fetch_github_repo():
                 await asyncio.gather(*[get_file(file) for file in res if file.is_file])
             )
         }
+        if any(
+            [
+                len(file.getvalue()) == 0 for file in files.values()
+            ]
+        ):
+            logger.error("Failed to sync assets")
+            return
         old_dirs: list[str] = []
         for local_root, local_dirs, local_files in os.walk("assets"):
             for file in local_files:
