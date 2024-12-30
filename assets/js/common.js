@@ -143,6 +143,14 @@ class Element {
         this._render_i18n();
         return this;
     }
+    aria_label(text) {
+        if (Utils.isEmpty(text)) {
+            this._base.removeAttribute("title")
+        } else {
+            this._base.setAttribute("title", text)
+        }
+        return this
+    }
     _render_i18n() {
         if (this._i18n_key == null) {
             return;

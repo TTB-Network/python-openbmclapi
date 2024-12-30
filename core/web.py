@@ -114,6 +114,7 @@ async def special_response():
         await asyncio.sleep(random.randint(30, 180))
     status = random.choice(DISALLOW_PUBLIC_DASHBOARD)
     return web.Response(status=status)
+
 REQUEST_BUFFER = 4096
 IO_BUFFER = 16384
 FINDING_FILTER = "127.0.0.1"
@@ -166,6 +167,7 @@ DISALLOW_PUBLIC_DASHBOARD: list[int] = [
     431,
     451,
 ]
+
 ip_tables: dict[tuple[str, int], tuple[str, int]] = {}
 ip_count: defaultdict[tuple[str, int], int] = defaultdict(int)
 app = web.Application(
@@ -174,12 +176,10 @@ app = web.Application(
     ]
 )
 routes = web.RouteTableDef()
-
 runner: Optional[web.AppRunner] = None
 site: Optional[web.TCPSite] = None
 public_servers: deque[asyncio.Server] = deque()
 privates: dict[tuple[str, str], PrivateSSLServer] = {}
-
 time_qps: defaultdict[int, int] = defaultdict(int)
 xff: int = config.const.xff
 
@@ -367,7 +367,6 @@ async def start_public_server(count: int = config.const.web_sockets):
         public_servers.clear()
         await start()
     logger.tsuccess("web.success.public_port", port=port, current=len(public_servers), total=count)
-
 
 def get_public_port():
     port = int(config.const.port)

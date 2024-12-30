@@ -215,7 +215,6 @@ def decompress(data: bytes) -> defaultdict[str, int]:
         logger.ttraceback("database.error.unable.to.decompress", data=data)
         return defaultdict(lambda: 0)
 
-
 def commit():
     try:
         global FILE_CACHE
@@ -298,7 +297,6 @@ def init_storages_key(*storage: storages.iStorage):
             else:
                 q.update({"data": content})
         session.commit()
-
 
 async def init():
     Base.metadata.create_all(engine)

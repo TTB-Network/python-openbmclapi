@@ -407,11 +407,9 @@ def parse_time(time_str: str):
         setattr(obj, maps[unit], value)
     return obj
 
-
 async def run_sync(func, *args, **kwargs):
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, func, *args, **kwargs)
-
 
 @dataclass
 class ServiceError:
@@ -420,10 +418,8 @@ class ServiceError:
     message: str
     name: str
 
-
 wrapper_tqdms: deque[WrapperTQDM] = deque()
 status_manager: StatusManager = StatusManager()
-
 
 def retry(max_retries: int = 3, delay: float = 1.0):
     def decorator(func):
@@ -463,9 +459,11 @@ def _raise_invalid_id(oid: str):
         "%r is not a valid ObjectId, it must be a 12-byte input"
         " or a 24-character hex string" % oid
     )
+
 def _random_bytes() -> bytes:
     """Get the 5-byte random field of an ObjectId."""
     return os.urandom(5)
+
 class ObjectId:
     _pid = os.getpid()
     _inc = SystemRandom().randint(0, _MAX_COUNTER_VALUE)
@@ -571,6 +569,7 @@ class ObjectId:
         return hash(self.__id)
 
 ZERO: timedelta = timedelta(0)
+
 class FixedOffset(tzinfo):
     def __init__(self, offset: Union[float, timedelta], name: str) -> None:
         if isinstance(offset, timedelta):
@@ -588,4 +587,5 @@ class FixedOffset(tzinfo):
         return self.__name
     def dst(self, dt: Optional[datetime]) -> timedelta:
         return ZERO
+
 utc: FixedOffset = FixedOffset(0, "UTC")

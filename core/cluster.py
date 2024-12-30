@@ -16,8 +16,7 @@ import pyzstd as zstd
 import aiohttp
 from tqdm import tqdm
 
-from . import web
-from . import utils, logger, config, scheduler, units, storages, i18n, dashboard
+from . import web, utils, logger, config, scheduler, units, storages, i18n, dashboard
 from .storages import File as SFile, MeasureFile
 import socketio
 import urllib.parse as urlparse

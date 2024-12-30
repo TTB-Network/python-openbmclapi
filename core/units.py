@@ -42,7 +42,6 @@ def format_bytes(n: float) -> str:
         i += 1
     return f'{n:.2f}{BYTES_UNITS[i][0]}'
 
-
 def format_number(n: float) -> str:
     i = 0
     for u, un in NUMBER_UNITS[1:]:
@@ -51,7 +50,6 @@ def format_number(n: float) -> str:
         n /= un
         i += 1
     return f'{n:.2f}{NUMBER_UNITS[i][0]}'
-
 
 def format_count_time(n: float, round: int = 2) -> str:
     i = 0
@@ -74,7 +72,6 @@ def format_count_datetime(secs: float) -> str:
         return f'{h:02d}:{m:02d}:{s:02d}'
     else:
         return f'{m:02d}:{s:02d}'
-
 
 def format_datetime_from_timestamp(seconds: float):
     return datetime.fromtimestamp(seconds).strftime('%Y-%m-%d %H:%M:%S')

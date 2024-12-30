@@ -992,6 +992,17 @@ $style.addAll({
     }
 })
 class Tools {
+    static _NUMBER_UNITS = {
+        "": 1,
+        "K": 1e3,
+        "M": 1e3,
+        "B": 1e3,
+        "T": 1e3,
+        "P": 1e3,
+        "E": 1e3,
+        "Z": 1e3,
+        "Y": 1e3,
+    }
     static formatTime(seconds) {
         if (seconds < 0 || seconds == null) return $i18n.t("format.count_time.days", {
             day: "--",
@@ -1027,6 +1038,8 @@ class Tools {
         value_i18n: "",
         title_variable: () => { },
         value_variable: () => { },
+        aria_label_value: () => { },
+        aria_label_title: () => { },
         i18n: {}
     }) {
         var i18n = params.i18n || {};
@@ -1039,17 +1052,28 @@ class Tools {
                 "value"
             ]) {
                 label[key].i18n(params[key + "_i18n"])
+                var title = ref({}, {
+                    handler: (args) => {
+                        console.log(args)
+                        label[key].aria_label(args.object.value)
+                    }
+                })
                 var obj = ref({}, {
                     handler: (args) => {
                         label[key].t18n(args.object)
                     }
                 })
-                var handler = params[key + "_variable"]
-                if (!handler) continue;
-                try {
-                    handler(obj)
-                } catch (e) {
-                    console.error(e)
+                var handlers = [
+                    [params[key + "_variable"], obj],
+                    [params["aria_label_" + key], title],
+                ]
+                for (let [handler, o] of handlers) {
+                    if (!handler) continue;
+                    try {
+                        handler(o)
+                    } catch (e) {
+                        console.error(e)
+                    }
                 }
             }
         })
@@ -1100,6 +1124,18 @@ class Tools {
         // convert number to belike: 100,000, if 100000.0, we are 100,000.0
         return number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ", ")
     }
+    static formatUnitNumber(number) {
+        var i = 0
+        for (const [u, un] of Object.entries(Tools._NUMBER_UNITS).slice(1)) {
+            if (number / un < 1) {
+                break
+            }
+            number /= un
+            i += 1
+        }
+        let unit = Object.keys(Tools._NUMBER_UNITS)[i]
+        return `${number.toFixed(unit.length != 0 ? (number % 1 == 0 ? 0 : 1) : 2)}${unit}`
+    }
     static _BYTES = {
         "iB": 1,
         "KiB": 1024,
@@ -1141,7 +1177,6 @@ class UserAuth {
         })
     }
 }
-
 const $userAuth = new UserAuth();
 
 async function load() {
@@ -1334,6 +1369,9 @@ async function load() {
                                 value_variable: (obj) => {
                                     $dashboard_locals.files_info_today_hits = obj;
                                 },
+                                aria_label_value: (obj) => {
+                                    $dashboard_locals.files_info_today_hits_label = obj;
+                                },
                                 i18n: {
                                     "zh_CN": {
                                         "dashboard.title.today.hits": "今日下载数",
@@ -1359,6 +1397,9 @@ async function load() {
                                 value_i18n: "dashboard.value.30days.hits",
                                 value_variable: (obj) => {
                                     $dashboard_locals.files_info_30days_hits = obj;
+                                },
+                                aria_label_value: (obj) => {
+                                    $dashboard_locals.files_info_30days_hits_label = obj;
                                 },
                                 i18n: {
                                     "zh_CN": {
@@ -1920,28 +1961,32 @@ async function load() {
                                     handler, obj, data
                                  } of [
                                     {
-                                         handler: Tools.formatSimpleNumber,
-                                         obj: $dashboard_locals.files_info_today_hits,
+                                         handler: Tools.formatUnitNumber,
+                                         obj: 'today_hits',
                                          data: rdata.hourly_hits
                                     },
                                     {
-                                         handler: Tools.formatSimpleNumber,
-                                         obj: $dashboard_locals.files_info_30days_hits,
+                                         handler: Tools.formatUnitNumber,
+                                         obj: '30days_hits',
                                          data: rdata.daily_hits
                                     },
                                     {
                                          handler: Tools.formatBytes,
-                                         obj: $dashboard_locals.files_info_today_bytes,
+                                         obj: 'today_bytes',
                                          data: rdata.hourly_bytes
                                     },
                                     {
                                         handler: Tools.formatBytes,
-                                        obj: $dashboard_locals.files_info_30days_bytes,
+                                        obj: '30days_bytes',
                                         data: rdata.daily_bytes
                                     }
                                 ]) {
                                     var formatted = handler(data)
-                                    obj.value = formatted
+                                    var o = $dashboard_locals[`files_info_${obj}`]
+                                    var label = $dashboard_locals[`files_info_${obj}_label`]
+                                    o.value = formatted
+                                    if (label == undefined) continue
+                                    label.value = data
                                 }
                             })();
                             for (const [statistics_type, data] of Object.entries(temp_response)) {

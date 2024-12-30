@@ -1,6 +1,5 @@
 import sys
 import traceback
-from typing import Optional
 from loguru import logger as Logger
 from .config import const
 
