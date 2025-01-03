@@ -685,18 +685,21 @@ def _(req_data: Any) -> Any:
     if isinstance(req_data, int) and req_data == 1 or req_data == 7 or req_data == 30:
         day = req_data
     query_data = query_addresses(day * 24)
-    resp_data: defaultdict[str, int] = defaultdict(int)
+    temp_data: defaultdict[str, set] = defaultdict(set)
     if day > 7:
         for hour, data in query_data.items():
             date = datetime.datetime.fromtimestamp(hour * 3600)
             key = f"{date.year}-{date.month}-{date.day}"
-            resp_data[key] += sum(data.values())
+            temp_data[key] |= data.keys()
     else:
         for hour, data in query_data.items():
             date = datetime.datetime.fromtimestamp(hour * 3600)
             hour = date.hour
-            key = f"{date.year}-{date.month}-{date.day} {date.hour}:{date.minute}"
-            resp_data[key] += sum(data.values())
+            key = f"{date.year}-{date.month}-{date.day} {date.hour:02d}:{date.minute:02d}"
+            temp_data[key] |= data.keys()
+    resp_data: defaultdict[str, int] = defaultdict(int)
+    for key, data in temp_data.items():
+        resp_data[key] = len(data)
     return resp_data
 
 @API.on("response_user_agents")
@@ -748,7 +751,7 @@ def _(req_data: Any) -> Any:
     else:
         day = 1
     return query_geo(
-        day * 24,
+        day,
         bool(options["cn"])
     )
 
@@ -950,49 +953,37 @@ def query_addresses(
                 data[item.hour][ip] += count # type: ignore
     return data
 
-class QueryTiming:
-    def __init__(
-        self
-    ):
-        self.total: defaultdict[str, int] = defaultdict(int)
-        self.start_record: dict[str, int] = {}
 
-    def start(self, name: str):
-        if name in self.start_record:
-            return
-        self.start_record[name] = time.perf_counter_ns()
-    
-    def end(self, name: str):
-        if name not in self.start_record:
-            return
-        self.total[name] += time.perf_counter_ns() - self.start_record[name]
-        del self.start_record[name]
-        
 
 def query_geo(
     day: int,
     cn: bool = False
 ):
     resp_data: defaultdict[str, int] = defaultdict(int)
-    timing = QueryTiming()
-    hour = get_query_hour_tohour(day * 24)
-    with db.SESSION as session:
-        q = session.query(db.ResponseTable).filter(
-            db.ResponseTable.hour >= hour
-        ).order_by(db.ResponseTable.hour)
-        for item in q.all():
-            timing.start("decompress")
-            ip_tables = db.decompress(item.ip_tables)  # type: ignore
-            timing.end("decompress")
-            timing.start("query_ip")
-            for ip, count in ip_tables.items():
-                address = query_ip(ip)
-                if cn and address.country == "CN":
-                    resp_data[address.province] += count
-                else:
-                    resp_data[address.country] += count
-            timing.end("query_ip")
+    threads: list[threading.Thread] = []
+    for hour, data in query_addresses(day * 24).items():
+        threads.append(threading.Thread(
+            target=thread_query_geo,
+            args=(data, resp_data, cn)
+        ))
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    threads.clear()
     return resp_data
+
+def thread_query_geo(
+    data: dict[str, int],
+    resp_data: defaultdict[str, int],
+    cn: bool
+):
+    for ip, count in data.items():
+        address = query_ip(ip)
+        if cn and address.country == "CN":
+            resp_data[address.province] += count
+        else:
+            resp_data[address.country] += count
 
 def query_ip(
     ip: str

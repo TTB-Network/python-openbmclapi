@@ -200,12 +200,15 @@ class WrapperTQDM:
         self._last_time = self._time
         self._counter = None
     
-    def __enter__(self):
+    def enter(self):
         wrapper_tqdms.appendleft(self)
         self._counter = threading.Thread(
             target=self._count,
         )
         self._counter.start()
+
+    def __enter__(self):
+        self.enter()
         self.pbar.__enter__()
         return self
     
@@ -221,12 +224,15 @@ class WrapperTQDM:
                 continue
             time.sleep(self._rate)      
     
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def exit(self):
         if self in wrapper_tqdms:
             wrapper_tqdms.remove(self)
         if self._counter:
             self._counter = None
         self._count(False)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.exit()
         self.pbar.__exit__(exc_type, exc_val, exc_tb)
 
     def update(self, n: float | None = 1):

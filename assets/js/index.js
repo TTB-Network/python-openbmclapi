@@ -16,6 +16,9 @@ import {
 } from './common.js'
 
 import './config.js'
+import { echarts_china} from './china.js'
+import { echarts_world } from './world.js'
+import { cn_province, country_code } from './geo_table.js'
 const UTC_OFFSET = 3600 * 8
 class Menu extends Element {
     constructor() {
@@ -313,7 +316,7 @@ class Channel {
                 event,
                 data: data
             }))
-            if (options.timeout) {
+            if (options?.timeout) {
                 var timer = setTimeout(() => {
                     xhr.abort();
                     reject("timeout")
@@ -325,14 +328,14 @@ class Channel {
     async send(event, data, options = {
         "timeout": this.timeout
     }) {
-        options = {
+        var noptions = {
             ...{
                 "timeout": this.timeout
             },
             ...options
         }
-        if (this.support_websocket) return this._ws_send(event, data, options);
-        return this._http_send(event, data, options);
+        if (this.support_websocket) return this._ws_send(event, data, noptions);
+        return this._http_send(event, data, noptions);
     }
 
     get support_websocket() {
@@ -613,20 +616,8 @@ class TemplateEchartElement extends Element {
         ]
         this.type = EchartType.DATA
         this.$current_options = []
-        this._defaultInit()
+        //this._defaultInit()
         this.instance.showLoading()
-
-        /*window.addEventListener(THEMECHANGEEVENT, () => {
-            console.log("clear")
-            var options = this.$current_options
-            this.clear()
-            this.instance.dispose();
-            this.instance = echarts.init(this.origin, $style.isDark ? "dark" : "light")
-            this._defaultInit()
-            for (const option of options) {
-                this._baseSetOption(option)
-            }
-        })*/
     }
     _defaultInit() {
         this.setOption({
@@ -785,7 +776,15 @@ $i18n.addLanguageTable("zh_CN", {
     "dashboard.value.status.cluster.fetch_filelist": "获取文件列表中",
     "dashboard.value.status.default": "加载中……",
     "dashboard.value.status.storage.check_available": "检查可用存储",
-    "dashboard.value.status.cluster.status.sync": "同步文件中"
+    "dashboard.value.status.cluster.status.sync": "同步文件中",
+    "dashboard.title.req_map": "请求访问分布",
+    "req_map.world": "世界",
+    "req_map.china": "中国",
+    "dashboard.title.ip_access": "IP 访问分布",
+    "dashboard.access": "访问数",
+    "advanced.time.switch.day.1": "24 小时",
+    "advanced.time.switch.day.7": "7 天",
+    "advanced.time.switch.day.30": "30 天",
 
 })
 $style.setTheme("light", {
@@ -812,7 +811,14 @@ $style.setTheme("light", {
     "echarts-color-1": "#6199FE",
     "echarts-color-2": "#FFD268",
     "echarts-color-3": "#FF5576",
-    "echarts-color-4": "#89DFE2"
+    "echarts-color-4": "#89DFE2",
+    "echarts-main-line-color": "#0FC6C2",
+    "echarts-main-color": "#0FC6C2",
+    "echarts-dark-color": "#4260f0",
+    "echarts-none-color": "#eefbfb",
+    "echarts-area-color": "#F7F8FA",
+    "echarts-border-color": "#CCC",
+    "echarts-emphasis-color": "#ADD8E6",
 })
 $style.setTheme("dark", {
     "main-color-r": "244",
@@ -837,7 +843,14 @@ $style.setTheme("dark", {
     "echarts-color-1": "#FFA552", 
     "echarts-color-2": "#F16575", 
     "echarts-color-3": "#65B8FF", 
-    "echarts-color-4": "#FF8859"
+    "echarts-color-4": "#FF8859",
+    "echarts-main-line-color": "#0FC6C2",
+    "echarts-main-color": "#FF8859",
+    "echarts-dark-color": "#4260f0",
+    "echarts-none-color": "#F4D1B4",
+    "echarts-area-color": "#494949",
+    "echarts-border-color": "#CCC",
+    "echarts-emphasis-color": "#ADD8E6",
 })
 $style.addAll({
     "*": {
@@ -949,7 +962,11 @@ $style.addAll({
         "padding": "9px",
         "margin-bottom": "24px",
         "margin-left": "16px",
-        "overflow": "auto"
+        "overflow": "auto",
+        "display": "flex",
+        "flex-wrap": "nowrap",
+        "flex-direction": "row",
+        "justify-content": "space-between"
     },
     "main": {
         "padding": "32px 32px 32px 16px",
@@ -1003,7 +1020,7 @@ $style.addAll({
         "transition": "width 0.5s ease-in-out"
     },
     ".map-container": {
-        "min-height": "445.5px"
+        "min-height": "455px"
     },
     ".echart": {
         "margin-top": "8px"
@@ -1779,31 +1796,187 @@ async function load() {
             // pro
             (() => {
                 const advanced = $dashboard_locals.advanced;
+                var waitTaskResponse = {
+                    ip_access: false
+                }
+                var nextTaskResponse = {
+                    ip_access: false,
+                    geo: false
+                }
+                var render_ip_access = async () => {
+                    if (waitTaskResponse.ip_access) {
+                        nextTaskResponse.ip_access = true;
+                        return;
+                    }
+                    waitTaskResponse.ip_access = true;
+                    var type = $dashboard_locals.advanced_time_switch.current.button
+                    var day = +type.slice(type.lastIndexOf(".") + 1)
+                    var ip_access = await $channel.send("response_ip_access", day)
+                    $dashboard_locals.advanced_ip_access_echarts.base.setOption({
+                        xAxis: {
+                            data: Object.keys(ip_access),
+                        },
+                        series: [{
+                            data: Object.values(ip_access),
+                        }]
+                    })
+                    waitTaskResponse.ip_access = false;
+                    if (nextTaskResponse.ip_access) {
+                        nextTaskResponse.ip_access = false;
+                        await render_ip_access()
+                    }
+                }
+                var render_geo = async () => {
+                    if (waitTaskResponse.geo) {
+                        nextTaskResponse.geo = true;
+                        return;
+                    }
+                    waitTaskResponse.geo = true;
+                    var type = $dashboard_locals.advanced_time_switch.current.button
+                    var day = +type.slice(type.lastIndexOf(".") + 1)
+                    var cn = $dashboard_locals.advanced_geo_switch.current.button.endsWith("china");
+                    var geo_data = await $channel.send("response_geo", {
+                        day,
+                        cn
+                    }, {
+                        timeout: 60000
+                    })
+                    $dashboard_locals.advanced_req_map_echarts_data.data = {
+                        cn,
+                        data: geo_data
+                    }
+                    waitTaskResponse.geo = false;
+                    if (nextTaskResponse.geo) {
+                        nextTaskResponse.geo = false;
+                        await render_geo()
+                    }
+                }
+                $dashboard_locals.advanced_task_trigger = ref({}, {
+                    timeout: 50,
+                    handler: async () => {
+                        await Promise.all(
+                            [
+                                render_ip_access(),
+                                render_geo()
+                            ]
+                        )
+                    }
+                })
+                $dashboard_locals.advanced_time_switch = (new SwitchElement()).addButtons(
+                    "advanced.time.switch.day.1",
+                    "advanced.time.switch.day.7",
+                    "advanced.time.switch.day.30",
+                ).select(0).addEventListener("change", () => {
+                    $dashboard_locals.advanced_task_trigger.value = ""
+                })
 
                 const req_section = Tools.createFlexElement().child('75%', '25%').minWidth(1280)//.autoHeight(true);
                 const req_map = Tools.createPanel(({
                     panel
                 }) => {
-                    var section = (new SwitchElement()).addButtons(
+                    var map_container = Tools.createEchartElement((e) => {
+                        $dashboard_locals.advanced_req_map_echarts = e
+                        $dashboard_locals.advanced_req_map_echarts_data = ref({}, {
+                            handler: (obj) => {
+                                if (obj.key == "refresh") {
+                                    $dashboard_locals.advanced_req_map_echarts.base.setOption({
+                                        visualMap: {
+                                            inRange: {
+                                                color: [$style.getThemeValue("echarts-none-color"), $style.getThemeValue("echarts-main-color")]
+                                            },
+                                            textStyle: {
+                                                color: $style.getThemeValue("echarts-main-color")
+                                            },
+                                        },
+                                        series: {
+                                            itemStyle: {
+                                                normal: {
+                                                    areaColor: $style.getThemeValue("echarts-area-color"),//'#F7F8FA',
+                                                    borderColor: $style.getThemeValue("echarts-border-color")//'#CCC'
+                                                },
+                                                emphasis: {
+                                                    areaColor: $style.getThemeValue("echarts-emphasis-color"),//'#ADD8E6',
+                                                    borderColor: $style.getThemeValue("dark-color")//'#ffffff'
+                                                }
+                                            },
+                                            name: $i18n.t("dashboard.access")
+                                        }
+                                    })
+                                    return;
+                                }
+                                var {
+                                    cn,
+                                    data
+                                } = obj.object.data;
+                                var resp_data = {};
+                                var table = cn ? cn_province : country_code
+                                var max = 100;
+                                var unknown_codes = [];
+                                for (let [code, count] of Object.entries(data)) {
+                                    if (table[code]) {
+                                        resp_data[table[code]] = count
+                                    } else {
+                                        resp_data[code] = count
+                                        unknown_codes.push(code)
+                                    }
+                                    max = Math.max(max, count)
+                                }
+                                if (unknown_codes.length > 0) {
+                                    console.warn("unknown codes: ", unknown_codes.join(" "), cn)
+                                }
+                                //data.sort((a, b) => a.value - b.value)
+                                $dashboard_locals.advanced_req_map_echarts.base.setOption({
+                                    visualMap: {
+                                        max
+                                    },
+                                    series: [{
+                                        data: Object.entries(resp_data).map(([name, value]) => {
+                                            return {
+                                                name,
+                                                value
+                                            }
+                                        })
+                                    }]
+                                })
+                            }
+                        })
+                    })
+                    var map_rank = createElement("div")
+                    var container = Tools.createFlexElement().append(
+                        map_container,
+                        map_rank
+                    ).child("75%", "25%").classes("map-container")
+                    $dashboard_locals.advanced_geo_switch = (new SwitchElement()).addButtons(
                         "req_map.world",
                         "req_map.china"
-                    )
-                    var map_container = createElement("div")
-                    var map_rank = createElement("div")
+                    ).addEventListener("change", (event) => {
+                        var data = event.detail
+                        var type = data.button.slice("req_map.".length)
+                        $dashboard_locals.advanced_req_map_echarts.base.setOption({
+                            series: [{
+                                map: type
+                            }]
+                        })
+
+                    }).select(0)
                     panel.classes("label-text").append(
                         createElement("p").classes("title", "flex-between").append(
                             createElement("p").i18n(`dashboard.title.req_map`),
-                            section
+                            $dashboard_locals.advanced_geo_switch
                         ),
-                        Tools.createFlexElement().append(
-                            map_container,
-                            map_rank
-                        ).child("70%", "30%").classes("map-container")
+                        container
                     )
+                    var observer = new ResizeObserver(() => {
+                        var height = calcElementHeight(container)
+                        map_container.style("min-height", `${height}px`)
+                        $dashboard_locals.advanced_req_map_echarts.echart.resize()
+                    })
+                    observer.observe(panel.origin)
                 })
                 $dashboard_locals.advanced_qps = create_qps("advanced", req_section, req_map)
                 $dashboard_locals.advanced_ip_access = Tools.createPanel(({ panel }) => {
                     var instance = Tools.createEchartElement((e) => {
+                        $dashboard_locals.advanced_ip_access_echarts = e
                     })
                     panel.classes("label-text").append(
                         createElement("p").classes("title").i18n("dashboard.title.ip_access"),
@@ -1811,6 +1984,7 @@ async function load() {
                     )
                     instance.style("min-height", "180px")
                     var observer = new ResizeObserver(() => {
+                        $dashboard_locals.advanced_ip_access_echarts.echart.resize()
                     })
                     observer.observe(panel.origin)
                 })
@@ -1827,6 +2001,7 @@ async function load() {
             })();
             
             const init_echarts = () => {
+                // basic
                 var option = {
                     tooltip: {
                         trigger: 'axis',
@@ -1889,6 +2064,7 @@ async function load() {
                 ]
                 for (let qps of instances) {
                     qps.base.setOption(option)
+                    qps.base.showLoading()
                 }
 
                 for (const instance of Object.values($dashboard_locals.storage_echarts)) {
@@ -1916,7 +2092,108 @@ async function load() {
                         series: []
                     };
                     instance.base.setOption(option)
+                    instance.base.showLoading()
                 }
+
+                // pro
+
+                option = {
+                    yAxis: [
+                        {
+                            type: "value",
+                            show: false
+                        }
+                    ],
+                    tooltip: {
+                        trigger: "axis",
+                    },
+                    xAxis: [
+                        {
+                            type: "category",
+                            show: false,
+                        }
+                    ],
+                    stateAnimation: {
+                        duration: 300,
+                        easing: "cubicOut"
+                    },
+                    grid: [
+                        {
+                            top: 5,
+                            bottom: 20,
+                            right: 0,
+                            left: 0,
+                            show: false,
+                            z: 0,
+                            containLabel: false,
+                            backgroundColor: "rgba(0,0,0,0)",
+                            borderWidth: 1,
+                            borderColor: "#ccc"
+                        }
+                    ],
+                    series: [
+                        {
+                            name: $i18n.t("dashboard.title.ip_access"),
+                            type: "line",
+                            symbol: "none",
+                            data: [],
+                            smooth: true,
+                            lineStyle: {
+                                width: 3,
+                                color: {
+                                    type: "linear",
+                                    x: 0,
+                                    y: 0,
+                                    x2: 0,
+                                    y2: 1,
+                                    global: false,
+                                    colorStops: [{ offset: 0, color: $style.getThemeValue("echarts-main-line-color") }, { offset: 1, color: $style.getThemeValue("echarts-dark-color") }]
+                                },
+                                type: "solid"
+                            },
+                            itemStyle: { borderRadius: [2, 2, 0, 0] },
+                            z: 3,
+                        }
+                    ]
+                }
+                $dashboard_locals.advanced_ip_access_echarts.base.setOption(option)
+                $dashboard_locals.advanced_ip_access_echarts.base.showLoading()
+
+                option = {
+                    tooltip: {
+                        trigger: 'item',
+                    },
+                    visualMap: {
+                        min: 0,
+                        max: 100,
+                        inRange: {
+                            color: [$style.getThemeValue("echarts-none-color"), $style.getThemeValue("echarts-main-color")]
+                        },
+                        textStyle: {
+                            color: $style.getThemeValue("echarts-main-color")
+                        },
+                        orient: 'horizontal',
+                    },
+                    series: {
+                        type: 'map',
+                        map: 'world',
+                        itemStyle: {
+                            normal: {
+                                areaColor: $style.getThemeValue("echarts-area-color"),//'#F7F8FA',
+                                borderColor: $style.getThemeValue("echarts-border-color")//'#CCC'
+                            },
+                            emphasis: {
+                                areaColor: $style.getThemeValue("echarts-emphasis-color"),//'#ADD8E6',
+                                borderColor: $style.getThemeValue("dark-color")//'#ffffff'
+                            }
+                        },
+                        name: $i18n.t("dashboard.access"),
+                        data: [],
+                    }
+                }
+                $dashboard_locals.advanced_req_map_echarts.base.setOption(option)
+
+
             }
             // share 
             (() => {
@@ -1940,7 +2217,7 @@ async function load() {
                                 },
                                 series: [{ name: 'QPS', data: values}]
                             }
-                            instance.echart.setOption(option)
+                            instance.base.setOption(option)
                         }
                     }
                 })
@@ -1951,11 +2228,13 @@ async function load() {
                 window.addEventListener(THEMECHANGEEVENT, () => {
                     $dashboard_locals.qps_data.resp = $dashboard_locals.qps_data.resp;
                     $dashboard_locals.storage_data.refresh = true;
+                    $dashboard_locals.advanced_req_map_echarts_data.refresh = true;
                 })
             })();
 
             const reset_display = () => {
                 $dashboard_locals.info_runtime.value = Tools.formatTime(0)
+                $dashboard_locals.status.value = $i18n.t(`dashboard.value.status.default`, {})
                 $dashboard_locals.files_info_30days_bytes.value = Tools.formatBytes(0)
                 $dashboard_locals.files_info_30days_hits.value = Tools.formatSimpleNumber(0)
                 $dashboard_locals.files_info_today_bytes.value = Tools.formatBytes(0)
@@ -1965,7 +2244,6 @@ async function load() {
                 $dashboard_locals.system_info_cpu.value = Tools.formatSimpleNumber(0)
                 $dashboard_locals.system_info_cpu_load.value = "0.0%"
                 $dashboard_locals.system_info_memory.value = Tools.formatBytes(0)
-                
             }
 
             reset_display()
@@ -1979,6 +2257,9 @@ async function load() {
                     clearDashboardTask()
                     reset_display()
                     init_echarts()
+                    for (let i = 1; i < $dashboard_locals.pre_switch.children.length; i++) {
+                        $dashboard_locals.pre_switch.removeChild($dashboard_locals.pre_switch.children[i])
+                    }
                     if (event.detail.index == 0) {
                         $dashboard_locals.container.append(
                             ...$dashboard_locals.basic
@@ -2091,6 +2372,14 @@ async function load() {
                         $dashboard_locals.container.append(
                             ...$dashboard_locals.advanced
                         )
+                        $dashboard_locals.pre_switch.append(
+                            $dashboard_locals.advanced_time_switch
+                        )
+                        $dashboard_locals.advanced_task = Tools.runTask(
+                            setInterval, () => {
+                                $dashboard_locals.advanced_task_trigger.value = ''
+                            }, 10000
+                        )
                     }
                     requestAnimationFrame(() => {
                         if ($dashboard_locals.qps_data.resp)
@@ -2110,6 +2399,10 @@ async function load() {
         const $dashboard_locals = $menu_variables.dashboard;
         if (!$dashboard_locals) return;
         $dashboard_locals.basic_qps_echart.base.clear()
+        $dashboard_locals.advanced_qps_echart.base.clear()
+        for (const instance of Object.values($dashboard_locals.storage_echarts)) {
+            instance.base.clear()
+        }
     }
 
     const clearDashboardTask = (all = false) => {
@@ -2117,6 +2410,7 @@ async function load() {
         if (!$dashboard_locals) return;
         clearInterval($dashboard_locals.basic_task_system_info)
         clearInterval($dashboard_locals.statistics_task)
+        clearInterval($dashboard_locals.advanced_task)
         if (!all) return;
         clearInterval($dashboard_locals.info_runtime_task)
         clearInterval($dashboard_locals.qps_task)
@@ -2167,6 +2461,8 @@ async function load() {
 
 }
 window.addEventListener("DOMContentLoaded", async () => {
+    echarts.registerMap('world', echarts_world)
+    echarts.registerMap('china', echarts_china)
     await load()
     Array.from(document.getElementsByClassName("preloader")).forEach(e => {
         const element = new Element(e);

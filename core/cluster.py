@@ -390,6 +390,7 @@ class DownloadStatistics:
             unit_divisor=1024,
             desc=i18n.locale.t("cluster.processbar.download_files")
         ))
+        self.pbar.enter()
         self.downloaded_files = 0
         self.failed_files = 0
         return self
@@ -418,6 +419,7 @@ class DownloadStatistics:
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.pbar is None:
             return
+        self.pbar.exit()
         self.pbar.close()
 
 class FileListManager:
