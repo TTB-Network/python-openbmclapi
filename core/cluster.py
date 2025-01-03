@@ -81,6 +81,8 @@ class StorageManager:
                 res = False
                 try:
                     res = await asyncio.wait_for(self.__check_available(storage), 10)
+                except asyncio.CancelledError:
+                    continue
                 except Exception as e:
                     logger.ttraceback("storage.error.check_available", type=storage.type, path=storage.path, url=getattr(storage, "url", None))
                     res = False
@@ -335,6 +337,8 @@ class StorageManager:
             try:
                 if await storage.write_file(convert_file_to_storage_file(file), content):
                     return True
+            except asyncio.CancelledError:
+                break
             except:
                 retries += 1
         return False
@@ -462,6 +466,8 @@ class FileListManager:
                         mtime = max(filelist, key=lambda f: f.mtime).mtime
                         self.cluster_last_modified[cluster] = max(mtime, self.cluster_last_modified[cluster])
                     return filelist
+        except asyncio.CancelledError:
+            return []
         except:
             logger.ttraceback("cluster.error.fetch_filelist", cluster=cluster.id)
             return []
@@ -666,6 +672,8 @@ class FileListManager:
                     return {
                         k: OpenBMCLAPIConfiguration(**v) for k, v in (body).items()
                     }
+        except asyncio.CancelledError: 
+            return {}
         except:
             logger.ttraceback("cluster.error.configuration", cluster=cluster.id)
             return {}
@@ -1495,6 +1503,8 @@ async def _(request: aweb.Request):
             return aweb.Response(status=403)
         try:
             file = await asyncio.create_task(get_file(hash))
+        except asyncio.CancelledError:
+            return aweb.Response(status=504)
         except:
             logger.ttraceback("cluster.error.get_file", hash=hash)
             file = await asyncio.create_task(clusters.storage_manager.get_file(hash, True))

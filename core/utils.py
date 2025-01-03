@@ -2,25 +2,25 @@ import asyncio
 import base64
 import binascii
 from collections import deque
-import collections
 from dataclasses import dataclass
 from datetime import datetime, timedelta, tzinfo
 import functools
 import hashlib
 import io
 import json
+import multiprocessing.pool
 import os
 from random import SystemRandom
 import re
 import struct
 import threading
 import time
-from typing import Any, Optional, Tuple, Type, Union
+from typing import Any, Callable, Optional, Tuple, Type, Union
 
 from tqdm import tqdm
 
-from core import scheduler
-from core.logger import logger
+from .logger import logger
+import multiprocessing
 
 class CountLock:
     def __init__(self):
@@ -316,6 +316,64 @@ class StatusManager:
         if sorted_by_timestamp:
             return sorted(self.status, key=lambda x: x.timestamp)
         return self.status
+
+class MultiProcessing[T]:
+    def __init__(
+        self
+    ):
+        self.results: deque[T] = deque()
+        self.async_results: deque[multiprocessing.pool.AsyncResult[T]] = deque()
+    
+    def push_task(
+        self,
+        func: Callable
+    ):
+        result = self.pool.apply_async(func)
+        self.async_results.append(result)
+
+    def get_result(
+        self,
+        timeout: Optional[float] = None
+    ) -> T:
+        result = self.async_results.popleft().get(timeout)
+        self.results.append(result)
+        return result
+    
+    def get_results(
+        self,
+        timeout: Optional[float] = None
+    ) -> list[T]:
+        results = []
+        while self.async_results:
+            results.append(self.get_result(timeout))
+        return results
+    
+    def __iter__(self):
+        while self.async_results:
+            yield self.get_result()
+
+    def close(
+        self
+    ):
+        self.pool.close()
+        self.pool.join()
+
+    def __enter__(
+        self
+    ):
+        self.pool = multiprocessing.Pool()
+        return self
+
+    def __exit__(
+        self,
+        exc_type,
+        exc_val,
+        exc_tb,
+    ):
+        self.close()
+        
+
+        
 
 def check_sign(hash: str, secret: str, s: str, e: str) -> bool:
     return check_sign_without_time(hash, secret, s, e) and time.time() - 300 < int(e, 36)

@@ -1,7 +1,7 @@
 import asyncio
 import base64
 from collections import defaultdict, deque
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass, fields, is_dataclass
 import datetime
 import enum
 import io
@@ -11,13 +11,12 @@ from pathlib import Path
 import socket
 import threading
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import aiohttp
 import psutil
 
-from . import cache, cluster, config, logger, units, utils, scheduler, database as db
-import ipdb
+from . import cache, cluster, config, logger, units, utils, scheduler, ipsearcher, database as db
 
 from .web import (
     routes as route,
@@ -152,13 +151,12 @@ class APIStatistics:
     
 @dataclass
 class APIResponseStatistics:
-    _: int | str
-    success: int
-    partial: int
-    forbidden: int
-    not_found: int
-    error: int
-    redirect: int
+    success: int = 0
+    partial: int = 0
+    forbidden: int = 0
+    not_found: int = 0
+    error: int = 0
+    redirect: int = 0
 
 @dataclass
 class SSEClient:
@@ -320,8 +318,37 @@ class SSEEmiter:
         for client in self._connections.copy():
             await self.close_client(client)
 
-        
-        
+class APIManager:
+    def __init__(
+        self
+    ):
+        self.events: dict[str, Callable[[Any], Any]] = {}
+    
+    def on(
+        self,
+        event: str
+    ):
+        def decorator(func: Callable[[Any], Any]):
+            self.events[event] = func
+            return func
+        return decorator
+
+    async def emit(
+        self,
+        event: str,
+        data: Any
+    ):
+        if event in self.events:
+            handler = self.events[event]
+            if asyncio.iscoroutinefunction(handler):
+                return await asyncio.create_task(
+                    handler(data)
+                )
+            else:
+                return await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: handler(data),
+                )
 
 counter = Counter()
 process = psutil.Process(os.getpid())
@@ -331,10 +358,15 @@ status_task = None
 GITHUB_BASEURL = "https://api.github.com"
 GITHUB_REPO = "TTB-Network/python-openbmclapi"
 UTC = 28800 # UTC + 8 hours (seconds)
-IPDB = ipdb.City("./ipipfree.ipdb")
 IPDB_CACHE: dict[str, str] = {}
 SSEEMIT = SSEEmiter()
 LAST_TQDM = False
+API = APIManager()
+IPSEARCHER = ipsearcher.City(
+    "./assets/ipdb.ipdb"
+)
+IPSEARCHER_CACHE: dict[str, ipsearcher.CityInfo] = {}
+IPWARNING: set[str] = set()
 
 @route.get("/service-worker.js")
 async def _(request: web.Request):
@@ -349,6 +381,10 @@ async def _(request: web.Request):
 @route.get("/favicon.ico")
 async def _(request: web.Request):
     return web.FileResponse("./assets/favicon.ico")
+
+@route.get("/assets/ip2region.xdb") # 禁止访问 ip2region.xdb
+async def _(request: web.Request):
+    return web.Response(status=404)
 
 @route.get("/assets/js/config.js")
 async def _(request: web.Request):
@@ -433,7 +469,7 @@ async def process_api(
                 "Bad Request",
                 "Event is required"
             )
-        resp = await handle_api(event, req_data)
+        resp = await API.emit(event, req_data)
     except:
         logger.traceback()
         resp = utils.ServiceError(
@@ -450,164 +486,321 @@ async def process_api(
         response["echo_id"] = echo_id
     return response
 
+# handle api
+
+@API.on("runtime")
+def _(req_data: Any) -> Any:
+    data = {
+        "runtime": utils.get_runtime(),
+        "timestamp": time.time()
+    }
+    if isinstance(req_data, (int, float)):
+        data["browser"] = req_data
+    return data
+
+@API.on("status")
+def _(req_data: Any) -> Any:
+    return {
+        "clusters": len(cluster.clusters.clusters),
+        "storages": len(cluster.clusters.storage_manager.storages),
+        "online_clusters": len(list(filter(lambda x: x.enabled, cluster.clusters.clusters))),
+        "online_storages": len(cluster.clusters.storage_manager.available_storages)
+    }
+
+@API.on("qps")
+def _(req_data: Any) -> Any:
+    qps_config = APIQPSConfig()
+    if isinstance(req_data, dict) and "count" in req_data and "interval" in req_data:
+        qps_config.count = req_data["count"]
+        qps_config.interval = req_data["interval"]
+    if qps_config.count * qps_config.interval > counter.max:
+        qps_config = APIQPSConfig()
+    info = counter.last()
+    c = int(info._) if info is not None else 0
+    start_timestamp = int(time.time() - c)
+    c -= c % 5
+    start_timestamp -= start_timestamp % 5
+    total = qps_config.count * qps_config.interval
+    raw_data = {
+        int(q._): q.value for q in counter.all_qps if q._ > c - total
+    }
+    return {
+        units.format_time(i + start_timestamp): (sum((raw_data.get(i + j, 0) for j in range(5))))
+        for i in range(c - 300, c, 5)
+    }
+
+@API.on("systeminfo")
+def _(req_data: Any) -> Any:
+    val = counter.last()
+    ret_data = {
+        "cpu": 0,
+        "memory": 0,
+        "connection": {
+            "tcp": 0,
+            "udp": 0
+        },
+        "loads": 0
+    }
+    if val is not None:
+        ret_data["cpu"] = val.value.cpu_usage
+        ret_data["memory"] = val.value.memory_usage
+        ret_data["connection"]["tcp"] = val.value.connection.tcp
+        ret_data["connection"]["udp"] = val.value.connection.udp
+        c = int(val._) if val is not None else 0
+        c -= 300
+        loads = [
+            i.cpu for i in counter.all_system_info
+            if i._ > c
+        ]
+        ret_data["loads"] = sum(loads) / len(loads) if loads else 0
+    return ret_data
+
+@API.on("systeminfo_loads")
+def _(req_data: Any) -> Any:
+    info = counter.last()
+    c = int(info._) if info is not None else 0
+    start_timestamp = int(time.time() - c)
+    c -= c % 5
+    start_timestamp -= start_timestamp % 5
+    total = req_data if isinstance(req_data, int) else 60
+    return {
+        units.format_time(q._ + start_timestamp): q for q in counter.all_system_info if q._ > c - total
+    }
+
+@API.on("storage_keys")
+def _(req_data: Any) -> Any:
+    with db.SESSION as session:
+        q = session.query(db.StorageUniqueIDTable)
+    return [
+        {
+            "id": item.unique_id,
+            "data": json.loads(str(item.data) or "{}")
+        } for item in q.all()
+    ]
+
+@API.on("cluster_statistics_hourly")
+def _(req_data: Any) -> Any:
+    hour = get_query_day_tohour(0)
+    with db.SESSION as session:
+        q = session.query(db.ClusterStatisticsTable).filter(
+            db.ClusterStatisticsTable.hour >= hour
+        ).order_by(db.ClusterStatisticsTable.hour, db.ClusterStatisticsTable.cluster)
+        hourly_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
+        for item in q.all():
+            hourly_data[item.cluster].append( # type: ignore
+                APIStatistics(
+                    item.hour - hour,# type: ignore
+                    int(item.bytes), # type: ignore
+                    int(item.hits), # type: ignore
+                )
+            )
+    return hourly_data
+
+@API.on("storage_statistics_daily")
+def _(req_data: Any) -> Any:
+    hour = get_query_day_tohour(30)
+    with db.SESSION as session:
+        q = session.query(db.ClusterStatisticsTable).filter(
+            db.ClusterStatisticsTable.hour >= hour
+        ).order_by(db.ClusterStatisticsTable.hour, db.ClusterStatisticsTable.cluster)
+        temp_data: defaultdict[str, defaultdict[int, APIStatistics]] = defaultdict(lambda: defaultdict(lambda: APIStatistics("", 0, 0)))
+        for item in q.all():
+            cluster_id = str(item.cluster)
+            hits = int(item.hits)  # type: ignore
+            bytes = int(item.bytes) # type: ignore
+            day = (int(item.hour) + UTC // 3600) // 24 # type: ignore
+            temp_data[cluster_id][day].bytes += bytes
+            temp_data[cluster_id][day].hits += hits
+    days_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
+    for cluster_id, data in temp_data.items():
+        for day, item in data.items():
+            days_data[cluster_id].append(APIStatistics(units.format_date(day * 86400), item.bytes, item.hits))
+    return days_data
+
+@API.on("storage_statistics_hourly")
+def _(req_data: Any) -> Any:
+    hour = get_query_day_tohour(0)
+    with db.SESSION as session:
+        q = session.query(db.StorageStatisticsTable).filter(
+            db.StorageStatisticsTable.hour >= hour
+        ).order_by(db.StorageStatisticsTable.hour)
+        hourly_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
+        for item in q.all():
+            hourly_data[item.storage].append( # type: ignore
+                APIStatistics(
+                    int(item.hour - hour), # type: ignore
+                    int(item.bytes), # type: ignore
+                    int(item.hits), # type: ignore
+                )
+            )
+        return hourly_data
+
+@API.on("storage_statistics_daily")
+def _(req_data: Any) -> Any:
+    hour = get_query_day_tohour(30)
+    with db.SESSION as session:
+        q = session.query(db.StorageStatisticsTable).filter(
+            db.StorageStatisticsTable.hour >= hour
+        ).order_by(db.StorageStatisticsTable.hour)
+        temp_data: defaultdict[str, defaultdict[int, APIStatistics]] = defaultdict(lambda: defaultdict(lambda: APIStatistics("", 0, 0)))
+        for item in q.all():
+            storage_id = str(item.storage)
+            hits = int(item.hits)  # type: ignore
+            bytes = int(item.bytes) # type: ignore
+            day = (int(item.hour) + UTC // 3600) // 24 # type: ignore
+            temp_data[storage_id][day].bytes += bytes
+            temp_data[storage_id][day].hits += hits
+    days_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
+    for storage_id, data in temp_data.items():
+        for day, item in data.items():
+            days_data[storage_id].append(APIStatistics(units.format_date(day * 86400), item.bytes, item.hits))
+    return days_data
+
+@API.on("clusters_event")
+def _(req_data: Any) -> Any:
+    return cluster.clusters.event_logger.read()
+
+@API.on("clusters_name")
+async def _(req_data: Any) -> Any:
+    clusters: dict[str, str] = {}
+    async with aiohttp.ClientSession() as session:
+        async with session.get(config.const.rank_clusters_url) as resp:
+            resp = await resp.json()
+            for item in resp:
+                clusters[item["_id"]] = item["name"]
+
+    return {
+        c.id: clusters.get(c.id, c.id) for c in cluster.clusters.clusters
+    }
+
+@API.on("rank")
+async def _(req_data: Any) -> Any:
+    async with aiohttp.ClientSession() as session:
+        async with session.get(config.const.rank_clusters_url) as resp:
+            return await resp.json()
+
+@API.on("response_ip_access")
+def _(req_data: Any) -> Any:
+    day = 1
+    if isinstance(req_data, int) and req_data == 1 or req_data == 7 or req_data == 30:
+        day = req_data
+    query_data = query_addresses(day * 24)
+    resp_data: defaultdict[str, int] = defaultdict(int)
+    if day > 7:
+        for hour, data in query_data.items():
+            date = datetime.datetime.fromtimestamp(hour * 3600)
+            key = f"{date.year}-{date.month}-{date.day}"
+            resp_data[key] += sum(data.values())
+    else:
+        for hour, data in query_data.items():
+            date = datetime.datetime.fromtimestamp(hour * 3600)
+            hour = date.hour
+            key = f"{date.year}-{date.month}-{date.day} {date.hour}:{date.minute}"
+            resp_data[key] += sum(data.values())
+    return resp_data
+
+@API.on("response_user_agents")
+def _(req_data: Any) -> Any:
+    day = 1
+    if isinstance(req_data, int) and req_data == 1 or req_data == 7 or req_data == 30:
+        day = req_data
+    hour = get_query_hour_tohour(day * 24)
+    data: defaultdict[str, int] = defaultdict(int)
+    with db.SESSION as session:
+        q = session.query(db.ResponseTable).filter(
+            db.ResponseTable.hour >= hour
+        ).order_by(db.ResponseTable.hour)
+        for item in q.all():
+            ip_tables = db.decompress(item.user_agents)  # type: ignore
+            for user_agent, count in ip_tables.items():
+                data[user_agent] += count
+    return data
+
+@API.on("response_status")
+def _(req_data: Any) -> Any:
+    day = 1
+    if isinstance(req_data, int) and req_data == 1 or req_data == 7 or req_data == 30:
+        day = req_data
+    hour = get_query_hour_tohour(day * 24)
+    data: APIResponseStatistics = APIResponseStatistics()
+    data_fields = fields(APIResponseStatistics)
+    with db.SESSION as session:
+        q = session.query(db.ResponseTable).filter(
+            db.ResponseTable.hour >= hour
+        ).order_by(db.ResponseTable.hour)
+        for item in q.all():
+            for field in data_fields:
+                setattr(data, field.name, getattr(data, field.name) + getattr(item, field.name))
+    return data
+            
+@API.on("response_geo")
+def _(req_data: Any) -> Any:
+    #raise NotImplementedError("Not implemented yet")
+    options = {
+        "cn": False,
+        "day": 1
+    }
+    if isinstance(req_data, dict):
+        options.update(req_data)
+    day = options["day"]
+    if isinstance(day, int) and day == 1 or day == 7 or day == 30:
+        day = day
+    else:
+        day = 1
+    return query_geo(
+        day * 24,
+        bool(options["cn"])
+    )
+
+@API.on("cluster_statistics_daily")
+def _(req_data: Any) -> Any:
+    hour = get_query_day_tohour(30)
+    with db.SESSION as session:
+        q = session.query(db.ClusterStatisticsTable).filter(
+            db.ClusterStatisticsTable.hour >= hour
+        ).order_by(db.ClusterStatisticsTable.hour, db.ClusterStatisticsTable.cluster)
+        temp_data: defaultdict[str, defaultdict[int, APIStatistics]] = defaultdict(lambda: defaultdict(lambda: APIStatistics("", 0, 0)))
+        for item in q.all():
+            cluster_id = str(item.cluster)
+            hits = int(item.hits)  # type: ignore
+            bytes = int(item.bytes) # type: ignore
+            day = (int(item.hour) + UTC // 3600) // 24 # type: ignore
+            temp_data[cluster_id][day].bytes += bytes
+            temp_data[cluster_id][day].hits += hits
+    days_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
+    for cluster_id, data in temp_data.items():
+        for day, item in data.items():
+            days_data[cluster_id].append(APIStatistics(units.format_date(day * 86400), item.bytes, item.hits))
+    return days_data
+
+@API.on("storage_statistics_daily")
+def _(req_data: Any) -> Any:
+    hour = get_query_day_tohour(30)
+    with db.SESSION as session:
+        q = session.query(db.StorageStatisticsTable).filter(
+            db.StorageStatisticsTable.hour >= hour
+        ).order_by(db.StorageStatisticsTable.hour)
+        temp_data: defaultdict[str, defaultdict[int, APIStatistics]] = defaultdict(lambda: defaultdict(lambda: APIStatistics("", 0, 0)))
+        for item in q.all():
+            storage_id = str(item.storage)
+            hits = int(item.hits)  # type: ignore
+            bytes = int(item.bytes) # type: ignore
+            day = (int(item.hour) + UTC // 3600) // 24 # type: ignore
+            temp_data[storage_id][day].bytes += bytes
+            temp_data[storage_id][day].hits += hits
+    days_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
+    for storage_id, data in temp_data.items():
+        for day, item in data.items():
+            days_data[storage_id].append(APIStatistics(units.format_date(day * 86400), item.bytes, item.hits))
+    return days_data
+
+@DeprecationWarning
 async def handle_api(
     event: str,
     req_data: Any
 ) -> Any:
-    if event == "runtime":
-        data = {
-            "runtime": utils.get_runtime(),
-            "timestamp": time.time()
-        }
-        if isinstance(req_data, (int, float)):
-            data["browser"] = req_data
-        return data
-    if event == "status":
-        return {
-            "clusters": len(cluster.clusters.clusters),
-            "storages": len(cluster.clusters.storage_manager.storages),
-            "online_clusters": len(list(filter(lambda x: x.enabled, cluster.clusters.clusters))),
-            "online_storages": len(cluster.clusters.storage_manager.available_storages)
-        }
-    if event == "qps":
-        qps_config = APIQPSConfig()
-        if isinstance(req_data, dict) and "count" in req_data and "interval" in req_data:
-            qps_config.count = req_data["count"]
-            qps_config.interval = req_data["interval"]
-        if qps_config.count * qps_config.interval > counter.max:
-            qps_config = APIQPSConfig()
-        info = counter.last()
-        c = int(info._) if info is not None else 0
-        start_timestamp = int(time.time() - c)
-        c -= c % 5
-        start_timestamp -= start_timestamp % 5
-        total = qps_config.count * qps_config.interval
-        raw_data = {
-            int(q._): q.value for q in counter.all_qps if q._ > c - total
-        }
-        return {
-            units.format_time(i + start_timestamp): (sum((raw_data.get(i + j, 0) for j in range(5))))
-            for i in range(c - 300, c, 5)
-        }
-    if event == "systeminfo":
-        val = counter.last()
-        ret_data = {
-            "cpu": 0,
-            "memory": 0,
-            "connection": {
-                "tcp": 0,
-                "udp": 0
-            },
-            "loads": 0
-        }
-        if val is not None:
-            ret_data["cpu"] = val.value.cpu_usage
-            ret_data["memory"] = val.value.memory_usage
-            ret_data["connection"]["tcp"] = val.value.connection.tcp
-            ret_data["connection"]["udp"] = val.value.connection.udp
-            c = int(val._) if val is not None else 0
-            c -= 300
-            loads = [
-                i.cpu for i in counter.all_system_info
-                if i._ > c
-            ]
-            ret_data["loads"] = sum(loads) / len(loads) if loads else 0
-        return ret_data
-    if event == "systeminfo_loads":
-        info = counter.last()
-        c = int(info._) if info is not None else 0
-        start_timestamp = int(time.time() - c)
-        c -= c % 5
-        start_timestamp -= start_timestamp % 5
-        total = req_data if isinstance(req_data, int) else 60
-        return {
-            units.format_time(q._ + start_timestamp): q for q in counter.all_system_info if q._ > c - total
-        }
-    if event == "storage_keys":
-        with db.SESSION as session:
-            q = session.query(db.StorageUniqueIDTable)
-        return [
-            {
-                "id": item.unique_id,
-                "data": json.loads(str(item.data) or "{}")
-            } for item in q.all()
-        ]
-    if event == "cluster_statistics_hourly":
+    """if event == "response_hourly":
         hour = get_query_day_tohour(0)
-        with db.SESSION as session:
-            q = session.query(db.ClusterStatisticsTable).filter(
-                db.ClusterStatisticsTable.hour >= hour
-            ).order_by(db.ClusterStatisticsTable.hour, db.ClusterStatisticsTable.cluster)
-            hourly_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
-            for item in q.all():
-                hourly_data[item.cluster].append( # type: ignore
-                    APIStatistics(
-                        item.hour - hour,# type: ignore
-                        int(item.bytes), # type: ignore
-                        int(item.hits), # type: ignore
-                    )
-                )
-        return hourly_data
-    
-    if event == "cluster_statistics_daily":
-        hour = get_query_day_tohour(30)
-        with db.SESSION as session:
-            q = session.query(db.ClusterStatisticsTable).filter(
-                db.ClusterStatisticsTable.hour >= hour
-            ).order_by(db.ClusterStatisticsTable.hour, db.ClusterStatisticsTable.cluster)
-            temp_data: defaultdict[str, defaultdict[int, APIStatistics]] = defaultdict(lambda: defaultdict(lambda: APIStatistics("", 0, 0)))
-            for item in q.all():
-                cluster_id = str(item.cluster)
-                hits = int(item.hits)  # type: ignore
-                bytes = int(item.bytes) # type: ignore
-                day = (int(item.hour) + UTC // 3600) // 24 # type: ignore
-                temp_data[cluster_id][day].bytes += bytes
-                temp_data[cluster_id][day].hits += hits
-        days_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
-        for cluster_id, data in temp_data.items():
-            for day, item in data.items():
-                days_data[cluster_id].append(APIStatistics(units.format_date(day * 86400), item.bytes, item.hits))
-        return days_data
-
-    if event == "storage_statistics_hourly":
-        hour = get_query_day_tohour(0)
-        with db.SESSION as session:
-            q = session.query(db.StorageStatisticsTable).filter(
-                db.StorageStatisticsTable.hour >= hour
-            ).order_by(db.StorageStatisticsTable.hour)
-            hourly_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
-            for item in q.all():
-                hourly_data[item.storage].append( # type: ignore
-                    APIStatistics(
-                        int(item.hour - hour), # type: ignore
-                        int(item.bytes), # type: ignore
-                        int(item.hits), # type: ignore
-                    )
-                )
-        return hourly_data
-    
-    if event == "storage_statistics_daily":
-        hour = get_query_day_tohour(30)
-        with db.SESSION as session:
-            q = session.query(db.StorageStatisticsTable).filter(
-                db.StorageStatisticsTable.hour >= hour
-            ).order_by(db.StorageStatisticsTable.hour)
-            temp_data: defaultdict[str, defaultdict[int, APIStatistics]] = defaultdict(lambda: defaultdict(lambda: APIStatistics("", 0, 0)))
-            for item in q.all():
-                storage_id = str(item.storage)
-                hits = int(item.hits)  # type: ignore
-                bytes = int(item.bytes) # type: ignore
-                day = (int(item.hour) + UTC // 3600) // 24 # type: ignore
-                temp_data[storage_id][day].bytes += bytes
-                temp_data[storage_id][day].hits += hits
-        days_data: defaultdict[str, list[APIStatistics]] = defaultdict(list)
-        for storage_id, data in temp_data.items():
-            for day, item in data.items():
-                days_data[storage_id].append(APIStatistics(units.format_date(day * 86400), item.bytes, item.hits))
-        return days_data
-    
-    if event == "response_hourly":
-        hour = get_query_day_tohour(30)
         with db.SESSION as session:
             q = session.query(db.ResponseTable).filter(
                 db.ResponseTable.hour >= hour
@@ -685,35 +878,8 @@ async def handle_api(
                 for ua, count in user_agents.items():
                     ua_data[ua] += count
         return ua_data
+    """
 
-    """if event == "warden":
-        if not os.path.exists(f"{logger.dir}/warden-error.log"):
-            return []
-        with open(f"{logger.dir}/warden-error.log", "r") as f:
-            content = f.read()
-            return [
-                json.loads(line) for line in content.split("\n") if line
-            ]"""
-    
-    if event == "clusters_event":
-        return cluster.clusters.event_logger.read()
-
-    if event == "clusters_name":
-        clusters: dict[str, str] = {}
-        async with aiohttp.ClientSession() as session:
-            async with session.get(config.const.rank_clusters_url) as resp:
-                resp = await resp.json()
-                for item in resp:
-                    clusters[item["_id"]] = item["name"]
-
-        return {
-            c.id: clusters.get(c.id, c.id) for c in cluster.clusters.clusters
-        }
-
-    if event == "rank":
-        async with aiohttp.ClientSession() as session:
-            async with session.get(config.const.rank_clusters_url) as resp:
-                return await resp.json()
 
     return None
 
@@ -761,7 +927,6 @@ async def push_status():
             ]
         )
 
-
 def get_query_day_tohour(day: int):
     t = int(time.time())
     return int((t - ((t + UTC) % 86400) - 86400 * day) / 3600)
@@ -770,6 +935,87 @@ def get_query_hour_tohour(hour: int):
     t = int(time.time())
     return int((t - ((t + UTC) % 3600) - 3600 * hour) / 3600)
 
+def query_addresses(
+    since_hour: int = 24
+):
+    hour = get_query_hour_tohour(since_hour)
+    with db.SESSION as session:
+        q = session.query(db.ResponseTable).filter(
+            db.ResponseTable.hour >= hour
+        ).order_by(db.ResponseTable.hour)
+        data: defaultdict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        for item in q.all():
+            ip_tables = db.decompress(item.ip_tables)  # type: ignore
+            for ip, count in ip_tables.items():
+                data[item.hour][ip] += count # type: ignore
+    return data
+
+class QueryTiming:
+    def __init__(
+        self
+    ):
+        self.total: defaultdict[str, int] = defaultdict(int)
+        self.start_record: dict[str, int] = {}
+
+    def start(self, name: str):
+        if name in self.start_record:
+            return
+        self.start_record[name] = time.perf_counter_ns()
+    
+    def end(self, name: str):
+        if name not in self.start_record:
+            return
+        self.total[name] += time.perf_counter_ns() - self.start_record[name]
+        del self.start_record[name]
+        
+
+def query_geo(
+    day: int,
+    cn: bool = False
+):
+    resp_data: defaultdict[str, int] = defaultdict(int)
+    timing = QueryTiming()
+    hour = get_query_hour_tohour(day * 24)
+    with db.SESSION as session:
+        q = session.query(db.ResponseTable).filter(
+            db.ResponseTable.hour >= hour
+        ).order_by(db.ResponseTable.hour)
+        for item in q.all():
+            timing.start("decompress")
+            ip_tables = db.decompress(item.ip_tables)  # type: ignore
+            timing.end("decompress")
+            timing.start("query_ip")
+            for ip, count in ip_tables.items():
+                address = query_ip(ip)
+                if cn and address.country == "CN":
+                    resp_data[address.province] += count
+                else:
+                    resp_data[address.country] += count
+            timing.end("query_ip")
+    return resp_data
+
+def query_ip(
+    ip: str
+):
+    #cache_res = IPSEARCHER_CACHE.get(ip)
+    #if cache_res is not cache.EMPTY:
+    #    return cache_res
+    if ip in IPSEARCHER_CACHE:
+        return IPSEARCHER_CACHE[ip]
+    try:
+        result = IPSEARCHER.find_info(ip, "CN") or ipsearcher.CityInfo(**{
+            "country": "LOCAL",
+            "province": "LOCAL"
+        })
+    except:
+        result = ipsearcher.CityInfo(**{
+            "country": "None",
+            "province": "None"
+        })
+    IPSEARCHER_CACHE[ip] = result
+    return result
+
+"""
 def query_geo_address(day: int):
     with db.SESSION as session:
         q = session.query(db.ResponseTable).filter(
@@ -802,7 +1048,7 @@ def _query_address(address: str) -> str:
     if res.country_name == "中国":
         return (res.country_name + " " + res.region_name).strip()
     return res.country_name
-
+"""
 def record():
     global running
     while running:
@@ -892,7 +1138,6 @@ async def fetch_github_repo():
                 return data
             return io.BytesIO()
 
-    
     async def sync_assets():
         res: list[GithubPath] = await get_dir_list("/assets")
         if not res:
@@ -943,7 +1188,6 @@ async def fetch_github_repo():
                 if tag_name != config.VERSION:
                     logger.tinfo("dashboard.info.new_version", current=config.VERSION, latest=tag_name)
                     return
-
 
     headers = {
         "User-Agent": config.USER_AGENT

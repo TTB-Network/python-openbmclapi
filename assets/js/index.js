@@ -199,7 +199,7 @@ class Channel {
             total: 0,
             current: 0,
         };
-        this.timeout = 10000
+        this.timeout = 20000
         this._event_source_init()
         if (!this.support_websocket) return;
         this._ws_init();
@@ -258,7 +258,7 @@ class Channel {
         }, 5000)
     }
 
-    async _ws_send(event, data) {
+    async _ws_send(event, data, options) {
         if (!this._ws_initizalized) return this._http_send(event, data);
         return new Promise(async (resolve, reject) => {
             var echo_id = (await ObjectID.create()).toString();
@@ -268,14 +268,16 @@ class Channel {
                 data,
                 echo_id
             }))
-            this._ws_timeouts[echo_id] = setTimeout(() => {
-                delete this._ws_callbacks[echo_id];
-                reject("timeout")
-            }, this.timeout)
+            if (options.timeout) {
+                this._ws_timeouts[echo_id] = setTimeout(() => {
+                    delete this._ws_callbacks[echo_id];
+                    reject("timeout")
+                }, options.timeout)   
+            }
         })
     }
 
-    async _http_send(event, data) {
+    async _http_send(event, data, options) {
         return new Promise((resolve, reject) => {
             var pushed = false;
             var loaded = 0;
@@ -311,16 +313,26 @@ class Channel {
                 event,
                 data: data
             }))
-            var timer = setTimeout(() => {
-                xhr.abort();
-                reject("timeout")
-            }, this.timeout)
+            if (options.timeout) {
+                var timer = setTimeout(() => {
+                    xhr.abort();
+                    reject("timeout")
+                }, options.timeout)
+            }
         })
     }
 
-    async send(event, data) {
-        if (this.support_websocket) return this._ws_send(event, data);
-        return this._http_send(event, data);
+    async send(event, data, options = {
+        "timeout": this.timeout
+    }) {
+        options = {
+            ...{
+                "timeout": this.timeout
+            },
+            ...options
+        }
+        if (this.support_websocket) return this._ws_send(event, data, options);
+        return this._http_send(event, data, options);
     }
 
     get support_websocket() {
@@ -344,9 +356,7 @@ class SwitchElement extends Element {
             ".switch-container": `
                 position: relative;
                 display: inline-block;
-                flex: 1 1 auto;
                 white-space: nowrap;
-                width: 100%;
             `,
             ".switch-main": {
                 "display": "flex",
@@ -537,28 +547,30 @@ class FlexElement extends Element {
             handler = (child) => container_width
             heightHandler = (child) => container_height
         } else {
-            handler = (child) => this._render_calc_child_width(this.children.length, this.children.indexOf(child), container_width)
+            handler = (child) => this._render_calc_child_value(this.children.length, this.children.indexOf(child), container_width)
             heightHandler = (child) => calcElementHeight(child)
         }
         for (const child of this.children) {
             var res = handler(child);
             child.style("width", `${res}px`)
             if (this.$autoheight) {
-                child.style("height", `${heightHandler(child)}px`)
+                requestAnimationFrame(() => {
+                    child.style("height", `${heightHandler(child)}px`)
+                })
             }
             child.origin.getBoundingClientRect()
         }
     }
-    _render_calc_child_width(total_child, index, container_width) {
+    _render_calc_child_value(total_child, index, container_value) {
         const child = this.$child;
         if (child.length == 1) {
             var val = child[0];
             // if val is number
             if (typeof val === "number") {
-                return container_width / val;
+                return container_value / val;
             }
             if (val.endsWith("%")) {
-                return parseFloat(val.slice(0, -1)) / 100.0 * container_width / total_child;
+                return parseFloat(val.slice(0, -1)) / 100.0 * container_value / total_child;
             }
             return 0;
         }
@@ -566,13 +578,13 @@ class FlexElement extends Element {
         const is_number = child.every(e => typeof e === "number");
         const is_percent = child.every(e => typeof e === "string" && e.endsWith("%"));
         if (is_number) {
-            return child[index >= child.length ? child.length - 1 : index] / total_child * container_width;
+            return child[index >= child.length ? child.length - 1 : index] / total_child * container_value;
         }
         if (is_percent) {
             var total = child.reduce((a, b) => a + parseFloat(b.slice(0, -1)), 0);
-            return parseFloat(child[index >= child.length ? child.length - 1 : index].slice(0, -1)) / total * container_width;
+            return parseFloat(child[index >= child.length ? child.length - 1 : index].slice(0, -1)) / total * container_value;
         }
-        console.error(child, " is not a valid width value");
+        console.error(child, " is not a valid value value");
         return 0;
     }
     child(...values) {
@@ -748,7 +760,7 @@ $i18n.addLanguageTable("zh_CN", {
     "switch.dashboard.storage.webdav": "WebDAV [%path% (%url%)]",
     "unit.hour": "%value% 时",
     "unit.day": "%value% 天",
-    "dashboard.title.qps": "5 分钟请求数",
+    "dashboard.title.qps": "实时 QPS",
     "switch.dashboard.cluster.:all:": "所有节点",
     "dashboard.title.storage.today": "今日请求存储",
     "dashboard.title.storage.30days": "30 天请求存储",
@@ -989,6 +1001,12 @@ $style.addAll({
         "border-radius": "8px",
         "width": "100%",
         "transition": "width 0.5s ease-in-out"
+    },
+    ".map-container": {
+        "min-height": "445.5px"
+    },
+    ".echart": {
+        "margin-top": "8px"
     }
 })
 class Tools {
@@ -1054,7 +1072,6 @@ class Tools {
                 label[key].i18n(params[key + "_i18n"])
                 var title = ref({}, {
                     handler: (args) => {
-                        console.log(args)
                         label[key].aria_label(args.object.value)
                     }
                 })
@@ -1357,6 +1374,40 @@ async function load() {
 
                 })
             })();
+
+            const create_qps = (
+                type = "basic",
+                parentElement = null,
+                leftElement = null
+            ) => {
+                return Tools.createPanel(({ pre, panel }) => {
+                    var instance = Tools.createEchartElement(({
+                        echart, base
+                    }) => {
+                        base.classes("echart").style("min-height", "172px")
+                        $dashboard_locals[`${type}_qps_echart`] = {
+                            echart, base
+                        };
+                    })
+                    panel.classes("label-text").append(
+                        createElement("div").classes("title").append(
+                            createElement("p").i18n("dashboard.title.qps"),
+                        ),
+                        instance
+                    )
+                    var observer = new ResizeObserver(() => {
+                        var width = calcElementWidth(parentElement)
+                        if (width < 1280) {
+                            pre.style("height", `auto`)
+                        } else {
+                            pre.style("height", `${calcElementHeight(leftElement) / (type == "basic" ? 1 : 2)}px`)
+                            panel.style("height", "100%")
+                        }
+                        $dashboard_locals[`${type}_qps_echart`].echart.resize()
+                    })
+                    observer.observe(leftElement.origin)
+                })
+            }
             // basic
             (() => {
                 const basic = $dashboard_locals.basic;
@@ -1487,36 +1538,7 @@ async function load() {
                     $dashboard_locals.system_info
                 )
                 const section = Tools.createFlexElement().child('70%', '30%').minWidth(1280)
-                $dashboard_locals.basic_qps = Tools.createPanel(({ pre, panel }) => {
-                    var instance = Tools.createEchartElement(({
-                        echart, base
-                    }) => {
-                        base.style("min-height", "180px")
-                        $dashboard_locals.basic_qps_echart = {
-                            echart, base
-                        };
-                    })
-                    panel.append(
-                        createElement("div").classes("title").append(
-                            createElement("div").append(
-                                createElement("p").i18n("dashboard.title.qps"),
-                                // ...
-                            )
-                        ),
-                        instance
-                    )
-                    var observer = new ResizeObserver(() => {
-                        var width = calcElementWidth(section)
-                        if (width < 1280) {
-                            pre.style("height", `auto`)
-                        } else {
-                            pre.style("height", `${calcElementHeight(info_collection)}px`)
-                            panel.style("height", "100%")
-                        }
-                        $dashboard_locals.basic_qps_echart.echart.resize()
-                    })
-                    observer.observe(info_collection.origin)
-                })
+                $dashboard_locals.basic_qps = create_qps("basic", section, info_collection)
 
                 // storage
 
@@ -1753,6 +1775,57 @@ async function load() {
                     statistics
                 )
             })();
+
+            // pro
+            (() => {
+                const advanced = $dashboard_locals.advanced;
+
+                const req_section = Tools.createFlexElement().child('75%', '25%').minWidth(1280)//.autoHeight(true);
+                const req_map = Tools.createPanel(({
+                    panel
+                }) => {
+                    var section = (new SwitchElement()).addButtons(
+                        "req_map.world",
+                        "req_map.china"
+                    )
+                    var map_container = createElement("div")
+                    var map_rank = createElement("div")
+                    panel.classes("label-text").append(
+                        createElement("p").classes("title", "flex-between").append(
+                            createElement("p").i18n(`dashboard.title.req_map`),
+                            section
+                        ),
+                        Tools.createFlexElement().append(
+                            map_container,
+                            map_rank
+                        ).child("70%", "30%").classes("map-container")
+                    )
+                })
+                $dashboard_locals.advanced_qps = create_qps("advanced", req_section, req_map)
+                $dashboard_locals.advanced_ip_access = Tools.createPanel(({ panel }) => {
+                    var instance = Tools.createEchartElement((e) => {
+                    })
+                    panel.classes("label-text").append(
+                        createElement("p").classes("title").i18n("dashboard.title.ip_access"),
+                        instance
+                    )
+                    instance.style("min-height", "180px")
+                    var observer = new ResizeObserver(() => {
+                    })
+                    observer.observe(panel.origin)
+                })
+
+                advanced.push(
+                    req_section.append(
+                        req_map,
+                        createElement("div").append(
+                            $dashboard_locals.advanced_qps,
+                            $dashboard_locals.advanced_ip_access
+                        )
+                    )
+                )
+            })();
+            
             const init_echarts = () => {
                 var option = {
                     tooltip: {
@@ -1811,7 +1884,8 @@ async function load() {
                     ]
                 }
                 const instances = [
-                    $dashboard_locals.basic_qps_echart
+                    $dashboard_locals.basic_qps_echart,
+                    $dashboard_locals.advanced_qps_echart
                 ]
                 for (let qps of instances) {
                     qps.base.setOption(option)
@@ -1846,22 +1920,27 @@ async function load() {
             }
             // share 
             (() => {
-                const instances = [
-                    $dashboard_locals.basic_qps_echart
-                ]
+                const config = {
+                    "basic": 35,
+                    "advanced": 35
+                }
                 $dashboard_locals.qps_data = ref({}, {
                     timeout: 20,
                     handler: (object) => {
-                        var resp = object.object.resp;
-                        var option = {
-                            color: $style.getThemeValue("echarts-color-0"),
-                            xAxis: {
-                                data: Object.keys(resp)
-                            },
-                            series: [{ name: 'QPS', data: Object.values(resp) }]
-                        }
-                        for (let instance of instances) {
-                            instance.base.setOption(option)
+                        for (let [key, count] of Object.entries(config)) {
+                            const instance = $dashboard_locals[`${key}_qps_echart`]
+                            var resp = object.object.resp;
+                            var length = Object.keys(resp).length;
+                            var keys = Object.keys(resp).slice(length - count);
+                            var values = Object.values(resp).slice(length - count);
+                            var option = {
+                                color: $style.getThemeValue("echarts-color-0"),
+                                xAxis: {
+                                    data: keys
+                                },
+                                series: [{ name: 'QPS', data: values}]
+                            }
+                            instance.echart.setOption(option)
                         }
                     }
                 })
@@ -2017,7 +2096,7 @@ async function load() {
                         if ($dashboard_locals.qps_data.resp)
                             $dashboard_locals.qps_data.resp = $dashboard_locals.qps_data.resp;
                     })
-                }).select(0)
+                }).select(1)
             )
         }
         $main.append(

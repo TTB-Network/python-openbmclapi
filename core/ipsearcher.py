@@ -7,8 +7,20 @@ import ipaddress
 import json
 import sys
 
-from .util import bytes2long
-from .exceptions import NoSupportIPv4Error, NoSupportIPv6Error, NoSupportLanguageError, DatabaseError, IPNotFound
+class DatabaseError(Exception):
+    pass
+
+class NoSupportLanguageError(Exception):
+    pass
+
+class NoSupportIPv6Error(Exception):
+    pass
+
+class NoSupportIPv4Error(Exception):
+    pass
+
+class IPNotFound(Exception):
+    pass
 
 
 class MetaData(object):
@@ -23,7 +35,6 @@ class MetaData(object):
 
 class Reader:
 
-    _meta = {}
     data = b""
 
     _v4offset = 0
@@ -161,3 +172,65 @@ class Reader:
 
     def build_utc_time(self):
         return self._meta.build
+    
+
+def bytes2long(a, b, c, d):
+    return convert(a) << 24 | convert(b) << 16 | convert(c) << 8 | convert(d)
+
+
+def convert(v):
+    if v == "" or v == 0:
+        return 0
+    if sys.version_info.major >= 3:
+        return v
+    else:
+        return ord(v)
+    
+class CityInfo:
+    country: str
+    province: str
+
+    def __init__(self, **kwargs):
+        self._map = kwargs
+        for key in self._map:
+            self.__dict__[key] = self._map[key]
+
+
+class City:
+    def __init__(self, name):
+        self.db = Reader(name)
+
+    def reload(self, name):
+        try:
+            db = Reader(name)
+            self.db = db
+            return True
+        except:
+            return False            
+
+    def find(self, addr, language):
+        return self.db.find(addr, language)
+
+    def find_map(self, addr, language):
+        return self.db.find_map(addr, language)
+
+    def find_info(self, addr, language):
+        m = self.db.find_map(addr, language)
+        if m is None:
+            return None
+        return CityInfo(**m)
+
+    def is_ipv4(self):
+        return self.db.is_support_ipv4()
+
+    def is_ipv6(self):
+        return self.db.is_support_ipv6()
+
+    def languages(self):
+        return self.db.support_languages()
+
+    def fields(self):
+        return self.db.support_fields()
+
+    def build_time(self):
+        return self.db.build_utc_time()
