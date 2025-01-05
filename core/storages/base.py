@@ -1,4 +1,5 @@
 import abc
+import collections
 from dataclasses import dataclass
 import hashlib
 import io
@@ -27,6 +28,11 @@ class MeasureFile:
 
     def __hash__(self) -> int:
         return hash(self.size)
+
+@dataclass
+class FileInfo:
+    size: int
+    mtime: float
 
 
 class FilePath(object):
@@ -90,6 +96,36 @@ class FilePath(object):
 CollectionFile = MeasureFile | File
 Range = lambda: range(0, 256)
 
+class FileList:
+    def __init__(
+        self,
+    ):
+        self._data: collections.OrderedDict[str, FileInfo] = collections.OrderedDict()
+
+    def __contains__(self, key: str):
+        return key in self._data
+    
+    def __getitem__(self, key: str):
+        return self._data[key]
+    
+    def __setitem__(self, key: str, value: FileInfo):
+        self._data[key] = value
+
+    def __delitem__(self, key: str):
+        del self._data[key]
+
+    def __iter__(self):
+        return iter(self._data)
+    
+    def __len__(self):
+        return len(self._data)
+    
+    def __repr__(self):
+        return f"FileList({self._data})"
+    
+    def __str__(self):
+        return f"FileList({self._data})"
+    
 
 class iStorage(metaclass=abc.ABCMeta):
     type: str = "_interface"
@@ -105,6 +141,7 @@ class iStorage(metaclass=abc.ABCMeta):
         self.list_concurrent = list_concurrent
         self.current_weight = 0
         self._name = name
+        self.filelist = FileList()
     
     @property
     @abc.abstractmethod

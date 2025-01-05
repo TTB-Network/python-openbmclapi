@@ -12,7 +12,7 @@ from core import utils
 from core.logger import logger
 from core.utils import WrapperTQDM
 
-from .base import DOWNLOAD_DIR, MeasureFile, iNetworkStorage, File, CollectionFile, Range
+from .base import DOWNLOAD_DIR, FileInfo, MeasureFile, iNetworkStorage, File, CollectionFile, Range
 
 import aiowebdav.client as webdav3_client
 import aiowebdav.exceptions as webdav3_exceptions
@@ -108,11 +108,18 @@ class WebDavStorage(iNetworkStorage):
 
         sem = asyncio.Semaphore(self.list_concurrent)
         results = set()
-        for result in await asyncio.gather(*(
-            get_files(root_id)
-            for root_id in Range()
-        )):
+        for root_id, result in zip(
+            Range(),
+            await asyncio.gather(*(
+                get_files(root_id)
+                for root_id in Range()
+            ))
+        ):
             for file in result:
+                self.filelist[str(self.path / DOWNLOAD_DIR / f"{root_id:02x}" / file.name)] = FileInfo(
+                    size=file.size,
+                    mtime=file.modified,
+                )
                 results.add(File(
                     name=file.name,
                     hash=file.name,
@@ -149,10 +156,19 @@ class WebDavStorage(iNetworkStorage):
         return (await self._info_file(file)).modified
     
     async def get_size(self, file: MeasureFile | File) -> int:
-        return (await self._info_file(file)).size
+        path = str(self.get_path(file))
+        if path in self.filelist:
+            return self.filelist[path].size
+        info = await self._info_file(file)
+        self.filelist[path] = FileInfo(
+            size=info.size,
+            mtime=info.modified,
+        )
+        return max(0, info.size)
     
     async def exists(self, file: MeasureFile | File) -> bool:
-        return (await self._info_file(file)).size != -1
+        path = str(self.get_path(file))
+        return path in self.filelist
     
     async def delete_file(self, file: MeasureFile | File):
         await self.client.unpublish(str(self.get_path(file)))
@@ -198,5 +214,9 @@ class WebDavStorage(iNetworkStorage):
         except:
             logger.traceback()
             return False
+        self.filelist[str(path)] = FileInfo(
+            size=file.size,
+            mtime=time.time(),
+        )
         return True
     

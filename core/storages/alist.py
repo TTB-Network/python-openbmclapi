@@ -12,7 +12,7 @@ from core import utils
 from core.logger import logger
 from core.utils import WrapperTQDM
 
-from .base import MeasureFile, iNetworkStorage, Range, DOWNLOAD_DIR, File, CollectionFile
+from .base import FileInfo, MeasureFile, iNetworkStorage, Range, DOWNLOAD_DIR, File, CollectionFile
 
 
 ALIST_TOKEN_DEAULT_EXPIRY = 86400 * 2
@@ -58,8 +58,7 @@ class AlistStorage(iNetworkStorage):
         cache_timeout: float = 60,
         retries: int = 3, 
         public_webdav_endpoint: str = "",
-        public_webdav_username: Optional[str] = None,
-        public_webdav_password: Optional[str] = None
+        s3_custom_host: str = ""
     ):
         super().__init__(path, username, password, endpoint, weight, list_concurrent, name, cache_timeout)
         self.retries = retries
@@ -70,6 +69,10 @@ class AlistStorage(iNetworkStorage):
             }
         )
         self._public_webdav_endpoint = ""
+        self._s3_custom_host = s3_custom_host
+        if s3_custom_host:
+            urlobject = urlparse.urlparse(s3_custom_host)
+            self._s3_custom_host = f"{urlobject.scheme}://{urlobject.netloc}{urlobject.path}"
         if public_webdav_endpoint:
             urlobject = urlparse.urlparse(public_webdav_endpoint)
             self._public_webdav_endpoint = f"{urlobject.scheme}://{urlparse.quote(self.username)}:{urlparse.quote(self.password)}@{urlobject.netloc}{urlobject.path}"
@@ -165,11 +168,18 @@ class AlistStorage(iNetworkStorage):
 
         sem = asyncio.Semaphore(self.list_concurrent)
         results = set()
-        for result in await asyncio.gather(*(
-            get_files(root_id)
-            for root_id in Range()
+        for root_id, result in zip(
+            Range(),
+            await asyncio.gather(*(
+                get_files(root_id)
+                for root_id in Range()
+            )
         )):
             for file in result:
+                self.filelist[str(self.path / DOWNLOAD_DIR / f"{root_id:02x}" / file["name"])] = FileInfo(
+                    file["size"],
+                    utils.parse_isotime_to_timestamp(file["modified"]),
+                )
                 results.add(File(
                     file["name"],
                     file["size"],
@@ -219,20 +229,28 @@ class AlistStorage(iNetworkStorage):
             return io.BytesIO(await resp.read())
         
     async def get_url(self, file: CollectionFile) -> str:
+        if self._s3_custom_host:
+            return f"{self._s3_custom_host}{str(self.get_path(file))}"
         if self._public_webdav_endpoint:
             return f"{self._public_webdav_endpoint}{str(self.get_path(file))}"
         info = await self.__info_file(file)
         return '' if info.size == -1 else info.raw_url
     
     async def write_file(self, file: MeasureFile | File, content: io.BytesIO):
+        path = str(self.get_path(file))
         result = await self.__action_data(
             "put",
             "/api/fs/put",
             content.getvalue(),
             {
-                "File-Path": urlparse.quote(str(self.get_path(file))),
+                "File-Path": urlparse.quote(path),
             }
         )
+        if result.code == 200:
+            self.filelist[path] = FileInfo(
+                result.data["size"],
+                utils.parse_isotime_to_timestamp(result.data["modified"])
+            )
         return result.code == 200
     
     async def close(self):
@@ -256,6 +274,13 @@ class AlistStorage(iNetworkStorage):
         return (await self.__info_file(file)).modified
     
     async def get_size(self, file: MeasureFile | File) -> int:
+        path = str(self.get_path(file))
+        if path in self.filelist:
+            return self.filelist[path].size
         info = await self.__info_file(file)
+        self.filelist[path] = FileInfo(
+            info.size,
+            info.modified
+        )
         return max(0, info.size)
  

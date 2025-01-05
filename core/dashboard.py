@@ -689,13 +689,13 @@ def _(req_data: Any) -> Any:
     if day > 7:
         for hour, data in query_data.items():
             date = datetime.datetime.fromtimestamp(hour * 3600)
-            key = f"{date.year}-{date.month}-{date.day}"
+            key = f"{date.year:04d}-{date.month:02d}-{date.day:02d}"
             temp_data[key] |= data.keys()
     else:
         for hour, data in query_data.items():
             date = datetime.datetime.fromtimestamp(hour * 3600)
             hour = date.hour
-            key = f"{date.year}-{date.month}-{date.day} {date.hour:02d}:{date.minute:02d}"
+            key = f"{date.year:04d}-{date.month:02d}-{date.day:02d} {date.hour:02d}:{date.minute:02d}"
             temp_data[key] |= data.keys()
     resp_data: defaultdict[str, int] = defaultdict(int)
     for key, data in temp_data.items():
@@ -796,6 +796,10 @@ def _(req_data: Any) -> Any:
         for day, item in data.items():
             days_data[storage_id].append(APIStatistics(units.format_date(day * 86400), item.bytes, item.hits))
     return days_data
+
+@API.on("clusters_bandwidth")
+def _(req_data: Any) -> Any:
+    return cluster.BANDWIDTH_COUNTER.get(max(1, req_data) if isinstance(req_data, int) else 1)
 
 @DeprecationWarning
 async def handle_api(

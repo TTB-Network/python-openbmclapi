@@ -1,7 +1,7 @@
 import abc
 import asyncio
 from collections import defaultdict, deque
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 import datetime
 import enum
 import hashlib
@@ -943,6 +943,7 @@ class Cluster:
         self.want_enable: bool = False
         self.enabled = False
         self.enable_count: int = 0
+        self.keepalive_error: int = 0
         self.keepalive_task: Optional[int] = None
         self.delay_enable_task: Optional[int] = None
         self.counter: defaultdict[storages.iStorage, ClusterCounter] = defaultdict(ClusterCounter)
@@ -1052,6 +1053,7 @@ class Cluster:
         self.enabled = True
         clusters.status.enter()
         self.enable_count = 0
+        self.keepalive_error = 0
         scheduler.cancel(self.keepalive_task)
         self.keepalive_task = scheduler.run_repeat_later(self.keepalive, 1, interval=60)
         logger.tsuccess("cluster.success.enabled", cluster=self.id)
@@ -1083,9 +1085,14 @@ class Cluster:
             }
         )
         if result.err or not result.ack:
-            logger.twarning("cluster.warning.kicked_by_remote")
-            await self.disable()
+            if self.keepalive_error >= 3:
+                logger.twarning("cluster.warning.kicked_by_remote", cluster=self.id)
+                await self.disable()
+            else:
+                self.keepalive_error += 1
+                logger.twarning("cluster.warning.keepalive", cluster=self.id, count=self.keepalive_error)
             return
+        self.keepalive_error = 0
         self.no_storage_counter -= commit_no_storage_counter
         for storage, counter in commit_counter.items():
             self.counter[storage] -= counter
@@ -1290,6 +1297,53 @@ class MemoryStorageFile(StorageFile):
         super().__init__(hash=hash, size=size, mtime=mtime, storage=storage)
         self.data = data
 
+@dataclass
+class Bandwidth:
+    cluster_id: str
+    bytes: int
+
+@dataclass
+class BandwidthList:
+    cluster_id: str
+    bytes: deque[int] = field(default_factory=deque)
+
+class BandwidthCounter:
+    def __init__(
+        self
+    ):
+        self.bandwidths: defaultdict[str, defaultdict[int, int]] = defaultdict(lambda: defaultdict(int))
+        scheduler.run_repeat_later(self.gc, 600, 5)
+
+    def hit(self, cluster_id: str, bytes: int):
+        current = int(time.monotonic())
+        self.bandwidths[cluster_id][current] += bytes
+
+    
+    def gc(self):
+        current = int(time.monotonic())
+        for cluster_id in self.bandwidths:
+            for timestamp in list(self.bandwidths[cluster_id]):
+                if current - timestamp > 600:
+                    del self.bandwidths[cluster_id][timestamp]
+
+    def total(self, interval: int = 1) -> list[Bandwidth]:
+        res: list[Bandwidth] = []
+        for b in self.get(interval):
+            res.append(Bandwidth(b.cluster_id, sum(b.bytes)))
+        return res
+
+    def get(self, interval: int = 1) -> list[BandwidthList]:
+        current = int(time.monotonic()) - 1
+        bandwidths: list[BandwidthList] = []
+        for cluster_id, b in self.bandwidths.items():
+            obj = BandwidthList(cluster_id)
+            for timestamp in range(current - interval, current + 1):
+                if current - timestamp > interval:
+                    continue
+                obj.bytes.append(b[timestamp])
+            bandwidths.append(obj)
+        return bandwidths
+
 ROOT = Path(__file__).parent.parent
 
 CHECK_FILE_CONTENT = "Python OpenBMCLAPI"
@@ -1307,7 +1361,7 @@ MEASURE_BUFFER: bytes = b'\x00'
 DEFAULT_MEASURES = [
     10
 ]
-
+BANDWIDTH_COUNTER = BandwidthCounter()
 routes = web.routes
 aweb = web.web
 clusters = ClusterManager()
@@ -1525,6 +1579,7 @@ async def _(request: aweb.Request):
         size = end - start + 1
 
         cluster.hit(file.storage, size)
+        BANDWIDTH_COUNTER.hit(cluster.id, size)
         # add database
         # stats
         name = query.get("name")

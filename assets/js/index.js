@@ -1203,6 +1203,9 @@ class Tools {
     static formatDate(d) {
         return `${d.getFullYear().toString().padStart(4, "0")}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`
     }
+    static formatDateHourMinute(d) {
+        return `${d.getFullYear().toString().padStart(4, "0")}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")} ${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`
+    }
 }
 class UserAuth {
     constructor() {
@@ -1812,12 +1815,29 @@ async function load() {
                     var type = $dashboard_locals.advanced_time_switch.current.button
                     var day = +type.slice(type.lastIndexOf(".") + 1)
                     var ip_access = await $channel.send("response_ip_access", day)
+                    var resp = {}
+                    var server_time = $dashboard_locals.info_runtime
+                    var datetime = (server_time.current_time - server_time.diff / 1000.0 + (+new Date() - server_time.resp_timestamp) / 1000.0);
+                    var previous;
+                    if (day == 30) {
+                        previous = (datetime - ((datetime + UTC_OFFSET) % 86400) - 86400 * day);
+                        for (var i = 0; i <= day; i++) {
+                            let key = Tools.formatDate(new Date((previous + 86400 * i) * 1000.0))
+                            resp[key] = ip_access[key] || 0
+                        }
+                    } else {
+                        previous = (datetime - ((datetime + UTC_OFFSET) % 3600) - 3600 * (day * 24));
+                        for (var i = 0; i <= day * 24; i++) {
+                            let key = Tools.formatDateHourMinute(new Date((previous + i * 3600) * 1000.0))
+                            resp[Tools.formatDateHourMinute(new Date((previous + i * 3600) * 1000.0))] = ip_access[key] || 0
+                        }
+                    }
                     $dashboard_locals.advanced_ip_access_echarts.base.setOption({
                         xAxis: {
-                            data: Object.keys(ip_access),
+                            data: Object.keys(resp),
                         },
                         series: [{
-                            data: Object.values(ip_access),
+                            data: Object.values(resp),
                         }]
                     })
                     waitTaskResponse.ip_access = false;
