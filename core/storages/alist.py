@@ -247,9 +247,10 @@ class AlistStorage(iNetworkStorage):
             }
         )
         if result.code == 200:
+            info = await self.__info_file(file)
             self.filelist[path] = FileInfo(
-                result.data["size"],
-                utils.parse_isotime_to_timestamp(result.data["modified"])
+                info.size,
+                info.modified
             )
         return result.code == 200
     
@@ -271,7 +272,15 @@ class AlistStorage(iNetworkStorage):
         return path in self.filelist
     
     async def get_mtime(self, file: MeasureFile | File) -> float:
-        return (await self.__info_file(file)).modified
+        path = str(self.get_path(file))
+        if path in self.filelist:
+            return self.filelist[path].mtime
+        info = await self.__info_file(file)
+        self.filelist[path] = FileInfo(
+            info.size,
+            info.modified
+        )
+        return info.modified
     
     async def get_size(self, file: MeasureFile | File) -> int:
         path = str(self.get_path(file))

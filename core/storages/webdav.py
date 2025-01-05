@@ -153,7 +153,15 @@ class WebDavStorage(iNetworkStorage):
         return result
 
     async def get_mtime(self, file: MeasureFile | File) -> float:
-        return (await self._info_file(file)).modified
+        path = str(self.get_path(file))
+        if path in self.filelist:
+            return self.filelist[path].mtime
+        info = await self._info_file(file)
+        self.filelist[path] = FileInfo(
+            size=info.size,
+            mtime=info.modified,
+        )
+        return info.modified
     
     async def get_size(self, file: MeasureFile | File) -> int:
         path = str(self.get_path(file))
