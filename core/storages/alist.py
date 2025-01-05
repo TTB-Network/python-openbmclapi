@@ -267,8 +267,8 @@ class AlistStorage(iNetworkStorage):
         )
 
     async def exists(self, file: MeasureFile | File) -> bool:
-        info = await self.__info_file(file)
-        return info.size != -1
+        path = str(self.get_path(file))
+        return path in self.filelist
     
     async def get_mtime(self, file: MeasureFile | File) -> float:
         return (await self.__info_file(file)).modified

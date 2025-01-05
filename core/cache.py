@@ -25,7 +25,7 @@ class TimeoutCache(MutableMapping[K, T]):
 
     def _prune(self):
         current_time = time.monotonic()
-        keys_to_delete = [key for key, cache_value in self.cache.items() if cache_value.expires is not None and cache_value.expires < current_time]
+        keys_to_delete = [key for key, cache_value in self.cache.items() if cache_value.expires is not None and cache_value.expires + cache_value.timestamp < current_time]
         for key in keys_to_delete:
             del self.cache[key]
 
