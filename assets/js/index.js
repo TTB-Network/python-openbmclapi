@@ -1213,6 +1213,11 @@ class UserAuth {
             // ...
         })
     }
+    get triggerGUI() {
+        return SVGContainers.user.addEventListener("click", () => {
+            // ...
+        })
+    }
 }
 const $userAuth = new UserAuth();
 
@@ -1233,7 +1238,8 @@ async function load() {
             createElement("h2").text(document.title)
         ),
         createElement("div").classes("content").append(
-            $theme_change
+            $theme_change,
+            $userAuth.triggerGUI,
         )
     )
     const $app = createElement("div").classes("app")

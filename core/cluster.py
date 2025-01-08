@@ -854,7 +854,7 @@ class ClusterManager:
         if not self.initialized:
             return
         for cluster in self.clusters:
-            if cluster.delay_enable_task is not None:
+            if cluster.delay_enable_task is not None or cluster.delay >= time.monotonic():
                 continue
             await cluster.enable()
 
@@ -944,6 +944,7 @@ class Cluster:
         self.enabled = False
         self.enable_count: int = 0
         self.keepalive_error: int = 0
+        self.delay = 0
         self.keepalive_task: Optional[int] = None
         self.delay_enable_task: Optional[int] = None
         self.counter: defaultdict[storages.iStorage, ClusterCounter] = defaultdict(ClusterCounter)
@@ -1121,6 +1122,7 @@ class Cluster:
 
     def retry(self):
         delay = min(3600, ((self.enable_count  + 1) ** 2) * 60)
+        self.delay = delay + time.monotonic()
         self.delay_enable_task = scheduler.run_later(self.enable, delay)
         logger.tinfo("cluster.info.cluster.retry_enable", cluster=self.id, delay=units.format_count_datetime(delay))
             

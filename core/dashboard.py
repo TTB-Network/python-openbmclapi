@@ -183,6 +183,36 @@ class SSEEmiter:
             300
         )
         self._loop = loop
+    
+    def start_keepalive(self):
+        return
+        scheduler.run_repeat_later(
+            self.keepalive,
+            2,
+            30
+        )
+
+    async def send_keepalive(
+        self,
+        client: SSEClient
+    ):
+        current = str(utils.ObjectId())
+        await self.send_message_client(
+            client,
+            current,
+            "keepalive",
+            current
+        )
+        
+
+    async def keepalive(
+        self
+    ):
+        for client in self._connections.copy():
+            try:
+                await self.send_keepalive(client)
+            except:
+                await self.close_client(client)
 
     async def send(
         self,
@@ -197,6 +227,17 @@ class SSEEmiter:
     async def raw_send_client(
         self,
         client: SSEClient,
+        data: str
+    ):
+        if len(data) == 0:
+            return
+        for _ in range(2 - data[-2:].count("\n")):
+            data += "\n"
+        await client.resp.write(data.encode("utf-8"))
+
+    async def send_message_client(
+        self,
+        client: SSEClient,
         id: Optional[str] = None,
         event: Optional[str] = None,
         data: Optional[str] = None
@@ -209,8 +250,10 @@ class SSEEmiter:
         }.items():
             if item[1] is not None:
                 buffer.write(f"{item[0]}: {item[1]}\n")
-        buffer.write("\n")
-        await client.resp.write(buffer.getvalue().encode("utf-8"))
+        await self.raw_send_client(
+            client,
+            buffer.getvalue()
+        )
     
     async def send_client(
         self,
@@ -224,7 +267,7 @@ class SSEEmiter:
             await self.close_client(client)
             return
         try:
-            await self.raw_send_client(
+            await self.send_message_client(
                 client,
                 id=str(message.id),
                 event="message",
@@ -236,8 +279,8 @@ class SSEEmiter:
                 )
             )
         except:
+            logger.traceback()
             await self.close_client(client)
-
 
     async def request(
         self,
@@ -260,13 +303,22 @@ class SSEEmiter:
             await resp.prepare(request)
             self._connections.append(client)
             last_event_id: str = request.headers.get("Last-Event-ID", "0" * 24)
-            last_id = utils.ObjectId(last_event_id)
+            try:
+                last_id = utils.ObjectId(last_event_id)
+            except:
+                last_id = utils.ObjectId("0" * 24)
+            
+            #await self.send_keepalive(client)
+
             for message in self._cache.keys():
                 if message.generation_time <= last_id.generation_time:
                     break
+                msg = self._cache.get(message)
+                if msg is cache.EMPTY:
+                    continue
                 await self.send_client(
                     client,
-                    self._cache.get(message)
+                    msg
                 )
                     
             try:
@@ -964,26 +1016,46 @@ def query_geo(
     cn: bool = False
 ):
     resp_data: defaultdict[str, int] = defaultdict(int)
+    since_hour = get_query_hour_tohour(day * 24)
+    with db.SESSION as session:
+        q = session.query(db.ResponseTable).filter(
+            db.ResponseTable.hour >= since_hour
+        ).order_by(db.ResponseTable.hour)
+        for item in q.all():
+            wait_threads(
+                thread_decompress_data_and_query,
+                [
+                    (item.ip_tables, cn, resp_data)
+                ]
+            )
+    
+    return resp_data
+
+
+def wait_threads(
+    target,
+    args: list[tuple[Any, ...]] = []
+):
     threads: list[threading.Thread] = []
-    for hour, data in query_addresses(day * 24).items():
+    for arg in args:
         threads.append(threading.Thread(
-            target=thread_query_geo,
-            args=(data, resp_data, cn)
+            target=target,
+            args=arg
         ))
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join()
     threads.clear()
-    return resp_data
 
-def thread_query_geo(
-    data: dict[str, int],
-    resp_data: defaultdict[str, int],
-    cn: bool
+def thread_decompress_data_and_query(
+    origin: bytes,
+    cn,
+    resp_data: defaultdict[str, int]
 ):
-    for ip, count in data.items():
-        address = query_ip(ip)
+    data = db.decompress(origin)
+    for k, count in data.items():
+        address = query_ip(k)
         if cn and address.country == "CN":
             resp_data[address.province] += count
         else:
@@ -1068,6 +1140,7 @@ def record():
 
 async def init():
     global task, status_task
+    SSEEMIT.start_keepalive()
     task = threading.Thread(target=record)
     task.start()
     status_task = asyncio.create_task(push_status())

@@ -3,11 +3,11 @@ import os
 import time
 
 from core import web
+from . import scheduler
 from .logger import logger
 from . import utils
 import atexit
 from . import cluster
-from . import scheduler
 from . import dashboard
 from . import database
 from . import storages
