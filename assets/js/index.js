@@ -711,14 +711,14 @@ class TemplateEchartElement extends Element {
     }
     _e_templates(params) {
         const data_label = this.type == EchartType.LABEL
-        const templates = `<div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;">` + (data_label ? '' : `<span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:{color};"></span>`) + `<span style="font-size:14px;color:#666;font-weight:400;margin-left:2px">{name}</span><span style="float:right;margin-left:20px;font-size:14px;color:#666;font-weight:900">{value}</span><div style="clear:both"></div></div><div style="clear:both"></div></div>`
+        const templates = `<div style="margin: 0px 0 0;line-height:1"><div style="margin: 0px 0 0;line-height:1">` + (data_label ? '' : `<span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:{color}"></span>`) + `<span style="font-size:14px;color:#666;font-weight:400;margin-left:2px">{name}</span><span style="float:right;margin-left:20px;font-size:14px;color:#666;font-weight:900">{value}</span><div style="clear:both"></div></div><div style="clear:both"></div></div>`
         var template = ''
         for (const data of (Array.isArray(params) ? params : [params])) {
             let value_formatter = this.formatters[data.seriesIndex] || this.formatters[0]
             let value = isNaN(data.value) ? 0 : data.value
             template += templates.replace("{color}", data.color).replace("{name}", `${data.seriesName}${data_label ? `(${data.data.label})` : ""}`).replace("{value}", value_formatter ? value_formatter(value) : value)
         }
-        return `<div style="margin: 0px 0 0;line-height:1;"><div style="margin: 0px 0 0;line-height:1;">` + (data_label ? `` : `<div style="font-size:14px;color:#666;font-weight:400;line-height:1;">${(Array.isArray(params) ? params[0] : params).name}</div>`) + `<div style="margin: ${data_label ? 0 : 10}px 0 0;line-height:1;">${template}</div><div style="clear:both"></div></div><div style="clear:both"></div></div>`
+        return `<div style="margin: 0px 0 0;line-height:1"><div style="margin: 0px 0 0;line-height:1">` + (data_label ? `` : `<div style="font-size:14px;color:#666;font-weight:400;line-height:1">${(Array.isArray(params) ? params[0] : params).name}</div>`) + `<div style="margin: ${data_label ? 0 : 10}px 0 0;line-height:1">${template}</div><div style="clear:both"></div></div><div style="clear:both"></div></div>`
     }
     getOption() {
         return this.instance.getOption()
@@ -803,7 +803,7 @@ $style.setTheme("light", {
     "main-shadow-0-2-color": "rgba(15, 198, 194, 0.2)",
     "main-shadow-0-1-color": "rgba(15, 198, 194, 0.1)",
     "main-button-hover": "rgb(10, 138, 135)",
-    "panel-box-shadow": "rgba(145, 158, 171, 0.2) 0px 4px 10px;",
+    "panel-box-shadow": "rgba(145, 158, 171, 0.2) 0px 4px 10px",
     "panel-color": "rgb(255, 255, 255)",
     "title-color": "rgba(0, 0, 0, 0.5)",
     "value-color": "rgba(0, 0, 0, 0.7)",
@@ -829,7 +829,7 @@ $style.setTheme("dark", {
     "color": "#ffffff",
     "dark-color": "#000000",
     "text-dark-color": "rgba(255, 255, 255, 0.7)",
-    "background": "rgb(24, 24, 24);",
+    "background": "rgb(24, 24, 24)",
     "footer-background": "#202020",
     "background-hover": "#202020",
     "main-dark-color": "rgb(235, 187, 151)",
@@ -837,8 +837,8 @@ $style.setTheme("dark", {
     "main-shadow-0-1-color": "rgba(244, 209, 180, 0.1)",
     "panel-box-shadow": "none",
     "panel-color": "rgb(35, 35, 35)",
-    "title-color": "rgba(255, 255, 255, 0.5);",
-    "value-color": "rgb(255, 255, 255);",
+    "title-color": "rgba(255, 255, 255, 0.5)",
+    "value-color": "rgb(255, 255, 255)",
     "echarts-color-0": "#F4D1B4",
     "echarts-color-1": "#FFA552", 
     "echarts-color-2": "#F16575", 
@@ -916,7 +916,7 @@ $style.addAll({
     "header .padding-left": {
         "padding-left": "8px",
     },
-    "h1,h2,h3,h4,h5,h6,p": "margin:0;color:inherit",
+    "h1,h2,h3,h4,h5,h6,p": "margin:0;color:inherit;font-family:inherit",
     "svg": {
         "fill": "inherit"
     },
@@ -1024,6 +1024,23 @@ $style.addAll({
     },
     ".echart": {
         "margin-top": "8px"
+    },
+    ".qps-bar": {
+        "font-family": "Mono",
+        "display": "flex",
+        "padding-left": "8px",
+        "padding-right": "8px",
+        "-webkit-box-align": "center",
+        "align-items": "center",
+        "background-color": "rgba(0, 0, 0, 0.05)",
+        "border-radius": "4px",
+        "margin-left": "16px",
+    },
+    "@font-face": {
+        "font-family": "Mono",
+        "src": "url('/assets/fonts/Mono.min.ttf')",
+        "font-weight": "normal",
+        "font-style": "normal"
     }
 })
 class Tools {
@@ -1217,6 +1234,55 @@ class UserAuth {
         return SVGContainers.user.addEventListener("click", () => {
             // ...
         })
+    }
+}
+class DynmaticQPS extends Element {
+    constructor() {
+        super("div").classes("dynmatic-qps")
+        $style.addAll({
+            ".dynmatic-qps": {
+                "width": "14px",
+                "height": "14px",
+                "margin-right": "8px"
+            },
+            ".dynmatic-qps .container": {
+                "width": "100%",
+                "height": "100%",
+                "display": "grid",
+                "grid-template-columns": "repeat(3, 1fr)",
+                "gap": "15%",
+                "align-items": "end"
+            },
+            ".dynmatic-qps .child": {
+                "border-radius": "2px 2px 0px 0px",
+                "background-color": "var(--main-color)",
+                "transition": "height 0.3s ease-in-out"
+            }
+        })
+        this.$container = createElement("div").classes("container")
+        for (let i = 0; i < 3; i++) {
+            this.$container.append(createElement("div").classes("child"))
+        }
+        this.append(this.$container)
+        this.smooth = 0.01
+        this.datas = [
+            0.3, 0.7, 0.4
+        ]
+        this.states = Array.from(this.datas).map(e => e)
+        this.update()
+    }
+    update(mode = false) {
+        for (let idx in this.$container.children) {
+            let child = this.$container.children[idx]
+            let value = this.datas[idx]
+            if (mode) {
+                value += value > 0.5 ? -0.4 : 0.4
+            }
+            child.style("height", `${value * 100}%`)
+        }
+        setTimeout(() => {
+            this.update(!mode)
+        }, 750);
     }
 }
 const $userAuth = new UserAuth();
@@ -1415,12 +1481,24 @@ async function load() {
                             echart, base
                         };
                     })
+                    var current_qps = createElement("p")
+                    var counter = ref({}, {
+                        handler: (obj) => {
+                            current_qps.text(obj.object.value)
+                        }
+                    })
                     panel.classes("label-text").append(
                         createElement("div").classes("title").append(
                             createElement("p").i18n("dashboard.title.qps"),
+                            createElement("div").classes("qps-bar").append(
+                                new DynmaticQPS(),
+                                current_qps
+                            )
                         ),
                         instance
                     )
+                    $dashboard_locals[`${type}_qps_counter`] = counter
+                    counter.value = 0
                     var observer = new ResizeObserver(() => {
                         var width = calcElementWidth(parentElement)
                         if (width < 1280) {
@@ -2232,6 +2310,7 @@ async function load() {
                     handler: (object) => {
                         for (let [key, count] of Object.entries(config)) {
                             const instance = $dashboard_locals[`${key}_qps_echart`]
+                            const counter = $dashboard_locals[`${key}_qps_counter`]
                             var resp = object.object.resp;
                             var length = Object.keys(resp).length;
                             var keys = Object.keys(resp).slice(length - count);
@@ -2244,6 +2323,7 @@ async function load() {
                                 series: [{ name: 'QPS', data: values}]
                             }
                             instance.base.setOption(option)
+                            counter.value = Object.values(resp).slice(length - 1)[0]
                         }
                     }
                 })
