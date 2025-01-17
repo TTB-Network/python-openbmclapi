@@ -499,6 +499,12 @@ class FileListManager:
 
         await self.clusters.storage_manager.available()
         configurations: defaultdict[str, deque[OpenBMCLAPIConfiguration]] = defaultdict(deque)
+        # default configurations
+        configurations["default"].append(OpenBMCLAPIConfiguration(
+            source="default",
+            concurrency=10, # from bangbang93 openbmclapi configuration
+        ))
+        # get configurations
         for configuration in await asyncio.gather(*(asyncio.create_task(self._get_configuration(cluster)) for cluster in self.clusters.clusters)):
             for k, v in configuration.items():
                 configurations[k].append(v)
@@ -1042,6 +1048,8 @@ class Cluster:
                     }
                 }
             , 120)
+        except asyncio.CancelledError:
+            raise
         except:
             return
         finally:
@@ -1079,13 +1087,21 @@ class Cluster:
         ):
             total_counter.hits += counter.hits
             total_counter.bytes += counter.bytes
-        result = await self.socket_io.emit(
-            "keep-alive", {
-                "time": int(time.time() * 1000),
-                **asdict(total_counter)
-            }
-        )
-        if result.err or not result.ack:
+        result = None
+        try:
+            result = await self.socket_io.emit(
+                "keep-alive", {
+                    "time": int(time.time() * 1000),
+                    **asdict(total_counter)
+                },
+                timeout=10
+            )
+        except asyncio.CancelledError:
+            raise
+        except:
+            ...
+
+        if result is None or result.err or not result.ack:
             if self.keepalive_error >= 3:
                 logger.twarning("cluster.warning.kicked_by_remote", cluster=self.id)
                 await self.disable()
@@ -1106,7 +1122,8 @@ class Cluster:
         scheduler.cancel(self.delay_enable_task)
         if self.enabled or self.want_enable:
             result = await self.socket_io.emit(
-                "disable"
+                "disable",
+                timeout=10
             )
             clusters.status.exit()
             if result.err:
