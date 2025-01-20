@@ -1458,6 +1458,18 @@ async function load() {
                         var d = Tools.formatCountTime(e);
                         var running = Tools.formatCountTime(data.current_time - data.start_time);
                         var postfix = data.postfix == null ? "" : ", " + data.postfix;
+                        var current = data.current;
+                        var total = data.total;
+                        if (data.unit == "b") {
+                            speed = Tools.formatBytes(speed)
+                            current = Tools.formatBytes(current)
+                            total = Tools.formatBytes(total)
+                            data.unit = ""
+                        } else {
+                            speed = Tools.formatUnitNumber(speed)
+                            current = Tools.formatUnitNumber(current)
+                            total = Tools.formatUnitNumber(total)
+                        }
                         $dashboard_locals.info_progressbar_bar.postfix.text(`${data.current}/${data.total} [${running}<${d}, ${speed.toFixed(2)}${data.unit}/s${postfix}]`)
                     }
 
