@@ -1378,13 +1378,23 @@ async function load() {
                         object.finish = false;
                         clearInterval($dashboard_locals.info_runtime_task)
                         $dashboard_locals.info_runtime_task = Tools.runTask(setInterval, () => {
+                            if (object.start_time == null) {
+                                $dashboard_locals.runtime.time = Tools.formatTime(null);
+                                return;
+                            }
                             const runtime = object.current_time - object.start_time - object.diff / 1000.0 + (+new Date() - object.resp_timestamp) / 1000.0;
                             $dashboard_locals.runtime.time = Tools.formatTime(runtime);
                         }, 1000)
                     }
                 })
                 $dashboard_locals.info_task = Tools.runTask(setInterval, async () => {
-                    var resp = await $channel.send("runtime", +new Date())
+                    var resp = null;
+                    try {
+                        resp = await $channel.send("runtime", +new Date())
+                    } catch (e) {
+                        $dashboard_locals.info_runtime.start_time = null;
+                        return
+                    }
                     var start_time = resp.timestamp - resp.runtime;
                     // time fixed
                     for (const [key, value] of Object.entries({
