@@ -1470,7 +1470,7 @@ async function load() {
                             current = Tools.formatUnitNumber(current)
                             total = Tools.formatUnitNumber(total)
                         }
-                        $dashboard_locals.info_progressbar_bar.postfix.text(`${data.current}/${data.total} [${running}<${d}, ${speed}${data.unit}/s${postfix}]`)
+                        $dashboard_locals.info_progressbar_bar.postfix.text(`${current}/${total} [${running}<${d}, ${speed}${data.unit}/s${postfix}]`)
                     }
 
                     $dashboard_locals.info_progressbar.removeClasses("hidden")
