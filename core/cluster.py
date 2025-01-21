@@ -713,8 +713,10 @@ class EventLogger:
             "disable",
             "warden-error",
             "message",
-            "exception"
+            "exception",
         )
+        if config.const.debug:
+            self._cluster_event += ("keep-alive", )
 
     @property
     def file_path(self):
