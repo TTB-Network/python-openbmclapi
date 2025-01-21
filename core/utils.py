@@ -194,7 +194,7 @@ class WrapperTQDM:
         self.pbar = pbar
         self._rate = pbar.smoothing
         self.speed: deque[float] = deque(maxlen=int(1.0 / self._rate) * 30)
-        self._n = pbar.n
+        self._n = float(pbar.n)
         self._start = time.monotonic()
         self._time = time.monotonic()
         self._last_time = self._time
@@ -237,9 +237,11 @@ class WrapperTQDM:
 
     def update(self, n: float | None = 1):
         self.pbar.update(n)
+        self._n += n or 1
         if time.monotonic() - self._time > 1:
-            self.speed.append(self.pbar.n / (time.monotonic() - self._time))
+            self.speed.append(self._n / (time.monotonic() - self._time))
             self._time = time.monotonic()
+            self._n = 0
         
     def set_postfix_str(self, s: str):
         self.pbar.set_postfix_str(s)
