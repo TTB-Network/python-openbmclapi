@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://socialify.git.ci/TTB-Network/python-openbmclapi/image?description=1&font=Inter&language=1&logo=https%3A%2F%2Fpython-openbmclapi.ttb-network.top%2Fimg%2Flogo.svg&name=1&owner=1&pattern=Plus&theme=Dark">
-  <source media="(prefers-color-scheme: light)" srcset="https://socialify.git.ci/TTB-Network/python-openbmclapi/image?description=1&font=Inter&language=1&logo=https%3A%2F%2Fpython-openbmclapi.ttb-network.top%2Fimg%2Flogo.svg&name=1&owner=1&pattern=Plus&theme=Light">
+  <source media="(prefers-color-scheme: dark)" srcset="https://socialify.git.ci/TTB-Network/python-openbmclapi/image?description=1&font=Inter&language=1&logo=https%3A%2F%2Fd.kstore.dev%2Fdownload%2F7507%2Fv3_white.svg&name=1&owner=1&pattern=Plus&theme=Dark">
+  <source media="(prefers-color-scheme: light)" srcset="https://socialify.git.ci/TTB-Network/python-openbmclapi/image?description=1&font=Inter&language=1&logo=https%3A%2F%2Fd.kstore.dev%2Fdownload%2F7507%2Fv3.svg&name=1&owner=1&pattern=Plus&theme=Light">
   <img src="https://socialify.git.ci/TTB-Network/python-openbmclapi/image?description=1&font=Inter&language=1&logo=https%3A%2F%2Fpython-openbmclapi.ttb-network.top%2Fimg%2Flogo.svg&name=1&owner=1&pattern=Plus&theme=Auto">
 </picture>
 
