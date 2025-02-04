@@ -1044,7 +1044,7 @@ class Cluster:
                 "enable", {
                     "host": config.const.host,
                     "port": config.const.public_port or config.const.port,
-                    "byoc": clusters.byoc(),
+                    "byoc": clusters.byoc() or config.const.proxy,
                     "version": API_VERSION,
                     "noFastEnable": True,
                     "flavor": {
