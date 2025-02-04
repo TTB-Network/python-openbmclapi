@@ -836,16 +836,19 @@ class ClusterManager:
         self.storage_manager.init()
         logger.tdebug("cluster.debug.base_url", base_url=config.const.base_url)
 
-        certificates = await self.get_certificates()
-        for cert in certificates:
-            await web.start_private_server(
-                cert.cert, cert.key
-            )
-        # start web ssl
-        public_port = config.const.public_port
-        public_host = cert.host
+        if not config.const.proxy:
+            certificates = await self.get_certificates()
+            for cert in certificates:
+                await web.start_private_server(
+                    cert.cert, cert.key
+                )
+            # start web ssl
+            public_port = config.const.public_port
+            public_host = cert.host
 
-        logger.tdebug("cluster.debug.public_host", host=public_host, port=public_port, domain=cert.domain)
+            logger.tdebug("cluster.debug.public_host", host=public_host, port=public_port, domain=cert.domain)
+        else:
+            public_host = config.const.host
 
         # check files
         await self.file_manager.sync()
@@ -1384,7 +1387,7 @@ DEFAULT_MEASURES = [
 ]
 BANDWIDTH_COUNTER = BandwidthCounter()
 routes = web.routes
-aweb = web.web
+aweb = web.aiohttp_web
 clusters = ClusterManager()
 
 def convert_file_to_storage_file(file: File) -> SFile:

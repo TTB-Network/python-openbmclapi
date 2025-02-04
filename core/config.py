@@ -26,9 +26,9 @@ defaults = {
     "web": {
         "port": -1,
         "public_port": 6543,
-        "x_forwarded_for": 0,
         "backlog": 1024,
-        "sockets": 8
+        "sockets": 8,
+        "proxy": False
     },
     "clusters": [
         {
@@ -151,9 +151,9 @@ class Const:
         return max(Config.get("advanced.sync_interval", 600) or 600, 600)
     
     @property
-    def xff(self):
-        return Config.get("web.x_forwarded_for") or 0
-    
+    def proxy(self) -> bool:
+        return Config.get("web.proxy") or False
+
     @property
     def auto_sync_assets(self):
         return bool(Config.get("advanced.auto_sync_assets", True))

@@ -43,7 +43,7 @@ class Loglogger:
     def success(self, *args, **kwargs):
         self._log_with_args("SUCCESS", *args, **kwargs)
     def traceback(self, *args, **kwargs):
-        if args and kwargs:
+        if args or kwargs:
             self._log_with_args("ERROR", *args, **kwargs)
         self._log_with_args("ERROR", "\n" + traceback.format_exc())
 
@@ -68,7 +68,7 @@ class Loglogger:
             key, *args, **kwargs
         ))
     def ttraceback(self, key: str, *args, **kwargs):
-        if args and kwargs:
+        if args or kwargs:
             self._log_with_args("ERROR", locale.t(
                 key, *args, **kwargs
             ))
