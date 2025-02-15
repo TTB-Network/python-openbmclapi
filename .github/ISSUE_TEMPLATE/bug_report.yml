@@ -1,0 +1,64 @@
+name: "🐛 报告漏洞"
+description: 上报在使用 python-openbmclapi 时遇到的那些恼人的漏洞。
+labels: ["改进", "漏洞"]
+assignees: tianxiu2b2t, SilianZ
+body:
+  - type: markdown
+    attributes: 
+      value: |
+        你是一位 python-openbmclapi 的长期使用者。在一个阳光明媚的早晨 ☀️，你打开了 OpenBMCLAPI 仪表盘，你发现你的一个正在使用 python-openbmclapi 的节点的信用值掉到了 -1800，一怒之下，你打开 GitHub 来到了本仓库，来提交这个问候 python-openbmclapi 的那些开发者全家人的友好 Issue。
+  - type: checkboxes
+    attributes:
+      label: 在开始之前……
+      description: 请确认你已做好以下准备。
+      options:
+        - label: 我已在 [Issue](https://github.com/TTB-Network/python-openbmclapi/issues) 中搜索过我的要上报的漏洞，确定没有人提出过此漏洞。
+          required: true
+        - label: 我是用的是最新的 [Release 版本](https://github.com/TTB-Network/python-openbmclapi/releases/latest)而不是最新的 [master 分支](https://github.com/TTB-Network/python-openbmclapi/tree/master)。
+          required: true
+  - type: textarea
+    attributes:
+      label: 问题描述
+      description: 对遇到的漏洞进行清晰的描述。
+      placeholder: 我的 trust 被你们干到了 -1800。
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 问题重现
+      description: 重现问题的步骤。
+      placeholder: |
+        1. 我打开了程序。
+        2. 程序开始疯狂报错。
+  - type: textarea
+    attributes:
+      label: 运行环境
+      description: 向我们提供你运行时的环境有助于更快地解决问题。
+      placeholder: |
+        Python 版本：3.12.3。
+        运行系统：Windows 10。
+        分片大小：30G。
+  - type: dropdown
+    attributes:
+      label: 节点类型
+      options:
+        - 全量
+        - 分片
+      default: 0
+  - type: textarea
+    attributes:
+      label: 运行日志或截图
+      description: |
+        “在没有错误日志的情况下诊断任何问题无异于闭眼开车。” —— Apache 文档《Getting Started》
+      placeholder: |
+        你可以上传错误日志文件，亦可以在这里粘贴你的错误日志信息。
+      render: shell
+  - type: textarea
+    attributes:
+      label: 备注
+      description: 任何其他的内容。
+  - type: checkboxes
+    attributes:
+      label: 如果……
+      options: 
+       - label: 如果可以的话，我可以帮助或自行修复这个漏洞。
