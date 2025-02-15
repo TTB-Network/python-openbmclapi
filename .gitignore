@@ -1,0 +1,13 @@
+.lh
+.venv
+.ssl
+logs
+bmclapi
+config
+cache
+
+
+start.sh
+
+
+**/__pycache__
