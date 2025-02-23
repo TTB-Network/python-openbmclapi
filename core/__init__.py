@@ -9,7 +9,7 @@ import anyio
 import fastapi
 
 from core import units
-from core.abc import ResponseFileLocal, ResponseFileMemory, ResponseFileRemote
+from core.abc import ResponseFileLocal, ResponseFileMemory, ResponseFileNotFound, ResponseFileRemote
 
 from .locale import load_languages
 from .cluster import ClusterManager
@@ -126,7 +126,8 @@ async def download(request: fastapi.Request, hash: str, s: str, e: str, name: Op
     resp_headers = {}
     if name:
         resp_headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{urlparse.quote(name)}"
-
+    resp_headers["X-BMCLAPI-Hash"] = hash
+    resp_headers["X-BMCLAPI-Size"] = str(size)
     clusters.hit(cluster_id, size or 0)
 
     if isinstance(file, ResponseFileLocal):
@@ -143,25 +144,36 @@ async def download(request: fastapi.Request, hash: str, s: str, e: str, name: Op
     elif isinstance(file, ResponseFileMemory):
         result = b''
         r = utils.parse_range(range or "")
+        if r is not None:
+            if r.start >= len(file.data) or r.end is not None and (r.end > len(file.data) or r.end < r.start):
+                return fastapi.responses.Response(
+                    status_code=416,
+                    content="Range Not Satisfiable"
+                )
         status = 200
         if r is None:
             result = file.data
         elif r.end is None:
             result = file.data[r.start:]
         else:
-            result = file.data[r.start:r.end]
+            result = file.data[r.start:r.end + 1]
         if r is not None:
             status = 206
             resp_headers["Content-Range"] = f"bytes {r.start}-{len(result) + r.start - 1}/{len(file.data)}"
+        resp_headers["Content-Length"] = str(len(result))
         return fastapi.responses.StreamingResponse(
             io.BytesIO(result),
             status_code=status,
             headers=resp_headers,
         )
+    elif isinstance(file, ResponseFileNotFound):
+        return fastapi.responses.Response(
+            status_code=404,
+            content="Not Found"
+        )
     else:
         return fastapi.responses.Response(
-            status_code=500,
-            content="Internal Server Error"
+            status_code=200,
         )
     
 if cfg.access_log:

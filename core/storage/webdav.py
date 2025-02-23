@@ -44,8 +44,8 @@ class WebDavStorage(abc.Storage):
     async def _check(self):
         while 1:
             try:
-                await self.client.upload_to(io.BytesIO(str(time.perf_counter_ns()).encode()), ".check")
-                await self.client.clean(".check")
+                await self.client.upload_to(io.BytesIO(str(time.perf_counter_ns()).encode()), ".py_check")
+                await self.client.clean(".py_check")
                 self.online = True
             except:
                 self.online = False

@@ -4,7 +4,7 @@ import tempfile
 import anyio.abc
 
 from core import utils
-from core.abc import BMCLAPIFile, ResponseFile, ResponseFileMemory, ResponseFileLocal, ResponseFileRemote
+from core.abc import BMCLAPIFile, ResponseFile, ResponseFileNotFound, ResponseFileMemory, ResponseFileLocal, ResponseFileRemote
 from ..logger import logger
 
 RANGE = range(0x00, 0xFF + 1)

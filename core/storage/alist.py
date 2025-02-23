@@ -80,7 +80,7 @@ class AlistStorage(abc.Storage):
                     async with session.put(
                         "/api/fs/put",
                         headers={
-                            "File-Path": str(self._path / ".check"),
+                            "File-Path": str(self._path / ".py_check"),
                         },
                         data=str(time.perf_counter_ns())
                     ) as resp:
@@ -90,7 +90,7 @@ class AlistStorage(abc.Storage):
                         data={
                             "dir": str(self._path),
                             "names": [
-                                ".check"
+                                ".py_check"
                             ]
                         }
                     ) as resp:

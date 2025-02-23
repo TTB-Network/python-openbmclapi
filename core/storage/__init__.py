@@ -113,6 +113,7 @@ class CheckStorage:
 
         for file in await self.storage.list_download_files(muitlpbar):
             self.files[file.name] = file
+        muitlpbar.update(1)
 
         # start check
         # with concurreny

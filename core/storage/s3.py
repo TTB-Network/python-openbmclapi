@@ -1,4 +1,5 @@
 import inspect
+from io import BytesIO
 import tempfile
 import time
 from typing import Any
@@ -7,6 +8,8 @@ import anyio.abc
 import anyio.to_thread
 import aioboto3
 import urllib.parse as urlparse
+
+from core import logger
 from . import abc
 import cachetools
 
@@ -60,9 +63,8 @@ class S3Storage(abc.Storage):
         self.custom_s3_host = kwargs.get("custom_s3_host", "")
         self.public_endpoint = kwargs.get("public_endpoint", "")
         self.session = aioboto3.Session()
-        self.list_lock = anyio.Lock()
-        self.cache_list_bucket: dict[str, abc.FileInfo] = {}
-        self.last_cache: float = 0
+        self._cache: cachetools.TTLCache[str, abc.ResponseFile] = cachetools.TTLCache(maxsize=10000, ttl=60)
+        self._cache_files: cachetools.TTLCache[str, abc.FileInfo] = cachetools.TTLCache(maxsize=10000, ttl=60)
         self._config = {
             "endpoint_url": self.endpoint,
             "aws_access_key_id": self.access_key,
@@ -79,11 +81,6 @@ class S3Storage(abc.Storage):
         await super().setup(task_group)
 
         self.task_group.start_soon(self._check)
-
-    async def list_bucket(
-        self,
-    ):
-        ...
 
     async def list_files(
         self,
@@ -148,31 +145,61 @@ class S3Storage(abc.Storage):
             obj = await bucket.Object(str(self.path / path))
             await obj.upload_fileobj(tmp_file)
         return True
-        
+
 
     async def _check(
         self,
     ):
         while 1:
             try:
-                await self.list_bucket()
+                async with self.session.resource(
+                    "s3",
+                    endpoint_url=self.endpoint,
+                    aws_access_key_id=self.access_key,
+                    aws_secret_access_key=self.secret_key,
+                    region_name=self.region
+                ) as resource:
+                    bucket = await resource.Bucket(self.bucket)
+                    obj = await bucket.Object(str(self.path / ".py_check"))
+                    await obj.upload_fileobj(BytesIO(str(time.perf_counter_ns()).encode()))
+                    await obj.delete()
                 self.online = True
             except:
                 self.online = False
+                logger.traceback()
             finally:
                 self.emit_status()
-                await anyio.sleep(300)
+                await anyio.sleep(60)
     
     async def get_response_file(self, hash: str) -> abc.ResponseFile:
         cpath = str(self.path / "download" / hash[:2] / hash)
-        if cpath not in self.cache_list_bucket:
-            return abc.ResponseFile(
-                0
-            )
+        fileinfo = self._cache_files.get(hash)
+
+        if fileinfo is None:
+            async with self.session.resource(
+                "s3",
+                endpoint_url=self.endpoint,
+                aws_access_key_id=self.access_key,
+                aws_secret_access_key=self.secret_key,
+                region_name=self.region
+            ) as resource:
+                bucket = await resource.Bucket(self.bucket)
+                obj = await bucket.Object(cpath)
+                info = await obj.get()
+                fileinfo = abc.FileInfo(
+                    name=hash,
+                    size=info["ContentLength"],
+                    path=cpath
+                )
+                self._cache_files[hash] = fileinfo
+        
+        if fileinfo is None:
+            return abc.ResponseFileNotFound()
+
         if self.custom_s3_host:
             return abc.ResponseFileRemote(
                 f"{self.custom_s3_host}{cpath}",
-                self.cache_list_bucket[cpath].size
+                fileinfo.size
             )
         if self.public_endpoint:
             async with self.session.client(
@@ -204,7 +231,7 @@ class S3Storage(abc.Storage):
                 )
                 return abc.ResponseFileRemote(
                     url,
-                    self.cache_list_bucket[cpath].size
+                    fileinfo.size
                 )
         async with self.session.resource(
             "s3",

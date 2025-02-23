@@ -3,7 +3,7 @@ import tempfile
 import time
 import anyio.abc
 
-from core.abc import ResponseFileLocal
+from core.abc import ResponseFile, ResponseFileLocal, ResponseFileNotFound
 from ..logger import logger
 
 from .abc import FileInfo, Storage
@@ -67,7 +67,7 @@ class LocalStorage(Storage):
     async def _check(
         self,
     ):
-        file = Path(str(self.path)) / ".check"
+        file = Path(str(self.path)) / ".py_check"
         while 1:
             try:
                 file.write_text(str(time.perf_counter_ns()))
@@ -80,10 +80,10 @@ class LocalStorage(Storage):
                 self.emit_status()
                 await anyio.sleep(60)
                 
-    async def get_response_file(self, hash: str) -> ResponseFileLocal:
+    async def get_response_file(self, hash: str) -> ResponseFile:
         p = Path(str(self.path)) / "download" / hash[:2] / hash
         if not p.exists():
-            raise FileNotFoundError
+            return ResponseFileNotFound()
         size = p.stat().st_size
         return ResponseFileLocal(
             size=size,

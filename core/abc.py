@@ -121,3 +121,12 @@ class ResponseFileMemory(ResponseFile):
 
     def __repr__(self) -> str:
         return f'ResponseFileMemory(data={self.data}, size={self.size})'
+    
+class ResponseFileNotFound(ResponseFile):
+    def __init__(
+        self,
+    ):
+        super().__init__(-1)
+
+    def __repr__(self) -> str:
+        return f'ResponseFileNotFound(size={self.size})'

@@ -471,7 +471,6 @@ class DownloadManager:
             with tempfile.NamedTemporaryFile(
                 dir=self._cache_dir,
             ) as tmp_file:
-                print(pbar.position)
                 try:
                     async with session.get(
                         file.path

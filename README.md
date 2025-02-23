@@ -139,7 +139,7 @@ python main.py
 
 4. 开始 for Docker
 ```bash
-docker run -d --restart=always -p 6543:6543 -v /path/to/your/config.yaml:/app/config.yaml -v /path/to/your/bmclapi:/app/bmclapi --name python-openbmclapi atianxiua/python-openbmclapi:latest
+docker run -d --restart=always -p 6543:6543 -v /path/to/your/config.yaml:opt/python-openbmclapi/config/config.yaml -v /path/to/your/bmclapi:opt/python-openbmclapi/bmclapi --name python-openbmclapi atianxiua/python-openbmclapi:latest
 ```
 
 # TODO
