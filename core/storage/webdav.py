@@ -13,6 +13,7 @@ from . import abc
 import aiowebdav
 
 class WebDavStorage(abc.Storage):
+    type = "webdav"
     def __init__(
         self,
         name: str,

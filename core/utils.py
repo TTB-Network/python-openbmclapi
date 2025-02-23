@@ -7,6 +7,7 @@ from typing import Any, Awaitable, Callable, Optional, Coroutine, MutableMapping
 
 import anyio
 import anyio.abc
+from tqdm import tqdm
 
 from .abc import CertificateType
 from .config import cfg
@@ -127,6 +128,35 @@ class CustomLock:
             await fut.wait()
         finally:
             self._fut.remove(fut)
+
+class Queue[T]:
+    def __init__(
+        self,
+    ):
+        self._items: deque[T] = deque()
+        self._fut: deque[anyio.Event] = deque()
+
+    def put_item(self, item: T):
+        self._items.append(item)
+        self._wakeup_first()
+
+    def _wakeup_first(self):
+        if self._fut and self._items:
+            fut = self._fut.popleft()
+            fut.set()
+
+    async def get_item(self):
+        if self._fut or not self._items:
+            fut = anyio.Event()
+            self._fut.append(fut)
+            self._wakeup_first()
+            await fut.wait()
+        return self._items.popleft()
+
+    def __len__(self):
+        return len(self._items)
+    
+
 
 class Lock:
     def __init__(
@@ -308,6 +338,94 @@ def parse_range(range: str):
         start=int(start),
         end=int(end) if end else None
     )
+
+class SubTQDM:
+    def __init__(self, total: float, description: str = "", position: int = 0, leave: bool = True, **kwargs):
+        self.total = total
+        self.description = description
+        self.position = position
+        self.leave = leave
+        self.kwargs = kwargs
+
+        # 创建独立的 tqdm 进度条
+        self._tqdm = tqdm(
+            total=total,
+            desc=description,
+            position=position,
+            leave=leave,
+            dynamic_ncols=True,
+            **kwargs
+        )
+
+    def update(self, n: float = 1):
+        self._tqdm.update(n)
+
+    def close(self):
+        self._tqdm.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+class MultiTQDM:
+    def __init__(self, total: float = 0, description: str = "", position: int = 0, **kwargs):
+        self.total = total
+        self.description = description
+        self.position = position
+        self.kwargs = kwargs
+
+        # 主进度条
+        self._total_tqdm = tqdm(
+            total=total,
+            desc=description,
+            position=position,
+            dynamic_ncols=True,
+            **kwargs
+        )
+
+        # 子进度条列表
+        self._current_bars = []
+        self._next_position = position + 1  # 下一个可用的位置
+
+    @property
+    def total_tqdm(self):
+        return self._total_tqdm
+
+    def sub(self, total: float = 0, description: str = "", **kwargs) -> SubTQDM:
+        """创建一个新的子进度条"""
+        sub_tqdm = SubTQDM(
+            total=total,
+            description=description,
+            position=self._next_position,
+            **kwargs
+        )
+        self._current_bars.append(sub_tqdm)
+        self._next_position += 1
+        return sub_tqdm
+
+    def update(self, n: float = 1):
+        self._total_tqdm.update(n)
+
+    def set_postfix_str(self, postfix: str):
+        self._total_tqdm.set_postfix_str(postfix)
+
+    def close(self):
+        """关闭所有进度条"""
+        for sub_tqdm in self._current_bars:
+            sub_tqdm.close()
+        self._total_tqdm.close()
+
+    def __del__(self):
+        """在 MultiTQDM 被销毁时，关闭所有子进度条"""
+        self.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
 class RangeResult:
     def __init__(

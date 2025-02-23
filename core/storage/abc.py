@@ -68,16 +68,22 @@ class Storage(metaclass=abc.ABCMeta):
     
     async def list_download_files(
         self,
+        muitlpbar: utils.MultiTQDM
     ):
         res: list[FileInfo] = []
-        async def works(root_ids: list[int]):
-            for root_id in root_ids:
-                files = await self.list_files(f"download/{root_id:02x}")
-                res.extend(files)
-        async with anyio.create_task_group() as task_group:
-            work = utils.split_workload(list(RANGE), 10)
-            for w in work:
-                task_group.start_soon(works, w)
+        with muitlpbar.sub(
+            256,
+            description=f"Listing files in {self.name}({self.type})"
+        ) as pbar:
+            async def works(root_ids: list[int]):
+                for root_id in root_ids:
+                    files = await self.list_files(f"download/{root_id:02x}")
+                    res.extend(files)
+                    pbar.update(1)
+            async with anyio.create_task_group() as task_group:
+                work = utils.split_workload(list(RANGE), 10)
+                for w in work:
+                    task_group.start_soon(works, w)
         return res
 
     @abc.abstractmethod

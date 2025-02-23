@@ -109,9 +109,9 @@ class CheckStorage:
         self.files: dict[str, FileInfo] = {}
         self.missing_files: set[BMCLAPIFile] = set()
 
-    async def get_missing_files(self, bmclapi_files: set[BMCLAPIFile]):
+    async def get_missing_files(self, bmclapi_files: set[BMCLAPIFile], muitlpbar: utils.MultiTQDM):
 
-        for file in await self.storage.list_download_files():
+        for file in await self.storage.list_download_files(muitlpbar):
             self.files[file.name] = file
 
         # start check

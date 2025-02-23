@@ -402,12 +402,12 @@ class DownloadManager:
         self._missing_files = missing_files
         self._clusters = clusters
         self._storages = storages
-        self._pbar = tqdm.tqdm(
-            total=sum(f.size for f in missing_files),
-            desc="Download",
-            unit="b",
-            unit_divisor=1024,
+        self._pbar = utils.MultiTQDM(
+            total=sum(missing_file.size for missing_file in missing_files),
+            description="Download",
+            unit="B",
             unit_scale=True,
+            unit_divisor=1024,
         )
         self._failed = 0
         self._success = 0
@@ -430,13 +430,16 @@ class DownloadManager:
         configuration = await self.get_configurations()
         logger.tinfo("download.configuration", source=configuration.source, concurrency=configuration.concurrency)
         async with anyio.create_task_group() as task_group:
-            missfiles = deque(self._missing_files)
+            queue = utils.Queue()
+            for file in self._missing_files:
+                queue.put_item(file)
             for _ in range(configuration.concurrency):
-                task_group.start_soon(self._download_files, missfiles)
+                task_group.start_soon(self._download_files, queue, _)
 
     async def _download_files(
         self,
-        files: deque[BMCLAPIFile]
+        files: utils.Queue[BMCLAPIFile],
+        worker_id: int
     ):
         async with aiohttp.ClientSession(
             base_url=cfg.base_url,
@@ -445,14 +448,21 @@ class DownloadManager:
                 "User-Agent": USER_AGENT,
             }
         ) as session:
-            while len(files) != 0:
-                file = files.popleft()
-                await self._download_file(file, session)
+            with self._pbar.sub(0, f"Worker {worker_id}", unit="B", unit_scale=True, unit_divisor=1024) as pbar:
+                while len(files) != 0:
+                    file = await files.get_item()
+                    pbar._tqdm.total = file.size
+                    pbar._tqdm.n = 0
+                    pbar._tqdm.set_description_str(file.path)
+                    pbar._tqdm.refresh()
+                    pbar._tqdm.update(0)
+                    await self._download_file(file, session, pbar)
 
     async def _download_file(
         self,
         file: BMCLAPIFile,
-        session: aiohttp.ClientSession
+        session: aiohttp.ClientSession,
+        pbar: utils.SubTQDM
     ):
         last_error = None
         for _ in range(10):
@@ -461,6 +471,7 @@ class DownloadManager:
             with tempfile.NamedTemporaryFile(
                 dir=self._cache_dir,
             ) as tmp_file:
+                print(pbar.position)
                 try:
                     async with session.get(
                         file.path
@@ -471,6 +482,7 @@ class DownloadManager:
                             inc = len(data)
                             size += inc
                             self._pbar.update(inc)
+                            pbar.update(inc)
                         if hash.hexdigest() != file.hash or size != file.size:
                             await anyio.sleep(50)
                             raise Exception(f"hash mismatch, got {hash.hexdigest()} expected {file.hash}")
@@ -478,6 +490,7 @@ class DownloadManager:
                 except Exception as e:
                     last_error = e
                     self._pbar.update(-size)
+                    pbar.update(-size)
                     self.update_failed()
                     continue
                 self.update_success()
@@ -585,11 +598,15 @@ class ClusterManager:
         logger.tinfo("cluster.sync.files", count=len(files), size=units.format_bytes(total_size), last_modified=units.format_datetime_from_timestamp(last_modified))
         
         check_storages = [CheckStorage(storage) for storage in self.storages.storages]
-        missing_files: set[BMCLAPIFile] = set().union(
-            *await utils.gather(*[
-                check_storage.get_missing_files(files) for check_storage in check_storages
-            ])
-        )
+        with utils.MultiTQDM(
+            len(check_storages),
+            description="Listing files"
+        ) as pbar:
+            missing_files: set[BMCLAPIFile] = set().union(
+                *await utils.gather(*[
+                    check_storage.get_missing_files(files, pbar) for check_storage in check_storages
+                ])
+            )
         if len(missing_files) > 0:
             logger.tinfo("cluster.sync.missing_files", count=len(missing_files), size=units.format_bytes(sum([f.size for f in missing_files])))
             download_manager = DownloadManager(missing_files, self.clusters, check_storages)

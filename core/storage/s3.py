@@ -1,5 +1,7 @@
+import inspect
 import tempfile
 import time
+from typing import Any
 import aioboto3.session
 import anyio.abc
 import anyio.to_thread
@@ -37,6 +39,7 @@ class S3Response:
         return f"S3Response(metadata={self.metadata}, data={self.raw_data})"
 
 class S3Storage(abc.Storage):
+    type = "s3"
     def __init__(
         self,
         name: str,
@@ -53,12 +56,21 @@ class S3Storage(abc.Storage):
         self.bucket = bucket
         self.access_key = access_key
         self.secret_key = secret_key
+        self.region = kwargs.get("region")
         self.custom_s3_host = kwargs.get("custom_s3_host", "")
         self.public_endpoint = kwargs.get("public_endpoint", "")
         self.session = aioboto3.Session()
         self.list_lock = anyio.Lock()
         self.cache_list_bucket: dict[str, abc.FileInfo] = {}
         self.last_cache: float = 0
+        self._config = {
+            "endpoint_url": self.endpoint,
+            "aws_access_key_id": self.access_key,
+            "aws_secret_access_key": self.secret_key,
+        }
+        if self.region:
+            self._config["region_name"] = self.region
+            
         
     async def setup(
         self,
@@ -71,37 +83,52 @@ class S3Storage(abc.Storage):
     async def list_bucket(
         self,
     ):
-        async with self.list_lock:
-            if time.perf_counter() - self.last_cache < 60:
-                return
-            async with self.session.resource(
-                "s3",
-                endpoint_url=self.endpoint,
-                aws_access_key_id=self.access_key,
-                aws_secret_access_key=self.secret_key,
-            ) as resource:
-                bucket = await resource.Bucket(self.bucket)
-                self.cache_list_bucket = {}
-                async for obj in bucket.objects.all():
-                    cp = abc.CPath("/" + obj.key)
-                    self.cache_list_bucket[str(cp)] = abc.FileInfo(
-                        path=str(cp),
-                        name=cp.name,
-                        size=await obj.size,
-                    )
-                self.last_cache = time.perf_counter()
+        ...
 
     async def list_files(
         self,
         path: str
     ) -> list[abc.FileInfo]:
-        await self.list_bucket()
-        # find by keys
         p = str(self.path / path)
         res = []
-        for key in self.cache_list_bucket.keys():
-            if str(abc.CPath(key).parents[-1]) == p:
-                res.append(self.cache_list_bucket[key])
+        async with self.session.client(
+            "s3",
+            endpoint_url=self.endpoint,
+            aws_access_key_id=self.access_key,
+            aws_secret_access_key=self.secret_key,
+            region_name=self.region
+        ) as client: # type: ignore
+            continuation_token = None
+            while True:
+                kwargs = {
+                    "Bucket": self.bucket,
+                    "Prefix": p[1:],
+                    #"Delimiter": "/",  # 使用分隔符来模拟文件夹结构
+                    #"MaxKeys": 1000
+                }
+                if continuation_token:
+                    kwargs["ContinuationToken"] = continuation_token
+
+                response = await client.list_objects_v2(**kwargs)
+                contents = response.get("Contents", [])
+                for content in contents:
+                    file_path = f"/{content['Key']}"
+                    if "/" in file_path:
+                        file_name = file_path.rsplit("/", 1)[1]
+                    else:
+                        file_name = file_path[1:]
+                    res.append(abc.FileInfo(
+                        name=file_name,
+                        size=content["Size"],
+                        path=f'/{content["Key"]}',
+                    ))
+
+                #res.extend(response.get("Contents", []))  # 添加文件
+                #res.extend(response.get("CommonPrefixes", []))  # 添加子目录
+
+                if "NextContinuationToken" not in response:
+                    break
+                continuation_token = response["NextContinuationToken"]
         return res
 
 
@@ -115,6 +142,7 @@ class S3Storage(abc.Storage):
             endpoint_url=self.endpoint,
             aws_access_key_id=self.access_key,
             aws_secret_access_key=self.secret_key,
+            region_name=self.region
         ) as resource:
             bucket = await resource.Bucket(self.bucket)
             obj = await bucket.Object(str(self.path / path))
@@ -152,6 +180,7 @@ class S3Storage(abc.Storage):
                 endpoint_url=self.endpoint,
                 aws_access_key_id=self.access_key,
                 aws_secret_access_key=self.secret_key,
+                region_name=self.region
             ) as client: # type: ignore
                 url = await client.generate_presigned_url(
                     ClientMethod="get_object",
@@ -182,6 +211,7 @@ class S3Storage(abc.Storage):
             endpoint_url=self.endpoint,
             aws_access_key_id=self.access_key,
             aws_secret_access_key=self.secret_key,
+            region_name=self.region
         ) as resource:
             bucket = await resource.Bucket(self.bucket)
             obj = await bucket.Object(cpath)

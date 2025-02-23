@@ -1,7 +1,6 @@
 import asyncio
 import base64
 import hashlib
-import hmac
 import io
 import time
 from typing import Optional
@@ -10,11 +9,11 @@ import anyio
 import fastapi
 
 from core import units
-from core.abc import ResponseFile, ResponseFileLocal, ResponseFileMemory, ResponseFileRemote
+from core.abc import ResponseFileLocal, ResponseFileMemory, ResponseFileRemote
 
 from .locale import load_languages
 from .cluster import ClusterManager
-from .config import API_VERSION, ROOT_PATH, VERSION, cfg
+from .config import API_VERSION, VERSION, cfg
 from .logger import logger
 from .utils import runtime
 from . import web

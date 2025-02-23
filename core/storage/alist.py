@@ -24,6 +24,7 @@ class AlistResponse:
         return f"<AlistResponse code={self.code} data={self.data} message={self.message}>"
 
 class AlistStorage(abc.Storage):
+    type = "alist"
     def __init__(
         self,
         name: str,
