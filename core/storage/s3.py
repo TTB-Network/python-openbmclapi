@@ -174,6 +174,9 @@ class S3Storage(abc.Storage):
     async def get_response_file(self, hash: str) -> abc.ResponseFile:
         cpath = str(self.path / "download" / hash[:2] / hash)
         fileinfo = self._cache_files.get(hash)
+        file = self._cache.get(hash)
+        if file is not None:
+            return file
 
         if fileinfo is None:
             async with self.session.resource(
@@ -204,7 +207,7 @@ class S3Storage(abc.Storage):
         if self.public_endpoint:
             async with self.session.client(
                 "s3",
-                endpoint_url=self.endpoint,
+                endpoint_url=self.public_endpoint,
                 aws_access_key_id=self.access_key,
                 aws_secret_access_key=self.secret_key,
                 region_name=self.region
@@ -229,10 +232,12 @@ class S3Storage(abc.Storage):
                         urlobj.fragment,
                     )
                 )
-                return abc.ResponseFileRemote(
+                self._cache[hash] = abc.ResponseFileRemote(
                     url,
                     fileinfo.size
                 )
+                return self._cache[hash]
+            
         async with self.session.resource(
             "s3",
             endpoint_url=self.endpoint,
@@ -245,8 +250,9 @@ class S3Storage(abc.Storage):
             # read data
             content = await obj.get()
             size = content['ContentLength']
-            return abc.ResponseFileMemory(
+            self._cache[hash] = abc.ResponseFileMemory(
                 await content['Body'].read(),
                 size
             )
+        return self._cache[hash]
             
