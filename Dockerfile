@@ -1,4 +1,4 @@
-FROM python:3.12-alpine
+FROM python:3.12-slim-alpine
 
 LABEL org.opencontainers.image.url https://python-openbmclapi.ttb-network.top/
 LABEL org.opencontainers.image.source https://github.com/TTB-Network/python-openbmclapi

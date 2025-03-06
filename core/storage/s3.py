@@ -171,10 +171,11 @@ class S3Storage(abc.Storage):
                 self.emit_status()
                 await anyio.sleep(60)
     
-    async def get_response_file(self, hash: str) -> abc.ResponseFile:
-        cpath = str(self.path / "download" / hash[:2] / hash)
-        fileinfo = self._cache_files.get(hash)
-        file = self._cache.get(hash)
+    async def get_file(self, path: str) -> abc.ResponseFile:
+        cname = str((self.path / path).name)
+        cpath = str(self.path / path)
+        fileinfo = self._cache_files.get(path)
+        file = self._cache.get(path)
         if file is not None:
             return file
 
@@ -190,11 +191,11 @@ class S3Storage(abc.Storage):
                 obj = await bucket.Object(cpath)
                 info = await obj.get()
                 fileinfo = abc.FileInfo(
-                    name=hash,
+                    name=cname,
                     size=info["ContentLength"],
                     path=cpath
                 )
-                self._cache_files[hash] = fileinfo
+                self._cache_files[path] = fileinfo
         
         if fileinfo is None:
             return abc.ResponseFileNotFound()
@@ -232,11 +233,11 @@ class S3Storage(abc.Storage):
                         urlobj.fragment,
                     )
                 )
-                self._cache[hash] = abc.ResponseFileRemote(
+                self._cache[path] = abc.ResponseFileRemote(
                     url,
                     fileinfo.size
                 )
-                return self._cache[hash]
+                return self._cache[path]
             
         async with self.session.resource(
             "s3",
@@ -250,9 +251,9 @@ class S3Storage(abc.Storage):
             # read data
             content = await obj.get()
             size = content['ContentLength']
-            self._cache[hash] = abc.ResponseFileMemory(
+            self._cache[path] = abc.ResponseFileMemory(
                 await content['Body'].read(),
                 size
             )
-        return self._cache[hash]
+        return self._cache[path]
             

@@ -79,9 +79,9 @@ class LocalStorage(Storage):
             finally:
                 self.emit_status()
                 await anyio.sleep(60)
-                
-    async def get_response_file(self, hash: str) -> ResponseFile:
-        p = Path(str(self.path)) / "download" / hash[:2] / hash
+        
+    async def get_file(self, path: str) -> ResponseFile:
+        p = Path(str(self.path / path))
         if not p.exists():
             return ResponseFileNotFound()
         size = p.stat().st_size
@@ -89,5 +89,4 @@ class LocalStorage(Storage):
             size=size,
             path=p
         )
-        
     

@@ -104,6 +104,16 @@ async def measure(size: int, s: str, e: str):
     cluster_id = get_cluster_from_sign(f"/measure/{size}", s, e)
     if cluster_id is None:
         return FORBIDDEN
+
+    file = None
+
+    if cfg.storage_measure:
+        file = await clusters.get_measure_file(size)
+    if file is not None and isinstance(file, ResponseFileRemote):
+        return fastapi.responses.RedirectResponse(
+            file.url,
+            status_code=302,
+        )
     async def iter():
         for _ in range(size):
             yield b'0' * 1024 * 1024

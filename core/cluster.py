@@ -1,4 +1,6 @@
 from collections import deque
+from contextlib import contextmanager
+import contextlib
 import datetime
 import hmac
 from pathlib import Path
@@ -336,32 +338,33 @@ class Cluster:
             return
         self._want_enable = True
         logger.tinfo("cluster.want_enable", id=self.id)
-        try:
-            res = await self.emit("enable", {
-                "host": cfg.host,
-                "port": cfg.web_public_port,
-                "version": API_VERSION,
-                "noFastEnable": False,
-                "byoc": utils.get_certificate_type() != CertificateType.CLUSTER,
-                "flavor": {
-                    "runtime": "python",
-                    "storage": "local"
-                }
-            }, 300)
-            if res.err is not None:
-                logger.terror("cluster.enable", id=self.id, err=res.err)
-                return
-            
-            self._enabled = True
-            self._retry_times = 0
-            logger.tinfo("cluster.enable", id=self.id)
-            self._keepalive_lock.release()
-        except:
-            logger.terror("cluster.enable.timeout", id=self.id)
-        finally:
-            self._want_enable = False
-            if not self._enabled:
-                self.retry()
+        async with sem:
+            try:
+                res = await self.emit("enable", {
+                    "host": cfg.host,
+                    "port": cfg.web_public_port,
+                    "version": API_VERSION,
+                    "noFastEnable": False,
+                    "byoc": utils.get_certificate_type() != CertificateType.CLUSTER,
+                    "flavor": {
+                        "runtime": "python",
+                        "storage": "local"
+                    }
+                }, 300)
+                if res.err is not None:
+                    logger.terror("cluster.enable", id=self.id, err=res.err)
+                    return
+                
+                self._enabled = True
+                self._retry_times = 0
+                logger.tinfo("cluster.enable", id=self.id)
+                self._keepalive_lock.release()
+            except:
+                logger.terror("cluster.enable.timeout", id=self.id)
+            finally:
+                self._want_enable = False
+                if not self._enabled:
+                    self.retry()
 
     async def disable(self):
         if not self._enabled:
@@ -639,3 +642,18 @@ class ClusterManager:
                 0
             )
         return await storage.get_response_file(hash)
+    
+    async def get_measure_file(self, size: int) -> ResponseFile:
+        if not self.storages._online_storages:
+            logger.twarning("cluster.get_measure_file.no_storage")
+            return ResponseFile(
+                0
+            )
+        storage = self.storages._online_storages[0]
+        return await storage.get_file(f"measure/{size}")
+    
+
+if cfg.concurreny_enable_cluster:
+    sem = anyio.Semaphore(1)
+else:
+    sem = contextlib.nullcontext()

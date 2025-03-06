@@ -94,10 +94,16 @@ class Storage(metaclass=abc.ABCMeta):
     ):
         raise NotImplementedError
 
-    @abc.abstractmethod
     async def get_response_file(
         self,
         hash: str
+    ) -> ResponseFile:
+        return await self.get_file(f"download/{hash[:2]}/{hash}")
+
+    @abc.abstractmethod
+    async def get_file(
+        self,
+        path: str,
     ) -> ResponseFile:
         raise NotImplementedError
 

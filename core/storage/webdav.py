@@ -71,9 +71,9 @@ class WebDavStorage(abc.Storage):
         return result
         
 
-    async def get_response_file(self, hash: str) -> abc.ResponseFile:
-        path = str(self._path / "download" / hash[:2] / hash)
-        info = self._cache_files.get(hash)
+    async def get_file(self, path: str) -> abc.ResponseFile:
+        path = str(self._path / path)
+        info = self._cache_files.get(path)
         if info is None and await self.client.check(path):
             res = await self.client.info(path)
             info = abc.FileInfo(
@@ -81,10 +81,10 @@ class WebDavStorage(abc.Storage):
                 size=int(res['size']),
                 name=res['name'],
             )
-            self._cache_files[hash] = info
+            self._cache_files[path] = info
         if info is None:
             return abc.ResponseFile(0)
-        file = self._cache_redirects.get(hash)
+        file = self._cache_redirects.get(path)
         if file is not None:
             return file
         async with aiohttp.ClientSession(
@@ -109,9 +109,11 @@ class WebDavStorage(abc.Storage):
                     )
                 else:
                     logger.error(f"WebDavStorage: Unknown status code {resp.status} for {path}")
-        self._cache_redirects[hash] = file or abc.ResponseFile(0)
-        return self._cache_redirects[hash]
+        self._cache_redirects[path] = file or abc.ResponseFile(0)
+        return self._cache_redirects[path]
+
     
+
     async def _mkdir(self, parent: abc.CPath):
         async with self._mkdir_lock:
             for parent in parent.parents:

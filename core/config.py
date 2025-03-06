@@ -73,6 +73,15 @@ class Config:
     @property
     def access_log(self):
         return self.get("advanced.access_log") or False
+    
+    @property
+    def storage_measure(self) -> bool:
+        return self.get("advanced.storage_measure") or False
+    
+    @property
+    def concurreny_enable_cluster(self) -> bool:
+        return self.get("advanced.concurreny_enable_cluster") or False
+
 
 API_VERSION = "1.13.1"
 VERSION = "4.0.0-alpha"
