@@ -88,6 +88,7 @@ VERSION = "4.0.0-alpha"
 PROJECT = "PythonOpenBMCLAPI"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} {PROJECT}/{VERSION}"
 ROOT_PATH = Path(__file__).parent.parent
+ROOT = ROOT_PATH / "config"
 DEFAULT_CONFIG = {
     "advanced.locale": "zh_cn",
     "advanced.debug": False,
@@ -100,6 +101,8 @@ DEFAULT_CONFIG = {
     "cert.key": None,
     "cert.cert": None,
 }
+
+ROOT.mkdir(exist_ok=True, parents=True)
 
 cfg = Config()
 
