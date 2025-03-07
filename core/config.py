@@ -79,8 +79,8 @@ class Config:
         return self.get("advanced.storage_measure") or False
     
     @property
-    def concurreny_enable_cluster(self) -> bool:
-        return self.get("advanced.concurreny_enable_cluster") or False
+    def concurrency_enable_cluster(self) -> bool:
+        return self.get("advanced.concurrency_enable_cluster") or False
 
 
 API_VERSION = "1.13.1"
@@ -94,6 +94,7 @@ DEFAULT_CONFIG = {
     "advanced.debug": False,
     "advanced.access_log": False,
     "advanced.host": "",
+    "advanced.concurrency_enable_cluster": False,
     "web.port": 6543,
     "web.public_port": 6543,
     "web.proxy": False,

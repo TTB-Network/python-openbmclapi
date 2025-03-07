@@ -6,6 +6,7 @@ import anyio.streams
 import anyio.streams.tls
 import fastapi
 import uvicorn
+import tianxiu2b2t.anyio.streams as streams
 
 from . import utils, abc
 from .logger import logger
@@ -40,7 +41,7 @@ app = fastapi.FastAPI(
 )
 http_port = -1
 certificates: list[abc.Certificate] = []
-tls_ports: dict[str, int] = {}
+tls_listener: streams.AutoTLSListener | None = None
 forwards: dict[tuple[str, int], tuple[str, int]] = {}
 forwards_count: defaultdict[tuple[str, int], int] = defaultdict(int)
 
@@ -49,8 +50,10 @@ async def get_free_port():
     port = listener.extra(anyio.abc.SocketAttribute.local_port)
     return port
 
-async def pub_listener():
-    global pub_port
+async def pub_listener(
+    task_group: anyio.abc.TaskGroup
+):
+    global pub_port, tls_listener
     pub_port = cfg.web_port
     if pub_port == -1:
         pub_port = cfg.web_public_port
@@ -59,82 +62,47 @@ async def pub_listener():
     listener = await anyio.create_tcp_listener(
         local_port=pub_port,
     )
+
+    tls_listener = streams.AutoTLSListener(
+        listener,
+    )
+    task_group.start_soon(serve, tls_listener)
+
+async def serve(
+    listener: streams.AutoTLSListener,
+):
     async with listener:
         logger.tinfo("web.forward.pub_port", port=pub_port)
         await listener.serve(pub_handler)
 
 async def pub_handler(
-    sock: anyio.abc.SocketStream
+    sock: streams.BufferedByteStream,
+    extra: streams.TLSExtraData
 ):
     try:
         async with sock:
-            # first read 16384 bytes of tls
-            buf = await sock.receive(16384)
-            handshake = utils.parse_tls_handshake(buf)
-            port = None
-            if handshake is None:
-                port = http_port
-            else:
-                if handshake.sni in tls_ports:
-                    port = tls_ports[handshake.sni]
-                elif tls_ports:
-                    port = list(tls_ports.values())[0]
-            if port is None:
-                return
-            # then forward to port
-            await forward(sock, port, buf)
-    except (
-        anyio.EndOfStream,
-        anyio.BrokenResourceError
-    ):
-        ...
-    except Exception as e:
-        logger.debug_traceback()
-
-async def tls_listener(
-    cert: abc.Certificate
-):
-    context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-    context.check_hostname = False
-    context.hostname_checks_common_name = False
-    context.load_cert_chain(cert.cert, cert.key)
-    listener = await anyio.create_tcp_listener(
-        local_host="127.0.0.1",
-    )
-    tls_listener = anyio.streams.tls.TLSListener(listener, context)
-    async with tls_listener:
-        logger.tdebug("web.forward.tls_port", port=listener.extra(anyio.abc.SocketAttribute.local_port))
-        for domain in cert.domains:
-            tls_ports[domain] = listener.extra(anyio.abc.SocketAttribute.local_port)
-        await tls_listener.serve(tls_handler)
-
-async def tls_handler(
-    sock: anyio.streams.tls.TLSStream
-):
-    try:
-        async with sock:
-            # first read 16384 bytes of tls
-            # then forward to port
-            await forward(sock, http_port)
+            await forward(sock, http_port, b'')
     except (
         anyio.EndOfStream,
         anyio.BrokenResourceError,
-        ssl.SSLError,
+        ssl.SSLError
     ):
         ...
     except Exception as e:
         logger.debug_traceback()
 
+
 async def forward(
-    sock: anyio.abc.SocketStream | anyio.streams.tls.TLSStream,
+    sock: streams.BufferedByteStream,
     port: int,
     buffer: bytes = b''
 ):
     try:
-        async with await anyio.connect_tcp(
+        async with streams.BufferedByteStream(
+            await anyio.connect_tcp(
             "127.0.0.1",
             port
-        ) as conn:
+        )) as conn:
             with ForwardAddress(
                 get_sockname(conn),
                 get_peername(sock)
@@ -148,12 +116,12 @@ async def forward(
         raise
 
 def get_sockname(
-    sock: anyio.abc.SocketStream | anyio.streams.tls.TLSStream
+    sock: streams.BufferedByteStream
 ) -> tuple[str, int]:
     return sock.extra(anyio.abc.SocketAttribute.local_address) # type: ignore
 
 def get_peername(
-    sock: anyio.abc.SocketStream | anyio.streams.tls.TLSStream
+    sock: streams.BufferedByteStream
 ) -> tuple[str, int]:
     return sock.extra(anyio.abc.SocketAttribute.remote_address) # type: ignore
 
@@ -165,8 +133,8 @@ def get_origin_address(
     return name
 
 async def forward_data(
-    sock: anyio.abc.SocketStream | anyio.streams.tls.TLSStream,
-    conn: anyio.abc.SocketStream | anyio.streams.tls.TLSStream
+    sock: streams.BufferedByteStream,
+    conn: streams.BufferedByteStream
 ):
     try:
         while 1:
@@ -195,7 +163,7 @@ async def setup(
 
     logger.tdebug("web.uvicorn.port", port=config.port)
 
-    task_group.start_soon(pub_listener)
+    await pub_listener(task_group)
 
     cert_type = utils.get_certificate_type()
 
@@ -220,5 +188,18 @@ async def setup(
     if len(certificates) == 0:
         raise RuntimeError(t("error.web.certificates"))
 
+    if tls_listener is None:
+        raise RuntimeError(t("error.web.tls_listener"))
+
     for cert in certificates:
-        task_group.start_soon(tls_listener, cert)
+        context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        context.load_cert_chain(cert.cert, cert.key)
+        context.check_hostname = False
+        context.hostname_checks_common_name = False
+        context.verify_mode = ssl.CERT_NONE
+        
+        for domain in cert.domains:
+            tls_listener.add_context(
+                domain,
+                context
+            )

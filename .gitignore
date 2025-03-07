@@ -6,8 +6,9 @@ bmclapi
 config
 cache
 
-
 start.sh
 
-
 **/__pycache__
+
+# pipy plugins
+tianxiu2b2t

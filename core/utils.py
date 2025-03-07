@@ -8,6 +8,9 @@ from typing import Any, Awaitable, Callable, Optional, Coroutine, MutableMapping
 import anyio
 import anyio.abc
 from tqdm import tqdm
+from functools import lru_cache
+
+from .logger import logger
 
 from .abc import CertificateType
 from .config import cfg
@@ -304,16 +307,19 @@ def get_hash_obj(
         return hashlib.md5()
     return hashlib.sha1()
 
+@lru_cache(maxsize=1024)
 def get_certificate_type() -> CertificateType:
+    ret = CertificateType.CLUSTER
     if cfg.get("web.proxy"):
-        return CertificateType.PROXY
+        ret = CertificateType.PROXY
     else:
         key, cert = cfg.get("cert.key"), cfg.get("cert.cert")
         if key and cert:
             key_file, cert_file = Path(key), Path(cert)
             if key_file.exists() and cert_file.exists() and cert_file.stat().st_size > 0 and key_file.stat().st_size > 0:
-                return CertificateType.BYOC
-    return CertificateType.CLUSTER
+                ret = CertificateType.BYOC
+    logger.tinfo(f"web.byoc", type=ret)
+    return ret
 
 def get_range_size(range: str, size: Optional[int] = None):
     if range.startswith("bytes="):

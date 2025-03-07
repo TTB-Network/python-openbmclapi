@@ -623,8 +623,9 @@ class ClusterManager:
         await self.sync()
 
     async def serve(self):
-        for cluster in self.clusters:
-            await cluster.start_serve()
+        async with anyio.create_task_group() as task_group:
+            for cluster in self.clusters:
+                task_group.start_soon(cluster.start_serve)
 
     async def stop(self):
         for cluster in self.clusters:
@@ -653,7 +654,7 @@ class ClusterManager:
         return await storage.get_file(f"measure/{size}")
     
 
-if cfg.concurreny_enable_cluster:
-    sem = anyio.Semaphore(1)
-else:
+if cfg.concurrency_enable_cluster:
     sem = contextlib.nullcontext()
+else:
+    sem = anyio.Semaphore(1)
