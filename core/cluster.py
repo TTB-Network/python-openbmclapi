@@ -11,10 +11,9 @@ import aiohttp
 import anyio
 import anyio.abc
 import pyzstd as zstd
-import tqdm
 import socketio
 
-from core import units
+from tianxiu2b2t import units
 
 from . import utils
 from .abc import BMCLAPIFile, Certificate, CertificateType, OpenBMCLAPIConfiguration, ResponseFile, SocketEmitResult

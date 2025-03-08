@@ -4,12 +4,11 @@ from typing import Any
 import urllib.parse as urlparse
 import aiohttp
 import anyio.abc
-import cachetools
+from tianxiu2b2t import units
 
-from core import utils
 from . import abc
 from ..config import USER_AGENT
-from ..logger import logger
+from .. import utils
 
 class AlistResponse:
     def __init__(
@@ -39,7 +38,10 @@ class AlistStorage(abc.Storage):
         self._endpoint = endpoint
         self._username = username
         self._password = password
-        self._redirect_urls: cachetools.TTLCache[str, abc.ResponseFile] = cachetools.TTLCache(maxsize=10000, ttl=60)
+        self._redirect_urls: utils.UnboundTTLCache[str, abc.ResponseFile] = utils.UnboundTTLCache(
+            maxsize=int(units.parse_number_units(kwargs.get("cache_size", "10000"))), 
+            ttl=units.parse_time_units(kwargs.get("cache_ttl", "5m"))
+        )
         self._token = None
     
     async def _get_token(self):

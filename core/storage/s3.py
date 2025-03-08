@@ -1,17 +1,16 @@
-import inspect
 from io import BytesIO
 import tempfile
 import time
-from typing import Any
 import aioboto3.session
 import anyio.abc
 import anyio.to_thread
 import aioboto3
 import urllib.parse as urlparse
+from tianxiu2b2t import units
 
-from core import logger
+from ..logger import logger
+from ..utils import UnboundTTLCache
 from . import abc
-import cachetools
 
 class S3ResponseMetadata:
     def __init__(
@@ -63,8 +62,14 @@ class S3Storage(abc.Storage):
         self.custom_s3_host = kwargs.get("custom_s3_host", "")
         self.public_endpoint = kwargs.get("public_endpoint", "")
         self.session = aioboto3.Session()
-        self._cache: cachetools.TTLCache[str, abc.ResponseFile] = cachetools.TTLCache(maxsize=10000, ttl=60)
-        self._cache_files: cachetools.TTLCache[str, abc.FileInfo] = cachetools.TTLCache(maxsize=10000, ttl=60)
+        self._cache: UnboundTTLCache[str, abc.ResponseFile] = UnboundTTLCache(
+            maxsize=int(units.parse_number_units(kwargs.get("cache_size", "10000"))), 
+            ttl=units.parse_time_units(kwargs.get("cache_ttl", "5m"))
+        )
+        self._cache_files: UnboundTTLCache[str, abc.FileInfo] = UnboundTTLCache(
+            maxsize=int(units.parse_number_units(kwargs.get("cache_size", "10000"))), 
+            ttl=units.parse_time_units(kwargs.get("cache_files_ttl", "120s"))
+        )
         self._config = {
             "endpoint_url": self.endpoint,
             "aws_access_key_id": self.access_key,

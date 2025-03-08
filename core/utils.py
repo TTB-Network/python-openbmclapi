@@ -1,12 +1,14 @@
 from collections import defaultdict, deque
 import hashlib
 import io
+import math
 from pathlib import Path
 import time
 from typing import Any, Awaitable, Callable, Optional, Coroutine, MutableMapping, TypeVar
 
 import anyio
 import anyio.abc
+import cachetools
 from tqdm import tqdm
 from functools import lru_cache
 
@@ -441,6 +443,14 @@ class RangeResult:
     ):
         self.start = start
         self.end = end
+
+class UnboundTTLCache(cachetools.TTLCache[K, V]):
+    def __init__(self, maxsize: Optional[int], ttl: float, timer=time.monotonic):
+        cachetools.TTLCache.__init__(self, maxsize or math.inf, ttl, timer)
+
+    @property
+    def maxsize(self):
+        return None
 
 runtime = Runtime()
 event = Event()

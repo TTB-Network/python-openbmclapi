@@ -5,11 +5,13 @@ import aiohttp
 import aiowebdav.client
 import anyio
 from anyio.abc._tasks import TaskGroup as TaskGroup
-import cachetools
+from tianxiu2b2t import units
 
-from core import logger, utils
-from core.config import USER_AGENT
 from . import abc
+from ..logger import logger
+from ..config import USER_AGENT
+from .. import utils
+
 import aiowebdav
 
 class WebDavStorage(abc.Storage):
@@ -22,13 +24,20 @@ class WebDavStorage(abc.Storage):
         endpoint: str,
         username: str,
         password: str,
+        **kwargs
     ):
         super().__init__(name, path, weight)
         self.endpoint = endpoint
         self.username = username
         self.password = password
-        self._cache_files: cachetools.TTLCache[str, abc.FileInfo] = cachetools.TTLCache(maxsize=1000, ttl=60)
-        self._cache_redirects: cachetools.TTLCache[str, abc.ResponseFile] = cachetools.TTLCache(maxsize=1000, ttl=60)
+        self._cache_redirects: utils.UnboundTTLCache[str, abc.ResponseFile] = utils.UnboundTTLCache(
+            maxsize=int(units.parse_number_units(kwargs.get("cache_size", "10000"))), 
+            ttl=units.parse_time_units(kwargs.get("cache_ttl", "5m"))
+        )
+        self._cache_files: utils.UnboundTTLCache[str, abc.FileInfo] = utils.UnboundTTLCache(
+            maxsize=int(units.parse_number_units(kwargs.get("cache_size", "10000"))), 
+            ttl=units.parse_time_units(kwargs.get("cache_files_ttl", "120s"))
+        )
         self._mkdir_lock = utils.Lock()
 
         self.client = aiowebdav.client.Client({
