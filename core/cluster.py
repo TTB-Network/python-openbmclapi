@@ -179,11 +179,17 @@ class Cluster:
 
         @self.sio.on("connect") # type: ignore
         async def _():
-            logger.tdebug("cluster.connected", id=self.id)
+            logger.tinfo("cluster.connected", id=self.id)
+            if not self._enabled:
+                return
+            self._enabled = False
+            logger.tinfo("cluster.reconnect", id=self.id)
+            await self.enable()
+
 
         @self.sio.on("disconnect") # type: ignore
         async def _():
-            logger.tdebug("cluster.disconnected", id=self.id)
+            logger.tinfo("cluster.disconnected", id=self.id)
 
         task_group.start_soon(self.keepalive)
 
