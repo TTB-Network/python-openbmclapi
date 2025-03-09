@@ -16,6 +16,7 @@ class Config:
         except:
             print("[Config] Failed to load config.yml")
             print(traceback.format_exc())
+            exit(520)
 
     def save(self):
         with open(ROOT_PATH / "config" / "config.yml", "w", encoding="utf-8") as f:
