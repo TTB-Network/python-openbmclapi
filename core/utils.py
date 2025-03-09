@@ -11,7 +11,6 @@ from typing import (
     Optional, 
     Coroutine, 
     TypeVar, 
-    TYPE_CHECKING
 )
 
 import anyio
@@ -25,10 +24,9 @@ from .logger import logger
 from .abc import CertificateType
 from .config import cfg
 
-if TYPE_CHECKING:
-    K = TypeVar("K")
-    V = TypeVar("V") 
-    T = TypeVar("T")
+K = TypeVar("K")
+V = TypeVar("V") 
+T = TypeVar("T")
 
 class Runtime:
     def __init__(
