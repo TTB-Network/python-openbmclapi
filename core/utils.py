@@ -4,7 +4,15 @@ import io
 import math
 from pathlib import Path
 import time
-from typing import Any, Awaitable, Callable, Optional, Coroutine, MutableMapping, TypeVar
+from typing import (
+    Any, 
+    Awaitable, 
+    Callable, 
+    Optional, 
+    Coroutine, 
+    TypeVar, 
+    TYPE_CHECKING
+)
 
 import anyio
 import anyio.abc
@@ -17,8 +25,10 @@ from .logger import logger
 from .abc import CertificateType
 from .config import cfg
 
-K = TypeVar("K")
-V = TypeVar("V") 
+if TYPE_CHECKING:
+    K = TypeVar("K")
+    V = TypeVar("V") 
+    T = TypeVar("T")
 
 class Runtime:
     def __init__(
@@ -160,8 +170,6 @@ class Queue[T]:
 
     def __len__(self):
         return len(self._items)
-    
-
 
 class Lock:
     def __init__(
