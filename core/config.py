@@ -11,14 +11,14 @@ class Config:
 
     def load(self):
         try:
-            with open(ROOT_PATH / "config" / "config.yml", "r") as f:
+            with open(ROOT_PATH / "config" / "config.yml", "r", encoding="utf-8") as f:
                 self._data = yaml.safe_load(f) or {}
         except:
             print("[Config] Failed to load config.yml")
             print(traceback.format_exc())
 
     def save(self):
-        with open(ROOT_PATH / "config" / "config.yml", "w") as f:
+        with open(ROOT_PATH / "config" / "config.yml", "w", encoding="utf-8") as f:
             yaml.dump(self._data, f)
 
     def _get_keys(self, key: str):
