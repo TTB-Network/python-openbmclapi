@@ -28,12 +28,12 @@ class Config:
     def get(self, key: str, default = None) -> Any:
         val = os.getenv(key) or self._get_value(self._data, self._get_keys(key))
         if val is None:
-            print(f"[Config] Key '{key}' is not set?")
             if key in DEFAULT_CONFIG:
                 self.set(key, DEFAULT_CONFIG[key])
                 val = DEFAULT_CONFIG[key]
                 self.save()
             else:
+                print(f"[Config] Key '{key}' is not set?")
                 val = default
         return val
     

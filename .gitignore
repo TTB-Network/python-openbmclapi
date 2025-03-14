@@ -5,10 +5,6 @@ logs
 bmclapi
 config
 cache
-
-start.sh
+database
 
 **/__pycache__
-
-# pipy plugins
-tianxiu2b2t

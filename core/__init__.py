@@ -15,6 +15,7 @@ from .cluster import ClusterManager
 from .config import API_VERSION, VERSION, cfg
 from .logger import logger
 from .utils import runtime
+from .database import init as init_database
 from . import web
 import platform
 
@@ -52,9 +53,15 @@ def load_clusters():
             logger.terror("core.initialize.cluster.missing", err=e)
             continue
 
+async def load_database():
+    await init_database(
+        cfg.get('database', {})
+    )
+
 async def load_config():
     load_storages()
     load_clusters()
+    await load_database()
 
     if clusters.count == 0 or clusters.storages.count == 0:
         logger.terror("core.initialize.missing", clusters=clusters.count, storages=clusters.storages.count)

@@ -4,6 +4,7 @@ import contextlib
 import datetime
 import hmac
 from pathlib import Path
+import sys
 import tempfile
 import time
 from typing import Any, Optional
@@ -20,6 +21,7 @@ from .abc import BMCLAPIFile, Certificate, CertificateType, OpenBMCLAPIConfigura
 from .logger import logger
 from .config import API_VERSION, ROOT_PATH, cfg, USER_AGENT
 from .storage import CheckStorage, StorageManager
+from .database import get_db
 
 class TokenManager:
     def __init__(
@@ -132,12 +134,13 @@ class Cluster:
     def __init__(
         self,
         id: str,
-        secret: str
+        secret: str,
+        manager: 'ClusterManager'
     ):
         self._token = TokenManager(id, secret)
         self._last_modified = 0
         self.sio = socketio.AsyncClient(
-            handle_sigint=False
+            handle_sigint=False,
         )
         self._keepalive_lock = utils.CustomLock(locked=True)
         self._storage_wait = utils.CustomLock(locked=True)
@@ -149,6 +152,7 @@ class Cluster:
         self._failed_keepalive = 0
         self._retry_times = 0
         self._task_group = None
+        self._manager = manager
 
     @property
     def id(self):
@@ -167,14 +171,17 @@ class Cluster:
         @self.sio.on("warden-error") # type: ignore
         async def _(message: Any):
             logger.twarning("cluster.warden", id=self.id, msg=message)
+            await get_db().insert_cluster_info(self.id, "server-push", "warden-error", message)
 
         @self.sio.on("exception") # type: ignore
         async def _(message: Any):
             logger.terror("cluster.exception", id=self.id, msg=message)
+            await get_db().insert_cluster_info(self.id, "server-push", "exception", message)
 
         @self.sio.on("message") # type: ignore
         async def _(message: Any):
             logger.tinfo("cluster.message", id=self.id, msg=message)
+            await get_db().insert_cluster_info(self.id, "server-push", "message", message)
 
         @self.sio.on("connect") # type: ignore
         async def _():
@@ -183,6 +190,7 @@ class Cluster:
                 return
             self._enabled = False
             logger.tinfo("cluster.reconnect", id=self.id)
+            await get_db().insert_cluster_info(self.id, "socketio", "reconnect")
             await self.enable()
 
 
@@ -225,6 +233,10 @@ class Cluster:
 
                     self.counter.hits -= current_counter.hits
                     self.counter.bytes -= current_counter.bytes
+
+                    # insert into db
+                    await get_db().upsert_cluster_counter(self.id, current_counter.hits, current_counter.bytes)
+
                     resp_time = time.time() - datetime.datetime.fromisoformat(res.ack).timestamp()
                     logger.tsuccess("cluster.keepalive", id=self.id, hits=units.format_number(current_counter.hits), bytes=units.format_number(current_counter.bytes), delay=F"{resp_time * 1000:.4f}")
             except:
@@ -252,14 +264,19 @@ class Cluster:
         return Certificate(CertificateType.CLUSTER, str(cert), str(key))
 
     async def connect(self):
-        await self.sio.connect(
-            cfg.base_url,
-            transports=['websocket'],
-            headers={
-                "User-Agent": USER_AGENT,
-            },
-            auth=self._token.get_socketio_token
-        )
+        try:
+            await self.sio.connect(
+                cfg.base_url,
+                transports=['websocket'],
+                headers={
+                    "User-Agent": USER_AGENT,
+                },
+                auth=self._token.get_socketio_token
+            )
+        except:
+            logger.debug_traceback()
+            await anyio.sleep(5)
+            await self.connect()
         
     async def emit(self, event: str, data: Any = None, timeout: Optional[int] = None) -> SocketEmitResult:
         err, ack = None, None
@@ -269,7 +286,12 @@ class Cluster:
                 err, ack = data
             else:
                 err, ack = data, None
+            if event not in ("keep-alive", ):
+                await get_db().insert_cluster_info(self.id, "server", event, err)
             fut.set()
+
+        if event not in ("keep-alive", ):
+            await get_db().insert_cluster_info(self.id, "client", event)
 
         await self.sio.emit(event, data, callback=callback)
 
@@ -352,8 +374,8 @@ class Cluster:
                     "noFastEnable": False,
                     "byoc": utils.get_certificate_type() != CertificateType.CLUSTER,
                     "flavor": {
-                        "runtime": "python",
-                        "storage": "local"
+                        "runtime": f"python/{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+                        "storage": self._manager.storages.get_storage_type.type
                     }
                 }, 300)
                 if res.err is not None:
@@ -546,7 +568,7 @@ class ClusterManager:
         id: str,
         secret: str
     ):
-        self._clusters[id] = Cluster(id, secret)
+        self._clusters[id] = Cluster(id, secret, self)
 
     def get_cluster(
         self,

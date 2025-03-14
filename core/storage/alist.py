@@ -21,6 +21,12 @@ class AlistResponse:
 
     def __repr__(self):
         return f"<AlistResponse code={self.code} data={self.data} message={self.message}>"
+    
+    def raise_for_status(self):
+        if self.code == 200:
+            return
+        raise Exception(f"Status: {self.code}, message: {self.message}")
+        
 
 class AlistStorage(abc.Storage):
     type = "alist"
@@ -64,6 +70,8 @@ class AlistStorage(abc.Storage):
                 }
             ) as resp:
                 data = AlistResponse(await resp.json())
+                data.raise_for_status()
+
                 self._token = data.data["token"]
 
                 assert self._task_group is not None
@@ -155,6 +163,7 @@ class AlistStorage(abc.Storage):
                 data=tmp_file.file
             ) as resp:
                 data = AlistResponse(await resp.json())
+                data.raise_for_status()
                 return True
     
     async def get_response_file(self, hash: str) -> abc.ResponseFile:

@@ -1,4 +1,5 @@
 from collections import deque
+from dataclasses import dataclass
 from typing import Type
 
 import anyio.abc
@@ -22,6 +23,26 @@ storages: dict[str, Type[Storage]] = {
     "s3": S3Storage
 }
 
+@dataclass
+class StorageTypeCount:
+    file: int = 0
+    alist: int = 0
+    webdav: int = 0
+    s3: int = 0
+
+    @property
+    def type(self):
+        res = []
+        if self.file > 0:
+            res.append("file")
+        if self.alist > 0:
+            res.append("alist")
+        if self.webdav > 0:
+            res.append("webdav")
+        if self.s3 > 0:
+            res.append("s3")
+        return "+".join(res)
+
 class StorageManager:
     def __init__(
         self
@@ -30,6 +51,20 @@ class StorageManager:
         self._weight_storages: deque[Storage] = deque()
         self._online_storages: deque[Storage] = deque()
         self._status = False
+    
+    @property
+    def get_storage_type(self):
+        res = StorageTypeCount()
+        for storage in self._storages:
+            if isinstance(storage, LocalStorage):
+                res.file += 1
+            elif isinstance(storage, AlistStorage):
+                res.alist += 1
+            elif isinstance(storage, WebDavStorage):
+                res.webdav += 1
+            elif isinstance(storage, S3Storage):
+                res.s3 += 1
+        return res
         
 
     def add_storage(

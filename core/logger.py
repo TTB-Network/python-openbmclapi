@@ -80,24 +80,6 @@ class Loglogger:
 
 logger = Loglogger()
 
-class LoguruHandler(logging.Handler):  # pragma: no cover
-    """logging 与 loguru 之间的桥梁，将 logging 的日志转发到 loguru。"""
-
-    def emit(self, record: logging.LogRecord):
-        try:
-            level = Logger.level(record.levelname).name
-        except ValueError:
-            level = record.levelno
-
-        frame, depth = inspect.currentframe(), 0
-        while frame and (depth == 0 or frame.f_code.co_filename == logging.__file__):
-            frame = frame.f_back
-            depth += 1
-
-        logger._log_with_args(
-            level,
-            record.getMessage(),
-        )
 
 def _log(*values):
     data = []
@@ -118,7 +100,10 @@ class InterceptHandler(logging.Handler):
         except ValueError:
             level = record.levelno
 
-        print(level, record.getMessage())
+        logger.log.opt(depth=6).log(
+            level,
+            record.getMessage(),
+        )
 
 # 配置拦截处理器
 logging.basicConfig(handlers=[InterceptHandler()], level=logging.DEBUG)
