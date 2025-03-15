@@ -1,6 +1,9 @@
+from datetime import timedelta
+import datetime
 import io
 import tempfile
 import time
+from typing import Optional
 import urllib.parse as urlparse
 import aiohttp
 import anyio.abc
@@ -11,6 +14,7 @@ from ..logger import logger
 
 from .abc import CPath, FileInfo, Storage
 from miniopy_async import Minio
+from miniopy_async.api import BaseURL, presign_v4
 from miniopy_async.datatypes import Object
 from tianxiu2b2t import units
 
@@ -39,14 +43,10 @@ class MinioStorage(Storage):
         self.public_endpoint = kwargs.get("public_endpoint")
     
         url = urlparse.urlparse(self.endpoint)
-        
-        self._cache_files: UnboundTTLCache[str, FileInfo] = UnboundTTLCache(
-            maxsize=int(units.parse_number_units(kwargs.get("cache_size", "10000"))), 
-            ttl=units.parse_time_units(kwargs.get("cache_files_ttl", "120s"))
-        )
+        self.ttl = units.parse_time_units(kwargs.get("cache_ttl", "1h"))
         self._cache: UnboundTTLCache[str, ResponseFile] = UnboundTTLCache(
-            maxsize=int(units.parse_number_units(kwargs.get("cache_size", "10000"))), 
-            ttl=units.parse_time_units(kwargs.get("cache_ttl", "5m"))
+            maxsize=units.parse_number_units(kwargs.get("cache_size", "inf")), 
+            ttl=self.ttl
         )
 
         self.minio = Minio(
@@ -136,69 +136,98 @@ class MinioStorage(Storage):
         file = self._cache.get(cpath)
         if file is not None:
             return file
-        async with aiohttp.ClientSession() as session:
-            fileinfo = self._cache_files.get(cpath)
-            resp = None
-            if not fileinfo:
-                resp = await self.minio.get_object(
-                    self.bucket,
-                    cpath[1:],
-                    session,
-                )
-                fileinfo = FileInfo(
-                    name=cname,
-                    size=int(resp.headers.get("content-length") or 0),
-                    path=cpath,
-                )
-                self._cache_files[cpath] = fileinfo
-            if self.custom_host is None and self.public_endpoint is None:
-                if resp is None:
-                    resp = await self.minio.get_object(
-                        self.bucket,
-                        cpath[1:],
-                        session,
-                    )
-                file = ResponseFileMemory(
-                    data=await resp.read(),
-                    size=fileinfo.size
-                )
-                resp.release()
-                resp = None
-        if file is not None:
-            self._cache[cpath] = file
-            return file
-        if self.custom_host is not None:
+        stat = await self.minio.stat_object(
+            self.bucket,
+            cpath[1:],
+        )
+        if stat.size == 0:
+            file = ResponseFileMemory(
+                b"",
+                0
+            )
+        elif self.custom_host is not None:
             file = ResponseFileRemote(
-                f"{self.custom_host}{cpath}",
-                fileinfo.size
+                f"{self.custom_host}/{self.bucket}{cpath}",
+                int(stat.size or 0),
             )
         elif self.public_endpoint is not None:
-            url = await self.minio.get_presigned_url(
+            url = await get_presigned_url(
+                self.minio,
                 "GET",
                 self.bucket,
                 cpath[1:],
-            )
-            urlobj = urlparse.urlparse(url)
-            # replace host
-            pub_urlobj = urlparse.urlparse(self.public_endpoint)
-            url: str = urlparse.urlunparse(
-                (
-                    pub_urlobj.scheme or urlobj.scheme,
-                    pub_urlobj.netloc or urlobj.netloc,
-                    urlobj.path,
-                    urlobj.params,
-                    urlobj.query,
-                    urlobj.fragment,
-                )
+                region=self.region,
+                change_host=self.public_endpoint,
             )
             file = ResponseFileRemote(
                 url,
-                fileinfo.size
+                int(stat.size or 0),
             )
-        if file is None:
-            return ResponseFileNotFound()
+        else:
+            async with aiohttp.ClientSession() as session:
+                async with (await self.minio.get_object(
+                    self.bucket,
+                    cpath[1:],
+                    session
+                )) as resp:
+                    file = ResponseFileMemory(
+                        await resp.read(),
+                        int(stat.size or 0),
+                    )
         self._cache[cpath] = file
         return file
+
+
+
         
         
-    
+
+
+async def get_presigned_url(
+    minio: Minio,
+    method: str,
+    bucket_name: str,
+    object_name: str,
+    region: Optional[str] = None,
+    expires: timedelta = timedelta(days=7),
+    request_date: Optional[datetime.datetime] = None,
+    extra_query_params=None,
+    change_host=None,
+):
+    if expires.total_seconds() < 1 or expires.total_seconds() > 604800:
+        raise ValueError("expires must be between 1 second to 7 days")
+    region = region or await minio._get_region(bucket_name, None)
+    query_params = extra_query_params or {}
+    creds = minio._provider.retrieve() if minio._provider else None
+    if creds and creds.session_token:
+        query_params["X-Amz-Security-Token"] = creds.session_token
+    url = None
+    if change_host:
+        url = BaseURL(
+            change_host,
+            region,
+        ).build(
+            method,
+            region,
+            bucket_name=bucket_name,
+            object_name=object_name,
+            query_params=query_params,
+        )
+    else:
+        url = minio._base_url.build(
+            method,
+            region,
+            bucket_name=bucket_name,
+            object_name=object_name,
+            query_params=query_params,
+        )
+    if creds:
+        url = presign_v4(
+            method,
+            url,
+            region,
+            creds,
+            request_date or datetime.datetime.now(datetime.UTC),
+            int(expires.total_seconds()),
+        )
+    return urlparse.urlunsplit(url)

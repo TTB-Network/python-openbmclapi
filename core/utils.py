@@ -47,18 +47,6 @@ class Runtime:
     def get_perf_counter(self):
         return time.perf_counter() - self._perf_counter / 1e9
     
-class TLSHandshake:
-    def __init__(
-        self,
-        version: int,
-        sni: Optional[str]   
-    ):
-        self.version = version
-        self.sni = sni
-
-    def __repr__(self) -> str:
-        return f"TLSHandshake(version={self.version}, sni={self.sni})"
-
 class AvroParser:
     def __init__(
         self,
@@ -248,37 +236,6 @@ def split_workload(
 ):
     return [items[i::n] for i in range(n)]
 
-def parse_tls_handshake(
-    data: bytes
-):
-    version = 0
-    sni = None
-    try:
-        buf = io.BytesIO(data)
-        type = buf.read(1)[0]
-        if type != 22:
-            raise
-        version = int.from_bytes(buf.read(2))
-        # skip 40 bytes
-        buf.read(40)
-        buf.read(buf.read(1)[0])
-        buf.read(int.from_bytes(buf.read(2), 'big'))
-        buf.read(buf.read(1)[0])
-        extensions_length = int.from_bytes(buf.read(2), 'big')
-        current_extension_cur = 0
-        while current_extension_cur < extensions_length:
-            extension_type = int.from_bytes(buf.read(2), 'big')
-            extension_length = int.from_bytes(buf.read(2), 'big')
-            extension_data = buf.read(extension_length)
-            if extension_type == 0x00: # SNI
-                sni = extension_data[5:].decode("utf-8")
-                break
-            current_extension_cur += extension_length + 4
-    except:
-        return None
-
-    return TLSHandshake(version, sni)
-
 def schedule_once(
     task_group: anyio.abc.TaskGroup,
     func: Callable[..., Awaitable],
@@ -290,23 +247,6 @@ def schedule_once(
         await func(*args, **kwargs)
     task_group.start_soon(_schedule_once)
 
-async def _gather(
-    coro: Coroutine,
-    results: dict[Coroutine, Any]
-):
-    results[coro] = await coro
-
-async def gather(
-    *coro: Coroutine
-):
-    results: dict[Coroutine, Any] = {}
-    async with anyio.create_task_group() as task_group:
-        for c in coro:
-            task_group.start_soon(_gather, c, results)
-    res = []
-    for c in coro:
-        res.append(results[c])
-    return res
 
 def get_hash_obj(
     hash: str
@@ -451,7 +391,7 @@ class RangeResult:
         self.end = end
 
 class UnboundTTLCache(cachetools.TTLCache[K, V]):
-    def __init__(self, maxsize: Optional[int], ttl: float, timer=time.monotonic):
+    def __init__(self, maxsize: Optional[float], ttl: float, timer=time.monotonic):
         cachetools.TTLCache.__init__(self, maxsize or math.inf, ttl, timer)
 
     @property

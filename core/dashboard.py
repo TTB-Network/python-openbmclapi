@@ -37,6 +37,9 @@ notice = StreamNotice()
 async def setup(
     app: fastapi.FastAPI
 ):
+    # TODO: 面板
+    return
+
     @app.get("/favicon.ico")
     def favicon():
         return fastapi.responses.FileResponse(

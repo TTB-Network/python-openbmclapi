@@ -387,8 +387,10 @@ class Cluster:
                 self._retry_times = 0
                 logger.tinfo("cluster.enable", id=self.id)
                 self._keepalive_lock.release()
+            except TimeoutError:
+                logger.ttraceback("cluster.enable.timeout", id=self.id)
             except:
-                logger.terror("cluster.enable.timeout", id=self.id)
+                logger.traceback()
             finally:
                 self._want_enable = False
                 if not self._enabled:
