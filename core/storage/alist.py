@@ -131,7 +131,7 @@ class AlistStorage(abc.Storage):
             }
         ) as session:
             async with session.post(
-                f"/api/fs/list?path={path}",
+                f"/api/fs/list",
                 json={
                     "path": root,
                 }
