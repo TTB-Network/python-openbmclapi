@@ -85,7 +85,7 @@ class Config:
 
 
 API_VERSION = "1.13.1"
-VERSION = "4.0.8"
+VERSION = "4.0.9"
 PROJECT = "PythonOpenBMCLAPI"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} {PROJECT}/{VERSION}"
 ROOT_PATH = Path(__file__).parent.parent
