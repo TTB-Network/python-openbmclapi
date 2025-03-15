@@ -518,7 +518,7 @@ class DownloadManager:
                         if hash.hexdigest() != file.hash or size != file.size:
                             await anyio.sleep(50)
                             raise Exception(f"hash mismatch, got {hash.hexdigest()} expected {file.hash}")
-
+                    
                 except Exception as e:
                     last_error = e
                     self._pbar.update(-size)
@@ -545,11 +545,18 @@ class DownloadManager:
             return
         for storage in missing_storage:
             tmp_file.seek(0)
-            await storage.storage.upload(f"download/{file.hash[:2]}/{file.hash}", tmp_file, size)
-            
-
-
-
+            retries = 0
+            while 1:
+                try:
+                    await storage.storage.upload(f"download/{file.hash[:2]}/{file.hash}", tmp_file, size)
+                    break
+                except:
+                    if retries >= 10:
+                        raise
+                    retries += 1
+                    next = 10 * (retries + 1)
+                    logger.twarning("storage.retry_upload", name=storage.storage.name, times=retries, time=next)
+                    await anyio.sleep(next)
 
     async def get_configurations(self):
         configurations: list[OpenBMCLAPIConfiguration] = await concurrency.gather(*[

@@ -8,3 +8,8 @@ cache
 database/*.db
 
 **/__pycache__
+
+# pyenv
+.python-version
+.python-version.lock
+pyenv/

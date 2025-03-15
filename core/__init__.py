@@ -93,8 +93,6 @@ async def main():
             # serve
             await clusters.serve()
 
-    except asyncio.CancelledError:
-        ...
     except:
         logger.debug_traceback()
 
