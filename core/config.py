@@ -69,6 +69,10 @@ class Config:
     @property
     def base_url(self) -> str:
         return self.get("advanced.base_url", "https://openbmclapi.bangbang93.com")
+    
+    @property
+    def bd_url(self) -> str:
+        return self.get("advanced.bd_url", "https://bd.bangbang93.com")
         
     @property
     def host(self):

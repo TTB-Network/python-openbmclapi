@@ -34,6 +34,7 @@ class TokenManager:
         self._secret = secret
         self._token = None
         self._task_group = None
+        self._display_name = None
     
 
     async def get_token(self):
@@ -80,7 +81,7 @@ class TokenManager:
     def setup(self, task_group: anyio.abc.TaskGroup):
         self._task_group = task_group
         
-            # scheduleRefreshToken
+    # scheduleRefreshToken
     def schedule_refresh_token(self, ttl: float):
         if self._task_group is None:
             raise RuntimeError("Task group is not set")
@@ -88,12 +89,12 @@ class TokenManager:
 
     async def _schedule_refresh_token(self, ttl: float):
         next = max(ttl - 600, ttl / 2)
-        logger.tdebug("cluster.refresh_token.schedule", id=self._id, next=next)
+        logger.tdebug("cluster.refresh_token.schedule", id=self._id, name=self.display_name, next=next)
         await anyio.sleep(ttl)
         try:
             await self.refresh_token()
         except:
-            logger.ttraceback("cluster.refresh_token", id=self._id)
+            logger.ttraceback("cluster.refresh_token", id=self._id, name=self.display_name)
 
     async def refresh_token(self):
         async with aiohttp.ClientSession(
@@ -118,6 +119,14 @@ class TokenManager:
         return {
             "token": await self.get_token(),
         }
+
+    @property
+    def display_name(self):
+        return self._display_name or self._id
+    
+    @display_name.setter
+    def display_name(self, display_name: str):
+        self._display_name = display_name
 
 class ClusterCounter:
     def __init__(
@@ -153,14 +162,23 @@ class Cluster:
         self._failed_keepalive = 0
         self._retry_times = 0
         self._task_group = None
+        self._display_name = None
         self._manager = manager
 
     @property
     def id(self):
         return self._token._id
     
+    @property
+    def display_name(self):
+        return self._token.display_name or self._token._id
+    
+    @display_name.setter
+    def display_name(self, display_name: str):
+        self._token.display_name = display_name
+
     def __repr__(self) -> str:
-        return f'<Cluster {self.id}>'
+        return f'<Cluster {self.display_name}>'
 
     async def setup(
         self,
@@ -171,33 +189,33 @@ class Cluster:
         
         @self.sio.on("warden-error") # type: ignore
         async def _(message: Any):
-            logger.twarning("cluster.warden", id=self.id, msg=message)
+            logger.twarning("cluster.warden", id=self.id, name=self.display_name, msg=message)
             await get_db().insert_cluster_info(self.id, "server-push", "warden-error", message)
 
         @self.sio.on("exception") # type: ignore
         async def _(message: Any):
-            logger.terror("cluster.exception", id=self.id, msg=message)
+            logger.terror("cluster.exception", id=self.id, name=self.display_name, msg=message)
             await get_db().insert_cluster_info(self.id, "server-push", "exception", message)
 
         @self.sio.on("message") # type: ignore
         async def _(message: Any):
-            logger.tinfo("cluster.message", id=self.id, msg=message)
+            logger.tinfo("cluster.message", id=self.id, name=self.display_name, msg=message)
             await get_db().insert_cluster_info(self.id, "server-push", "message", message)
 
         @self.sio.on("connect") # type: ignore
         async def _():
-            logger.tinfo("cluster.connected", id=self.id)
+            logger.tinfo("cluster.connected", id=self.id, name=self.display_name)
             if not self._enabled:
                 return
             self._enabled = False
-            logger.tinfo("cluster.reconnect", id=self.id)
+            logger.tinfo("cluster.reconnect", id=self.id, name=self.display_name)
             await get_db().insert_cluster_info(self.id, "socketio", "reconnect")
             await self.enable()
 
 
         @self.sio.on("disconnect") # type: ignore
         async def _():
-            logger.tinfo("cluster.disconnected", id=self.id)
+            logger.tinfo("cluster.disconnected", id=self.id, name=self.display_name)
 
         task_group.start_soon(self.keepalive)
 
@@ -228,7 +246,7 @@ class Cluster:
                         logger.terror("cluster.kicked", id=self.id)
                         await self.disable()
                     else:
-                        logger.twarning("cluster.keepalive", id=self.id, failed=self._failed_keepalive)
+                        logger.twarning("cluster.keepalive", id=self.id, name=self.display_name, failed=self._failed_keepalive)
                 else:
                     self._failed_keepalive = 0
 
@@ -239,17 +257,17 @@ class Cluster:
                     await get_db().upsert_cluster_counter(self.id, current_counter.hits, current_counter.bytes)
 
                     resp_time = time.time() - datetime.datetime.fromisoformat(res.ack).timestamp()
-                    logger.tsuccess("cluster.keepalive", id=self.id, hits=units.format_number(current_counter.hits), bytes=units.format_number(current_counter.bytes), delay=F"{resp_time * 1000:.4f}")
+                    logger.tsuccess("cluster.keepalive", id=self.id, name=self.display_name, hits=units.format_number(current_counter.hits), bytes=units.format_number(current_counter.bytes), delay=F"{resp_time * 1000:.4f}")
             except:
                 logger.debug_traceback()
             await anyio.sleep(60)
 
     async def request_cert(self):
-        logger.tinfo("cluster.request_cert", id=self.id)
+        logger.tinfo("cluster.request_cert", id=self.id, name=self.display_name)
         res = await self.emit("request-cert")
 
         if res.err is not None:
-            logger.terror("cluster.request_cert.error", id=self.id, err=res.err)
+            logger.terror("cluster.request_cert.error", id=self.id, name=self.display_name, err=res.err)
             return None
         
         dir = Path(cfg.get("cert.dir"))
@@ -330,7 +348,7 @@ class Cluster:
                         reader.read_long() / 1000.0,
                     ))
                 self._last_modified = max(results, key=lambda x: x.mtime).mtime
-                logger.tdebug("cluster.get_files", id=self.id, count=len(results), size=units.format_bytes(sum([f.size for f in results])), last_modified=units.format_datetime_from_timestamp(self._last_modified))
+                logger.tdebug("cluster.get_files", id=self.id, name=self.display_name, count=len(results), size=units.format_bytes(sum([f.size for f in results])), last_modified=units.format_datetime_from_timestamp(self._last_modified))
         return results
 
     async def get_configuration(self) -> OpenBMCLAPIConfiguration:
@@ -365,7 +383,7 @@ class Cluster:
             logger.debug("cluster want enable again")
             return
         self._want_enable = True
-        logger.tinfo("cluster.want_enable", id=self.id)
+        logger.tinfo("cluster.want_enable", id=self.id, name=self.display_name)
         async with sem:
             try:
                 res = await self.emit("enable", {
@@ -380,15 +398,15 @@ class Cluster:
                     }
                 }, 300)
                 if res.err is not None:
-                    logger.terror("cluster.enable", id=self.id, err=res.err)
+                    logger.terror("cluster.enable", id=self.id, name=self.display_name, err=res.err)
                     return
                 
                 self._enabled = True
                 self._retry_times = 0
-                logger.tinfo("cluster.enable", id=self.id)
+                logger.tinfo("cluster.enable", id=self.id, name=self.display_name)
                 self._keepalive_lock.release()
             except TimeoutError:
-                logger.ttraceback("cluster.enable.timeout", id=self.id)
+                logger.ttraceback("cluster.enable.timeout", id=self.id, name=self.display_name)
             except:
                 logger.traceback()
             finally:
@@ -406,7 +424,7 @@ class Cluster:
         finally:
             self._enabled = False
             self._failed_keepalive = 0
-        logger.tinfo("cluster.disable", id=self.id)
+        logger.tinfo("cluster.disable", id=self.id, name=self.display_name)
 
         if self._stop:
             return
@@ -418,7 +436,7 @@ class Cluster:
             return
         self._retry_times += 1
         next = min(3600, self._retry_times * 300)
-        logger.tinfo("cluster.retry", id=self.id, time=next)
+        logger.tinfo("cluster.retry", id=self.id, time=next, name=self.display_name)
         utils.schedule_once(self._task_group, self.enable, delay=next)
 
     async def stop_serve(self):
@@ -573,6 +591,7 @@ class ClusterManager:
         self._storages = StorageManager()
         self._task_group = None
         self._certificate_type: Optional[CertificateType] = None
+        self._cluster_name = False
 
     def add_cluster(
         self,
@@ -586,7 +605,7 @@ class ClusterManager:
         id: str
     ) -> Cluster:
         return self._clusters[id]
-    
+
     @property
     def storages(self):
         return self._storages
@@ -611,6 +630,8 @@ class ClusterManager:
         async def _(msg: Any):
             for cluster in self.clusters:
                 await cluster.enable()
+
+        await self.fetch_cluster_name()
 
         for cluster in self.clusters:
             await cluster.setup(task_group)
@@ -656,10 +677,6 @@ class ClusterManager:
         
         utils.schedule_once(self._task_group, self.sync, 600)
 
-    async def _sync(self):
-        await anyio.sleep(600)
-        await self.sync()
-
     async def serve(self):
         async with anyio.create_task_group() as task_group:
             for cluster in self.clusters:
@@ -668,6 +685,29 @@ class ClusterManager:
     async def stop(self):
         for cluster in self.clusters:
             await cluster.stop_serve()
+
+    async def fetch_cluster_name(self):
+        assert self._task_group is not None
+        async with aiohttp.ClientSession(
+            cfg.bd_url
+        ) as session:
+            async with session.get(
+                "/openbmclapi/metric/rank"
+            ) as response:
+                for resp_cluster in await response.json():
+                    print(resp_cluster)
+                    id = resp_cluster["_id"]
+                    name = resp_cluster["name"]
+                    if id in self._clusters:
+                        self._clusters[id].display_name = name
+        if self._cluster_name:
+            return
+        utils.schedule_once(self._task_group, self._fetch_cluster_name, 600)
+
+
+    async def _fetch_cluster_name(self):
+        self._cluster_name = False
+        await self.fetch_cluster_name()
 
     def hit(self, cluster_id: str, bytes: int):
         self._clusters[cluster_id].counter.hits += 1
