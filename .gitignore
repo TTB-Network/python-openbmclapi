@@ -5,6 +5,6 @@ logs
 bmclapi
 config
 cache
-database
+database/*.db
 
 **/__pycache__

@@ -11,7 +11,10 @@ class Config:
 
     def load(self):
         try:
-            with open(ROOT_PATH / "config" / "config.yml", "r", encoding="utf-8") as f:
+            file = ROOT_PATH / "config" / "config.yml"
+            if not file.exists():
+                return
+            with open(file, "r", encoding="utf-8") as f:
                 self._data = yaml.safe_load(f) or {}
         except:
             print("[Config] Failed to load config.yml")
