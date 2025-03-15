@@ -90,7 +90,7 @@ class AlistStorage(abc.Storage):
                     async with session.put(
                         "/api/fs/put",
                         headers={
-                            "File-Path": str(self._path / ".py_check"),
+                            "File-Path": str(self.get_py_check_path()),
                         },
                         data=str(time.perf_counter_ns())
                     ) as resp:
@@ -147,7 +147,7 @@ class AlistStorage(abc.Storage):
                     ))
         return res
     
-    async def upload(self, path: str, tmp_file: _TemporaryFileWrapper):
+    async def upload(self, path: str, tmp_file: _TemporaryFileWrapper, size: int):
         async with aiohttp.ClientSession(
             base_url=self._endpoint,
             headers={

@@ -7,6 +7,7 @@ import anyio.streams.tls
 import fastapi
 import uvicorn
 import tianxiu2b2t.anyio.streams as streams
+from tianxiu2b2t.anyio import concurrency
 
 from . import utils, abc
 from .logger import logger
@@ -178,7 +179,7 @@ async def setup(
             cfg.get("cert.key")
         ))
     elif cert_type == abc.CertificateType.CLUSTER:
-        for cert in await utils.gather(*(
+        for cert in await concurrency.gather(*(
             cluster.request_cert() for cluster in clusters.clusters
         )):
             if cert is None:

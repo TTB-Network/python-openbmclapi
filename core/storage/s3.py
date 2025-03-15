@@ -137,7 +137,8 @@ class S3Storage(abc.Storage):
     async def upload(
         self,
         path: str,
-        tmp_file: tempfile._TemporaryFileWrapper
+        tmp_file: tempfile._TemporaryFileWrapper,
+        size: int
     ):
         async with self.session.resource(
             "s3",
@@ -165,7 +166,7 @@ class S3Storage(abc.Storage):
                     region_name=self.region
                 ) as resource:
                     bucket = await resource.Bucket(self.bucket)
-                    obj = await bucket.Object(str(self.path / ".py_check"))
+                    obj = await bucket.Object(str(self.get_py_check_path()))
                     await obj.upload_fileobj(BytesIO(str(time.perf_counter_ns()).encode()))
                     await obj.delete()
                 self.online = True

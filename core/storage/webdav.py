@@ -53,8 +53,8 @@ class WebDavStorage(abc.Storage):
     async def _check(self):
         while 1:
             try:
-                await self.client.upload_to(io.BytesIO(str(time.perf_counter_ns()).encode()), ".py_check")
-                await self.client.clean(".py_check")
+                await self.client.upload_to(io.BytesIO(str(time.perf_counter_ns()).encode()), str(self.get_py_check_path()))
+                await self.client.clean(str(self.get_py_check_path()))
                 self.online = True
             except:
                 self.online = False
@@ -128,7 +128,7 @@ class WebDavStorage(abc.Storage):
             for parent in parent.parents:
                 await self.client.mkdir(str(parent))
 
-    async def upload(self, path: str, tmp_file: _TemporaryFileWrapper):
+    async def upload(self, path: str, tmp_file: _TemporaryFileWrapper, size: int):
         # check dir
         await self._mkdir((self._path / path).parent)
         await self.client.upload_to(tmp_file.file, str(self._path / path))

@@ -4,23 +4,25 @@ from typing import Type
 
 import anyio.abc
 
+
 from ..abc import BMCLAPIFile
 from .webdav import WebDavStorage
 from .alist import AlistStorage
 from .s3 import S3Storage
-
-from .. import utils
-
 from .local import LocalStorage
+from .minio import MinioStorage
 
 from .abc import FileInfo, Storage
 from ..logger import logger
+from .. import utils
+from tianxiu2b2t.anyio import concurrency
 
 storages: dict[str, Type[Storage]] = {
     "local": LocalStorage,
     "alist": AlistStorage,
     "webdav": WebDavStorage,
-    "s3": S3Storage
+    "s3": S3Storage,
+    "minio": MinioStorage
 }
 
 @dataclass
@@ -64,6 +66,8 @@ class StorageManager:
                 res.webdav += 1
             elif isinstance(storage, S3Storage):
                 res.s3 += 1
+            elif isinstance(storage, MinioStorage):
+                res.s3 += 1
         return res
         
 
@@ -96,7 +100,7 @@ class StorageManager:
         self,
         task_group: anyio.abc.TaskGroup
     ):
-        await utils.gather(*(
+        await concurrency.gather(*(
             storage.setup(task_group)
             for storage in self._storages
         ))

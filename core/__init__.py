@@ -16,6 +16,7 @@ from .config import API_VERSION, VERSION, cfg
 from .logger import logger
 from .utils import runtime
 from .database import init as init_database
+from .dashboard import setup as setup_dashboard
 from . import web
 import platform
 
@@ -84,6 +85,8 @@ async def main():
             await clusters.setup(task_group)
 
             await web.setup(task_group, clusters)
+
+            await setup_dashboard(web.app)
 
             await clusters.sync()
 
@@ -191,30 +194,37 @@ async def download(request: fastapi.Request, hash: str, s: str, e: str, name: Op
         return fastapi.responses.Response(
             status_code=200,
         )
+
+@web.app.get("/robots.txt")
+def _():
+    return "User-agent: *\nDisallow: /"
+
+def access_log(request: fastapi.Request, response: fastapi.Response, total_time: int):
+    raw_path = request.url.path
+    # with query params
+    if request.url.query:
+        raw_path += "?" + request.url.query
     
-if cfg.access_log:
-    def access_log(request: fastapi.Request, response: fastapi.Response, total_time: int):
-        address = request.headers.get("X-Real-IP") or ""
-        if not address and request.client:
-            sockname = (request.client.host, request.client.port)
-            address = web.get_origin_address(sockname)[0]
-        raw_path = request.url.path
-        # with query params
-        if request.url.query:
-            raw_path += "?" + request.url.query
-        logger.tinfo(
-            "web.access_log",
-            host=request.headers.get("Host") or "",
-            method=request.method.ljust(7),
-            path=raw_path,
-            status=response.status_code,
-            total_time=units.format_count_time(total_time, 4).rjust(14),
-            user_agent=request.headers.get("User-Agent") or "",
-            address=address,
-        )
-else:
-    def access_log(request: fastapi.Request, response: fastapi.Response, total_time: int):
-        ...
+    if not config.cfg.access_log and (
+        raw_path.startswith("/download/") or raw_path.startswith("/measure/")
+    ) and response.status_code in (200, 206, 302):
+        return
+
+
+    address = request.headers.get("X-Real-IP") or ""
+    if not address and request.client:
+        sockname = (request.client.host, request.client.port)
+        address = web.get_origin_address(sockname)[0]
+    logger.tinfo(
+        "web.access_log",
+        host=request.headers.get("Host") or "",
+        method=request.method.ljust(7),
+        path=raw_path,
+        status=response.status_code,
+        total_time=units.format_count_time(total_time, 4).rjust(14),
+        user_agent=request.headers.get("User-Agent") or "",
+        address=address,
+    )
 
 @web.app.middleware("http")
 async def auth_middleware(request: fastapi.Request, call_next):

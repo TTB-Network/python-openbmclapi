@@ -7,8 +7,6 @@ from core import utils
 from core.abc import BMCLAPIFile, ResponseFile, ResponseFileNotFound, ResponseFileMemory, ResponseFileLocal, ResponseFileRemote
 from ..logger import logger
 
-RANGE = range(0x00, 0xFF + 1)
-
 class FileInfo:
     def __init__(
         self,
@@ -90,7 +88,8 @@ class Storage(metaclass=abc.ABCMeta):
     async def upload(
         self,
         path: str,
-        tmp_file: tempfile._TemporaryFileWrapper
+        tmp_file: tempfile._TemporaryFileWrapper,
+        size: int
     ):
         raise NotImplementedError
 
@@ -122,6 +121,9 @@ class Storage(metaclass=abc.ABCMeta):
         return self._path
 
     
+    def get_py_check_path(self) -> 'CPath':
+        return self.path / ".py_check"
+
     def emit_status(self):
         logger.debug(f"Storage {self.name} online status: {self.online}")
         utils.event.emit("storage.status", (self, self.online))
@@ -190,3 +192,6 @@ class CPath:
         if "/" in self._path:
             return self._path.split("/")[-1]
         return self._path
+    
+
+RANGE = range(0x00, 0xFF + 1)

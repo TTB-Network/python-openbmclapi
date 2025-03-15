@@ -15,6 +15,7 @@ import pyzstd as zstd
 import socketio
 
 from tianxiu2b2t import units
+from tianxiu2b2t.anyio import concurrency
 
 from . import utils
 from .abc import BMCLAPIFile, Certificate, CertificateType, OpenBMCLAPIConfiguration, ResponseFile, SocketEmitResult
@@ -394,10 +395,10 @@ class Cluster:
                     self.retry()
 
     async def disable(self):
+        self._keepalive_lock.acquire()
         if not self._enabled:
             logger.debug("cluster want disable again")
             return
-        self._keepalive_lock.acquire()
         try:
             await self.emit("disable")
         finally:
@@ -523,7 +524,7 @@ class DownloadManager:
                     self.update_failed()
                     continue
                 self.update_success()
-                await self.upload_storage(file, tmp_file)
+                await self.upload_storage(file, tmp_file, size)
                 return None
         if last_error is not None:
             raise last_error
@@ -532,7 +533,8 @@ class DownloadManager:
     async def upload_storage(
         self,
         file: BMCLAPIFile,
-        tmp_file: 'tempfile._TemporaryFileWrapper'
+        tmp_file: 'tempfile._TemporaryFileWrapper',
+        size: int
     ):
         missing_storage = [
             storage for storage in self._storages if file in storage.missing_files
@@ -541,14 +543,14 @@ class DownloadManager:
             return
         for storage in missing_storage:
             tmp_file.seek(0)
-            await storage.storage.upload(f"download/{file.hash[:2]}/{file.hash}", tmp_file)
+            await storage.storage.upload(f"download/{file.hash[:2]}/{file.hash}", tmp_file, size)
             
 
 
 
 
     async def get_configurations(self):
-        configurations: list[OpenBMCLAPIConfiguration] = await utils.gather(*[
+        configurations: list[OpenBMCLAPIConfiguration] = await concurrency.gather(*[
             cluster.get_configuration() for cluster in self._clusters
         ])
         # select max concurrency
@@ -609,7 +611,7 @@ class ClusterManager:
     async def get_files(self) -> set[BMCLAPIFile]:
         # 批量获取 files
         return set().union(
-            *await utils.gather(*[
+            *await concurrency.gather(*[
                 cluster.get_files() for cluster in self.clusters
             ])
         )
@@ -632,7 +634,7 @@ class ClusterManager:
             description="Listing files"
         ) as pbar:
             missing_files: set[BMCLAPIFile] = set().union(
-                *await utils.gather(*[
+                *await concurrency.gather(*[
                     check_storage.get_missing_files(files, pbar) for check_storage in check_storages
                 ])
             )
