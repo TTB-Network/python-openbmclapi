@@ -243,7 +243,7 @@ class Cluster:
                 if res.err is not None or res.ack is None or not isinstance(res.ack, str):
                     self._failed_keepalive += 1
                     if self._failed_keepalive >= 3:
-                        logger.terror("cluster.kicked", id=self.id)
+                        logger.terror("cluster.kicked", id=self.id, name=self.display_name)
                         await self.disable()
                     else:
                         logger.twarning("cluster.keepalive", id=self.id, name=self.display_name, failed=self._failed_keepalive)
@@ -695,7 +695,6 @@ class ClusterManager:
                 "/openbmclapi/metric/rank"
             ) as response:
                 for resp_cluster in await response.json():
-                    print(resp_cluster)
                     id = resp_cluster["_id"]
                     name = resp_cluster["name"]
                     if id in self._clusters:
@@ -720,7 +719,12 @@ class ClusterManager:
             return ResponseFile(
                 0
             )
-        return await storage.get_response_file(hash)
+        try:
+            return await storage.get_response_file(hash)
+        except:
+            return ResponseFile(
+                0
+            )
     
     async def get_measure_file(self, size: int) -> ResponseFile:
         if not self.storages._online_storages:

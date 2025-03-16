@@ -65,7 +65,9 @@ async def pub_listener(
     )
 
     tls_listener = streams.AutoTLSListener(
-        listener,
+        streams.FixedSocketListener(
+            listener
+        ),
     )
     task_group.start_soon(serve, tls_listener)
 
@@ -91,7 +93,6 @@ async def pub_handler(
         ...
     except Exception as e:
         logger.debug_traceback()
-
 
 async def forward(
     sock: streams.BufferedByteStream,
