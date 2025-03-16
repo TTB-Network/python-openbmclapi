@@ -231,7 +231,7 @@ async def auth_middleware(request: fastapi.Request, call_next):
     try:
         result = await call_next(request)
     except:
-        logger.debug_traceback()
+        logger.traceback()
         result = fastapi.responses.Response(
             status_code=500,
             content="Internal Server Error"
