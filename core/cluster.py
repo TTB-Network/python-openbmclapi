@@ -711,7 +711,7 @@ class ClusterManager:
     def hit(self, cluster_id: str, bytes: int):
         self._clusters[cluster_id].counter.hits += 1
         self._clusters[cluster_id].counter.bytes += bytes
-    
+
     async def get_response_file(self, hash: str) -> ResponseFile:
         storage = self.storages.get_weight_storage()
         if storage is None:
@@ -726,14 +726,17 @@ class ClusterManager:
                 0
             )
     
-    async def get_measure_file(self, size: int) -> ResponseFile:
+    async def get_measure_file(self, size: int) -> Optional[ResponseFile]:
         if not self.storages._online_storages:
             logger.twarning("cluster.get_measure_file.no_storage")
             return ResponseFile(
                 0
             )
         storage = self.storages._online_storages[0]
-        return await storage.get_file(f"measure/{size}")
+        try:
+            return await storage.get_file(f"measure/{size}")
+        except:
+            return None
     
 
 if cfg.concurrency_enable_cluster:

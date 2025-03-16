@@ -121,6 +121,21 @@ class Storage(metaclass=abc.ABCMeta):
         return self._path
 
     
+    async def write_measure(self, size: int):
+        path = f"measure/{size}"
+        file = await self.get_file(path)
+        size = size * 1024 * 1024
+        if isinstance(file, (ResponseFileRemote, ResponseFileMemory, ResponseFileLocal)) and file.size == size:
+            return
+        
+        tmp = tempfile.TemporaryFile()
+        tmp.write(b'\x00' * size)
+        await self.upload(
+            path,
+            tmp,
+            size
+        )
+
     def get_py_check_path(self) -> 'CPath':
         return self.path / ".py_check"
 
