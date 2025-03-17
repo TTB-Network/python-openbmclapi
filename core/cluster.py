@@ -100,6 +100,7 @@ class TokenManager:
         async with aiohttp.ClientSession(
             base_url=cfg.base_url,
             headers={
+                "Authorization": f"Bearer {self._token}",
                 "User-Agent": USER_AGENT,
             }
         ) as session:
@@ -592,6 +593,8 @@ class ClusterManager:
         self._task_group = None
         self._certificate_type: Optional[CertificateType] = None
         self._cluster_name = False
+        self._zero_bytes_files: set[BMCLAPIFile] = set()
+        self._zero_bytes_hash: set[str] = set()
 
     def add_cluster(
         self,
@@ -640,11 +643,17 @@ class ClusterManager:
 
     async def get_files(self) -> set[BMCLAPIFile]:
         # 批量获取 files
-        return set().union(
+        files = set().union(
             *await concurrency.gather(*[
                 cluster.get_files() for cluster in self.clusters
             ])
         )
+
+        # filter 0 bytes
+        zero_bytes = set(filter(lambda x: x.size == 0, files))
+        self._zero_bytes_files = zero_bytes
+        self._zero_bytes_hash = set([f.hash for f in zero_bytes])
+        return files - zero_bytes
 
     async def sync(self):
         assert self._task_group is not None
@@ -713,6 +722,10 @@ class ClusterManager:
         self._clusters[cluster_id].counter.bytes += bytes
 
     async def get_response_file(self, hash: str) -> ResponseFile:
+        if hash in self._zero_bytes_hash:
+            return ResponseFile(
+                0
+            )
         storage = self.storages.get_weight_storage()
         if storage is None:
             logger.twarning("cluster.get_response_file.no_storage")

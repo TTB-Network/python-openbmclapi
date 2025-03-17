@@ -29,7 +29,7 @@
     "info.cluster.want_enable": "节点 [${name} (${id})] 上线",
     "info.core.exit": "已退出",
     "info.core.initialize": "初始化中...",
-    "info.core.initialize.cluster": "加载节点 [${name} (${id})]",
+    "info.core.initialize.cluster": "加载节点 [${id}]",
     "info.core.initialize.platform": "操作平台 [${os} ${arch}] Python 版本 [${python}]",
     "info.core.initialize.storage": "加载存储 [${name} (${type})]",
     "info.core.initialize.version": "API 版本: [${api_version}] Python OpenBMCLAPI 版本 [${version}]",
