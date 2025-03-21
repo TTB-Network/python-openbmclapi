@@ -217,6 +217,7 @@ class Cluster:
         @self.sio.on("disconnect") # type: ignore
         async def _():
             logger.tinfo("cluster.disconnected", id=self.id, name=self.display_name)
+            await self.disable()
 
         task_group.start_soon(self.keepalive)
 
