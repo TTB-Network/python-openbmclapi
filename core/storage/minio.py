@@ -43,10 +43,9 @@ class MinioStorage(Storage):
         self.public_endpoint = kwargs.get("public_endpoint")
     
         url = urlparse.urlparse(self.endpoint)
-        self.ttl = units.parse_time_units(kwargs.get("cache_ttl", "1h"))
         self._cache: UnboundTTLCache[str, ResponseFile] = UnboundTTLCache(
-            maxsize=units.parse_number_units(kwargs.get("cache_size", "inf")), 
-            ttl=self.ttl
+            maxsize=self.cache_size, 
+            ttl=self.cache_ttl
         )
 
         self.minio = Minio(

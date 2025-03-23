@@ -31,12 +31,12 @@ class WebDavStorage(abc.Storage):
         self.username = username
         self.password = password
         self._cache_redirects: utils.UnboundTTLCache[str, abc.ResponseFile] = utils.UnboundTTLCache(
-            maxsize=units.parse_number_units(kwargs.get("cache_size", "inf")), 
-            ttl=units.parse_time_units(kwargs.get("cache_ttl", "1h"))
+            maxsize=self.cache_size, 
+            ttl=self.cache_ttl
         )
         self._cache_files: utils.UnboundTTLCache[str, abc.FileInfo] = utils.UnboundTTLCache(
-            maxsize=units.parse_number_units(kwargs.get("cache_size", "inf")), 
-            ttl=units.parse_time_units(kwargs.get("cache_ttl", "1h"))
+            maxsize=self.cache_size, 
+            ttl=self.cache_ttl
         )
         self._mkdir_lock = utils.Lock()
 

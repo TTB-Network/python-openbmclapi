@@ -53,7 +53,8 @@ class LocalStorage(Storage):
     async def upload(
         self,
         path: str,
-        tmp_file: tempfile._TemporaryFileWrapper
+        tmp_file: tempfile._TemporaryFileWrapper,
+        size: int
     ):
         root = Path(str(self.path)) / path
         root.parent.mkdir(parents=True, exist_ok=True)

@@ -538,15 +538,14 @@ class DownloadManager:
                         if hash.hexdigest() != file.hash or size != file.size:
                             await anyio.sleep(50)
                             raise Exception(f"hash mismatch, got {hash.hexdigest()} expected {file.hash}")
-                    
+                    await self.upload_storage(file, tmp_file, size)
+                    self.update_success()
                 except Exception as e:
                     last_error = e
                     self._pbar.update(-size)
                     pbar.update(-size)
                     self.update_failed()
                     continue
-                self.update_success()
-                await self.upload_storage(file, tmp_file, size)
                 return None
         if last_error is not None:
             raise last_error
@@ -576,6 +575,7 @@ class DownloadManager:
                     retries += 1
                     next = 10 * (retries + 1)
                     logger.twarning("storage.retry_upload", name=storage.storage.name, times=retries, time=next)
+                    logger.traceback()
                     await anyio.sleep(next)
 
     async def get_configurations(self):

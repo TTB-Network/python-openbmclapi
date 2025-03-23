@@ -9,7 +9,8 @@ var cardTextStyled = false;
 const CTMenuDefaultOptions = {
     icon: null,
     title: 'text:default',
-    children: []
+    children: [],
+    defaultRoute: false
 }
 const CTMenuOptions = {
     width: '232px',
@@ -292,10 +293,11 @@ export class CTMenu extends CTElement {
         this._containers = [];
 
         this._routed = false;
+        this._defaultRouted = null;
         app.router.beforeHandler((event) => {
             if (this._routed) return;
             this._routed = true;
-            var path = event.currentRoute;
+            var path = event.currentRoute == "/" ? (this._defaultRouted ?? event.currentRoute) : event.currentRoute;
             var eidx = null;
             var cidx = null;
             this._containers.forEach((option, idx) => {
@@ -316,6 +318,20 @@ export class CTMenu extends CTElement {
     }
     add(options = CTMenuDefaultOptions) {
         let merged = Object.assign({}, CTMenuDefaultOptions, options)
+        // find defaultRoute
+        if (this._defaultRouted == null) {
+            if (merged.defaultRoute) {
+                console.log(merged.key)
+                this._defaultRouted = merged.key;
+            } else if (merged.children.length > 0) {
+                for (let child of merged.children) {
+                    if (child.defaultRoute) {
+                        this._defaultRouted = merged.key + child.key;
+                        break;
+                    }
+                }
+            }
+        }
         this._containers.push(
             merged
         )
@@ -414,7 +430,7 @@ export class CTMenu extends CTElement {
         var element = elements[idx];
         element.classes("active")
         if (!(idx in children)) {
-            app.route(element.attr("link"))
+            app.route(element.getattr("link"))
             return;
         }
         var subitem = children[idx];
@@ -562,7 +578,7 @@ export class CTFlex extends CTElement {
     }
 }
 function setTitle(element, title) {
-    if (title == null || title instanceof CTElement || CTElement.isDOM(title)) {
+    if (title == null || typeof title != "string" || title instanceof CTElement || CTElement.isDOM(title)) {
         return element;
     }
     let [type, text] = [title.slice(0, title.indexOf(":")), title.slice(title.indexOf(":") + 1)];
@@ -574,4 +590,150 @@ function setTitle(element, title) {
         element.text(title)
     }
     return element;
+}
+
+export class CTEChart extends CTElement {
+    constructor(tag = "div") {
+        super(tag)
+        this.instance = echarts.init(this.base);
+    }
+    setOption(option) {
+        this.instance.setOption(option)
+    }
+    resize() {
+        this.instance.resize()
+    }
+}
+
+export class CTTableObjects extends CTElement {
+    constructor() {
+        super("tr")
+    }
+}
+
+var tableOptions = {
+    header: [],
+    minWidth: "100%",
+}
+export class CTTable extends CTElement {
+    constructor(
+        options = tableOptions
+    ) {
+        super("div").classes("ct-table-container")
+        app.style.addStyles({
+            ".ct-table": {
+                "width": "auto",
+                "border-collapse": "separate",
+                "white-space": "nowarp",
+                "table-layout": "fixed",
+            },
+            ".ct-table th, .ct-table td": {
+                "padding": "8px",
+                "text-align": "left"
+            },
+            ".ct-table tr:hover": {
+                "background-color": "var(--ct-table-tr-hover)"
+            },
+            ".ct-table-container": {
+                "width": "100%",
+                "overflow": "auto"
+            }
+        })
+
+        // dark
+        app.style.addThemes(
+            "dark", {
+                "ct-table-tr-hover": "#3f3f3f" 
+            }
+        )
+
+        app.style.addThemes(
+            "light", {
+                "ct-table-tr-hover": "#efefef"
+            }
+        )
+
+        this.options = Object.assign({}, tableOptions, options)
+        this.table = CTElement.create("table").classes("ct-table").style("min-width", this.options.minWidth || "100%")
+        this.header = CTElement.create("thead").classes("ct-table-header")
+        this.body = CTElement.create("tbody").classes("ct-table-body")
+
+
+        this.bodyObjects = []
+
+        this.table.append(this.header, this.body)
+        this.append(this.table)
+
+        this._renderTaskAll = null;
+        this.observe = new ResizeObserver((entries) => {
+            this.renderAll()
+        })
+        this.observe.observe(this.base)
+
+        this.renderAll()
+
+    }
+    renderAll() {
+        if (this._renderTaskAll != null) return;
+        this._renderTaskAll = raf(() => { 
+            this._renderTaskAll = null;
+            this.renderHeader()
+            this.render()
+        })
+    }
+
+    renderHeader() {
+        this.header.clear()
+        var totalWidth = this.options.header.reduce((a, b) => a + b.width, 0)
+        var width = this.boundingClientRect.width
+        var tr = CTElement.create("tr")
+        for (let th of this.options.header) {
+            tr.append(setTitle(CTElement.create("th"), th.title).style("width", (th.width / totalWidth * width) + "px"))
+        }
+        this.header.append(tr)
+    }
+
+    render() {
+        if (this._renderTask != null) return;
+        this._renderTask = raf(() => { 
+            this._renderTask = null;
+            this.body.clear()
+            for (let row of this.bodyObjects) {
+                if (row.show) {
+                    this.body.append(row.tr)
+                }
+            }
+        })
+    }
+
+    setRows(rows) {
+        while (rows > this.bodyObjects.length) {
+            this.bodyObjects.push({
+                show: true,
+                tr: CTElement.create("tr"),
+            })
+        }
+        while (rows < this.bodyObjects.length) {
+            this.bodyObjects[this.bodyObjects.length - 1].show = false
+        }
+        this.render()
+        return this
+    }
+    renderRow(id, handler) {
+        var obj = this.bodyObjects[id]
+        if (obj == null) return this;
+        var headerLength = this.options.header.length
+        if (obj.tr.children.length < headerLength) {
+            for (let i = 0; i < headerLength; i++) {
+                obj.tr.append(CTElement.create("td"))
+            }
+        }
+        handler({
+            obj: obj.tr,
+            children: obj.tr.children,
+        })
+        this.render()
+        return this
+    }
+
 }

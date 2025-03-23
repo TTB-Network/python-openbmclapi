@@ -6,6 +6,7 @@ import anyio.abc
 from core import utils
 from core.abc import BMCLAPIFile, ResponseFile, ResponseFileNotFound, ResponseFileMemory, ResponseFileLocal, ResponseFileRemote
 from ..logger import logger
+from tianxiu2b2t import units
 
 class FileInfo:
     def __init__(
@@ -41,6 +42,7 @@ class Storage(metaclass=abc.ABCMeta):
         name: str,
         path: str,
         weight: int,
+        **kwargs
     ):
         self._name = name
         self._path = CPath(path)
@@ -49,6 +51,15 @@ class Storage(metaclass=abc.ABCMeta):
         self.online = False
         self.weight = weight
         self.current_weight = 0
+        self._kwargs = kwargs
+
+    @property
+    def cache_size(self):
+        return units.parse_number_units(self._kwargs.get("cache_size", "inf"))
+    
+    @property
+    def cache_ttl(self):
+        return units.parse_number_units(self._kwargs.get("cache_ttl", "10m"))
 
     @abc.abstractmethod
     async def setup(

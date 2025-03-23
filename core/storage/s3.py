@@ -63,12 +63,12 @@ class S3Storage(abc.Storage):
         self.public_endpoint = kwargs.get("public_endpoint", "")
         self.session = aioboto3.Session()
         self._cache: UnboundTTLCache[str, abc.ResponseFile] = UnboundTTLCache(
-            maxsize=units.parse_number_units(kwargs.get("cache_size", "inf")), 
-            ttl=units.parse_time_units(kwargs.get("cache_ttl", "1h"))
+            maxsize=self.cache_size, 
+            ttl=self.cache_ttl
         )
         self._cache_files: UnboundTTLCache[str, abc.FileInfo] = UnboundTTLCache(
-            maxsize=units.parse_number_units(kwargs.get("cache_size", "inf")), 
-            ttl=units.parse_time_units(kwargs.get("cache_ttl", "1h"))
+            maxsize=self.cache_size, 
+            ttl=self.cache_ttl
         )
         self._config = {
             "endpoint_url": self.endpoint,

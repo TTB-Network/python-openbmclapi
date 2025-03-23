@@ -45,8 +45,8 @@ class AlistStorage(abc.Storage):
         self._username = username
         self._password = password
         self._redirect_urls: utils.UnboundTTLCache[str, abc.ResponseFile] = utils.UnboundTTLCache(
-            maxsize=units.parse_number_units(kwargs.get("cache_size", "inf")), 
-            ttl=units.parse_time_units(kwargs.get("cache_ttl", "1h"))
+            maxsize=self.cache_size, 
+            ttl=self.cache_ttl
         )
         self._token = None
     

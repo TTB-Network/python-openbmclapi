@@ -628,6 +628,15 @@ class CTI18N {
         return value || key;
     }
 }
+var tagRaves = {};
+export function tagRaf(tag, callback) {
+    if (!(tag in tagRaves)) {
+        tagRaves[tag] = requestAnimationFrame((...args) => {
+            tagRaves[tag] = null;
+            callback(...args)
+        });
+    }
+}
 export function raf(callback) {
     return requestAnimationFrame(callback);
 }
@@ -646,39 +655,62 @@ export function createRouter(
     return new CTRouter(prefix);
 }
 var observeOptions = {
-    debouned: 0,
+    debounced: 0,
     handler: null
-}
+};
+
 export function observe(obj, options = observeOptions) {
-    let merged = Object.assign({}, observeOptions, options);
-    var pending = [];
-    var task = null;
-    return new Proxy(proxy, {
+    // 合并默认选项和用户传入的选项
+    const merged = {
+        ...observeOptions,
+        ...options
+    };
+
+    let pending = [];
+    let task = null;
+
+    return new Proxy(obj, {
         set(target, key, value) {
-            if (merged.handler == null) return;
             target[key] = value;
-            if (merged.debouned == 0) {
-                handler({
+
+            if (merged.handler == null) return true;
+
+            if (merged.debounced === 0) {
+                merged.handler({
                     object: target,
                     key: key,
                     value: value
-                })
+                });
             } else {
-                if (task != null) clearTimeout(task)
+                if (task !== null) {
+                    clearTimeout(task);
+                }
+
                 pending.push({
                     key: key,
                     value: value
-                })
+                });
+
                 task = setTimeout(() => {
-                    clearTimeout(task)
-                    let changes = pending.copyWithin(0, pending.length);
-                    pending = [];
-                    handler({
+                    merged.handler({
                         object: target,
-                        changes
-                    })  
-                })
+                        changes: pending.slice()
+                    });
+
+                    pending = [];
+                    task = null;
+                }, merged.debounced);
             }
+
+            return true;
         }
-    })
+    });
+}
+export function executeTask(
+    executor,
+    time,
+    handler, ...args
+) {
+    setTimeout(handler, 0, ...args)
+    executor(handler, time, ...args)
 }

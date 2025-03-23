@@ -5,7 +5,7 @@ from bson import ObjectId
 import fastapi
 from fastapi.staticfiles import StaticFiles
 
-from .config import ROOT_PATH
+from .config import ROOT_PATH, DEBUG
 
 
 class StreamNotice:
@@ -37,11 +37,11 @@ notice = StreamNotice()
 async def setup(
     app: fastapi.FastAPI
 ):
-    # TODO: 面板
-    return
+    if not DEBUG:
+        return
 
     @app.get("/favicon.ico")
-    def favicon():
+    def _():
         return fastapi.responses.FileResponse(
             ROOT_PATH / "assets" / "favicon.ico",
         )
