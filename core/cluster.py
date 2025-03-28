@@ -98,24 +98,28 @@ class TokenManager:
             logger.ttraceback("cluster.refresh_token", id=self._id, name=self.display_name)
 
     async def refresh_token(self):
-        async with aiohttp.ClientSession(
-            base_url=cfg.base_url,
-            headers={
-                "Authorization": f"Bearer {self._token}",
-                "User-Agent": USER_AGENT,
-            }
-        ) as session:
-            async with session.post(
-                "/openbmclapi-agent/token",
-                json={
-                    "clusterId": self._id,
-                    "token": self._token
+        try:
+            async with aiohttp.ClientSession(
+                base_url=cfg.base_url,
+                headers={
+                    "Authorization": f"Bearer {self._token}",
+                    "User-Agent": USER_AGENT,
                 }
-            ) as resp:
-                data = await resp.json()
-                self._token = data['token']
-                ttl = data['ttl'] / 1000.0
-                self.schedule_refresh_token(ttl)
+            ) as session:
+                async with session.post(
+                    "/openbmclapi-agent/token",
+                    json={
+                        "clusterId": self._id,
+                        "token": self._token
+                    }
+                ) as resp:
+                    data = await resp.json()
+                    self._token = data['token']
+                    ttl = data['ttl'] / 1000.0
+                    self.schedule_refresh_token(ttl)
+        except:
+            logger.ttraceback("cluster.refresh_token", id=self._id, name=self.display_name)
+            await self.fetch_token()
 
     async def get_socketio_token(self):
         return {

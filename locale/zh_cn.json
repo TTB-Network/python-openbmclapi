@@ -5,6 +5,7 @@
     "debug.web.uvicorn.port": "Web 服务器监听端口 [${port}]",
     "error.cluster.enable": "节点 [${name} (${id})] 上线失败 [${err}]",
     "traceback.cluster.enable.timeout": "节点 [${name} (${id})] 注册超时",
+    "traceback.cluster.refresh_token": "节点 [${name} (${id})] Token 刷新失败",
     "error.cluster.exception": "节点 [${name} (${id})] 异常：[${msg}]",
     "error.cluster.kicked": "节点 [${name} (${id})] 被主控踢出下线",
     "error.cluster.refresh_token": "刷新节点 [${name} (${id})] Token 失败",
