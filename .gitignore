@@ -6,6 +6,7 @@ bmclapi
 config
 cache
 database/*.db
+cluster_status
 
 **/__pycache__
 

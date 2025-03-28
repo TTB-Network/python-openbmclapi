@@ -39,6 +39,7 @@
     "info.web.byoc": "证书类型 [${type}]",
     "info.web.forward.pub_port": "公共端口 [${port}]",
     "success.cluster.keepalive": "节点 [${name} (${id})] 服务了 [${hits}] 个文件 总计 [${bytes}iB] 延迟 [${delay}ms]",
+    "warning.cluster.enable.failed_times": "节点 [${name} (${id})] 上线失败 [${count}] 次，已触发阀值 [${max}]，将在 [${next_time}] 启用服务",
     "warning.cluster.keepalive": "节点 [${name} (${id})] 保活失败 (${failed}/3)",
     "warning.cluster.warden": "节点 [${name} (${id})] 巡检：[${msg}]",
     "warning.storage.retry_upload": "存储 [${name}] 上传失败 [${times}] 次，将在 [${time}] 秒后重试"

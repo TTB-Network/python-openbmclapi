@@ -1,12 +1,16 @@
+import datetime
 import os
 from pathlib import Path
 import traceback
 from typing import Any
 import yaml
 
+from tianxiu2b2t import units
+
 class Config:
     def __init__(self):
         self._data = {}
+        self._key_noexists: set[str] = set() 
         self.load()
 
     def load(self):
@@ -36,7 +40,9 @@ class Config:
                 val = DEFAULT_CONFIG[key]
                 self.save()
             else:
-                print(f"[Config] Key '{key}' is not set?")
+                if key not in self._key_noexists:
+                    self._key_noexists.add(key)
+                    print(f"[Config] Key '{key}' is not set?")
                 val = default
         return val
     
@@ -89,6 +95,14 @@ class Config:
     @property
     def concurrency_enable_cluster(self) -> bool:
         return self.get("advanced.concurrency_enable_cluster") or False
+    
+    @property
+    def cluster_up_failed_times(self) -> int:
+        return self.get("advanced.cluster_up_failed_times") or 90
+    
+    @property
+    def cluster_up_failed_interval(self) -> datetime.timedelta: # 24 hours
+        return datetime.timedelta(seconds=units.parse_time_units(self.get("advanced.cluster_up_failed_interval") or "24h") / 1e9)
 
 
 API_VERSION = "1.13.1"

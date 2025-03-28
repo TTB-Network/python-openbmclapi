@@ -59,7 +59,7 @@ class Storage(metaclass=abc.ABCMeta):
     
     @property
     def cache_ttl(self):
-        return units.parse_number_units(self._kwargs.get("cache_ttl", "10m"))
+        return units.parse_time_units(self._kwargs.get("cache_ttl", "10m")) / 1e9
 
     @abc.abstractmethod
     async def setup(

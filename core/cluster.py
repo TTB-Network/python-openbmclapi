@@ -3,6 +3,7 @@ from contextlib import contextmanager
 import contextlib
 import datetime
 import hmac
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -384,9 +385,16 @@ class Cluster:
         if self._want_enable or self._enabled:
             logger.debug("cluster want enable again")
             return
+        failed_count = status.get_cluster_failed_count(self.id, cfg.cluster_up_failed_interval)
+        next_up = status.get_cluster_next_up(self.id, cfg.cluster_up_failed_interval, cfg.cluster_up_failed_times)
+        if failed_count >= cfg.cluster_up_failed_times:
+            logger.twarning("cluster.enable.failed_times", id=self.id, name=self.display_name, count=failed_count, max=cfg.cluster_up_failed_times, next_time=next_up)
+            await anyio.sleep_until(next_up.timestamp())
         self._want_enable = True
         logger.tinfo("cluster.want_enable", id=self.id, name=self.display_name)
+        err_reason = None
         async with sem:
+            status.log_enable(self.id)
             try:
                 res = await self.emit("enable", {
                     "host": cfg.host,
@@ -401,6 +409,9 @@ class Cluster:
                 }, 300)
                 if res.err is not None:
                     logger.terror("cluster.enable", id=self.id, name=self.display_name, err=res.err)
+                    err_reason = {
+                        "remote": res.err
+                    }
                     return
                 
                 self._enabled = True
@@ -409,12 +420,19 @@ class Cluster:
                 self._keepalive_lock.release()
             except TimeoutError:
                 logger.ttraceback("cluster.enable.timeout", id=self.id, name=self.display_name)
+                err_reason = {
+                    "local": "timeout"
+                }
             except:
                 logger.traceback()
+                err_reason = {
+                    "local": "unknown"
+                }
             finally:
                 self._want_enable = False
                 if not self._enabled:
                     self.retry()
+                    status.log_enable_failed(self.id, err_reason)
 
     async def disable(self):
         self._keepalive_lock.acquire()
@@ -752,6 +770,77 @@ class ClusterManager:
         except:
             return None
     
+class ClusterStatus:
+    def __init__(self):
+        self.dir = ROOT_PATH / "cluster_status"
+
+    def log_enable(self, cluster: str):
+        self.log_cluster(cluster, "enable")
+
+    def log_enable_failed(self, cluster: str, error: Any):
+        self.log_cluster(cluster, "enable_failed", error)
+
+    def log_cluster(
+        self,
+        cluster: str,
+        type: str,
+        extra: Any = None
+    ):
+        file = self.dir / f"{cluster}.log"
+    
+        file.parent.mkdir(parents=True, exist_ok=True)
+
+        data = {
+            "time": datetime.datetime.now().isoformat(),
+            "type": type,
+            "cluster": cluster,
+        }
+        if extra is not None:
+            data["extra"] = extra
+        # append to file
+        with open(file, "a") as f:
+            f.write(f"{json.dumps(data)}\n")
+
+    def get_cluster_failed_count(self, cluster: str, timedelta: datetime.timedelta) -> int:
+        return len(self.get_cluster_failed_logs(cluster, timedelta))
+    
+    def get_cluster_next_up(self, cluster: str, timedelta: datetime.timedelta, max_count: int) -> datetime.datetime:
+        logs = self.get_cluster_failed_logs(cluster, timedelta)
+        
+        # sort by time
+        logs.sort(key=lambda x: x["time"])
+        if len(logs) < max_count:
+            return datetime.datetime.now()
+        
+        # 获取最后第 max_count 个日志的时间
+        n = max(0, len(logs) - max_count)
+        time: datetime.datetime = logs[n]["time"]
+        return time + timedelta
+
+    def get_cluster_failed_logs(self, cluster: str, timedelta: datetime.timedelta) -> list[dict]:
+        file = self.dir / f"{cluster}.log"
+        current_now = datetime.datetime.now()
+
+        if not file.exists():
+            return []
+
+        logs: list[dict] = []
+        with open(file, "r") as f:
+            lines = f.readlines()
+            for line in lines:
+                data = json.loads(line)
+                if data["type"] == "enable_failed":
+                    time = datetime.datetime.fromisoformat(data["time"])
+                    data = {
+                        **data,
+                        "time": time,   
+                    }
+                    if (current_now - time).total_seconds() < timedelta.total_seconds():
+                        logs.append(data)
+        return logs
+
+
+status = ClusterStatus()
 
 if cfg.concurrency_enable_cluster:
     sem = contextlib.nullcontext()
