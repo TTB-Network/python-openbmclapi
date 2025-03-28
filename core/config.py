@@ -102,11 +102,11 @@ class Config:
     
     @property
     def cluster_up_failed_interval(self) -> datetime.timedelta: # 24 hours
-        return datetime.timedelta(seconds=units.parse_time_units(self.get("advanced.cluster_up_failed_interval") or "24h") / 1e9)
+        return datetime.timedelta(seconds=units.parse_time_units(self.get("advanced.cluster_up_failed_interval") or "24h"))
 
 
 API_VERSION = "1.13.1"
-VERSION = "4.0.13"
+VERSION = "4.0.14"
 PROJECT = "PythonOpenBMCLAPI"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} {PROJECT}/{VERSION}"
 ROOT_PATH = Path(__file__).parent.parent
