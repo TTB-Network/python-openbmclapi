@@ -106,7 +106,7 @@ class Config:
 
 
 API_VERSION = "1.13.1"
-VERSION = "4.0.14"
+VERSION = "4.0.15"
 PROJECT = "PythonOpenBMCLAPI"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} {PROJECT}/{VERSION}"
 ROOT_PATH = Path(__file__).parent.parent
@@ -117,6 +117,11 @@ DEFAULT_CONFIG = {
     "advanced.access_log": False,
     "advanced.host": "",
     "advanced.concurrency_enable_cluster": False,
+    "advanced.cluster_up_failed_times": 90,
+    "advanced.cluster_up_failed_interval": "24h",
+    "advanced.base_url": "https://openbmclapi.bangbang93.com",
+    "advanced.bd_url": "https://bd.bangbang93.com",
+    "advanced.storage_measure": False,
     "web.port": 6543,
     "web.public_port": 6543,
     "web.proxy": False,
