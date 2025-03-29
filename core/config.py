@@ -104,6 +104,9 @@ class Config:
     def cluster_up_failed_interval(self) -> datetime.timedelta: # 24 hours
         return datetime.timedelta(seconds=units.parse_time_units(self.get("advanced.cluster_up_failed_interval") or "24h"))
 
+    @property
+    def add_download_to_path(self) -> bool:
+        return self.get("advanced.add_download_to_path") or True
 
 API_VERSION = "1.13.1"
 VERSION = "4.0.15"
@@ -121,6 +124,7 @@ DEFAULT_CONFIG = {
     "advanced.cluster_up_failed_interval": "24h",
     "advanced.base_url": "https://openbmclapi.bangbang93.com",
     "advanced.bd_url": "https://bd.bangbang93.com",
+    "advanced.add_download_to_path": True,
     "advanced.storage_measure": False,
     "web.port": 6543,
     "web.public_port": 6543,
