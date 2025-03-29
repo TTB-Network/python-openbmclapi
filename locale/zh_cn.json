@@ -1,6 +1,8 @@
 {
     "debug.cluster.get_files": "获取节点 [${name} (${id})] 文件列表 大小 [${size}] 数量 [${count}] 最后修改日期 [${last_modified}]",
     "debug.cluster.refresh_token.schedule": "下一次节点 [${name} (${id})] Token 刷新将在 [${next}] 秒后进行",
+    "debug.cluster.enable_again": "节点 [${name} (${id})] 尝试再次上线",
+    "debug.cluster.disable_again": "节点 [${name} (${id})] 尝试再次下线",
     "debug.web.forward.tls_port": "TLS 端口在 [${port}] 上开启",
     "debug.web.uvicorn.port": "Web 服务器监听端口 [${port}]",
     "debug.storage.check_measures": "存储 [${name} (${type})] 测速文件报错",

@@ -387,7 +387,7 @@ class Cluster:
         if not self.sio.connected:
             return
         if self._want_enable or self._enabled:
-            logger.debug("cluster want enable again")
+            logger.tdebug("cluster.enable_again", id=self.id, name=self.display_name)
             return
         failed_count = status.get_cluster_failed_count(self.id, cfg.cluster_up_failed_interval)
         next_up = status.get_cluster_next_up(self.id, cfg.cluster_up_failed_interval, cfg.cluster_up_failed_times)
@@ -441,7 +441,7 @@ class Cluster:
     async def disable(self):
         self._keepalive_lock.acquire()
         if not self._enabled:
-            logger.debug("cluster want disable again")
+            logger.tdebug("cluster.disable_again", id=self.id, name=self.display_name)
             return
         try:
             await self.emit("disable")
