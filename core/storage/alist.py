@@ -141,7 +141,7 @@ class AlistStorage(abc.Storage):
         task_group.start_soon(self._check)
 
     async def list_files(self, path: str) -> list[abc.FileInfo]:
-        root = str(self._path / path)
+        root = self._path / path
         res = []
         async with aiohttp.ClientSession(
             base_url=self._endpoint,
@@ -153,7 +153,7 @@ class AlistStorage(abc.Storage):
             async with session.post(
                 f"/api/fs/list",
                 json={
-                    "path": root,
+                    "path": str(root),
                 }
             ) as resp:
                 data = AlistResponse(await resp.json())
