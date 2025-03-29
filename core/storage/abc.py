@@ -198,7 +198,7 @@ class Storage(metaclass=abc.ABCMeta):
         except:
             pass
         
-        with tempfile.TemporaryFile() as tmp:
+        with tempfile.NamedTemporaryFile() as tmp:
             tmp.write(b'\x00' * size)
             tmp.seek(0)
             await self.upload(
@@ -206,7 +206,7 @@ class Storage(metaclass=abc.ABCMeta):
                 tmp,
                 size
             )
-            logger.tsuccess("storage.write_measure", size=size, name=self.name, type=self.type)
+            logger.tsuccess("storage.write_measure", size=size / (1024 * 1024), name=self.name, type=self.type)
 
 
     def get_py_check_path(self) -> 'CPath':
