@@ -7,7 +7,6 @@ from core import utils
 from core.abc import BMCLAPIFile, ResponseFile, ResponseFileNotFound, ResponseFileMemory, ResponseFileLocal, ResponseFileRemote
 from ..logger import logger
 from tianxiu2b2t import units
-from ..config import cfg
 
 class FileInfo:
     def __init__(
@@ -61,6 +60,10 @@ class Storage(metaclass=abc.ABCMeta):
     @property
     def cache_ttl(self):
         return units.parse_time_units(self._kwargs.get("cache_ttl", "10m"))
+    
+    @property
+    def download_dir(self):
+        return bool(self._kwargs.get("add_download_dir", True))
 
     @abc.abstractmethod
     async def setup(
@@ -87,11 +90,10 @@ class Storage(metaclass=abc.ABCMeta):
         ) as pbar:
             async def works(root_ids: list[int]):
                 for root_id in root_ids:
-                    if cfg.add_download_to_path():
-                        files = await self.list_files(f"download/{root_id:02x}")
-                    else:
-                        files = await self.list_files(f"/{root_id:02x}")
-                    res.extend(files)
+                    path = f"{root_id:02x}"
+                    if self.download_dir:
+                        path = f"download/{path}"
+                    res.extend(await self.list_files(path))
                     pbar.update(1)
             async with anyio.create_task_group() as task_group:
                 work = utils.split_workload(list(RANGE), 10)
@@ -112,11 +114,11 @@ class Storage(metaclass=abc.ABCMeta):
         self,
         hash: str
     ) -> ResponseFile:
+        path = f"{hash[:2]}/{hash}"
+        if self.download_dir:
+            path = f"download/{path}"
         
-        if cfg.add_download_to_path():
-            return await self.get_file(f"download/{hash[:2]}/{hash}")
-        else:
-            return await self.get_file(f"/{hash[:2]}/{hash}")
+        return await self.get_file(path)
 
     @abc.abstractmethod
     async def get_file(

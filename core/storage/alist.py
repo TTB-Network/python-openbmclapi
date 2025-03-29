@@ -143,7 +143,7 @@ class AlistStorage(abc.Storage):
                     res.append(abc.FileInfo(
                         name=item["name"],
                         size=item["size"],
-                        path=str(self._path / path / item["name"]),
+                        path=str(root / item["name"]),
                     ))
         return res
     
@@ -166,29 +166,6 @@ class AlistStorage(abc.Storage):
                 data.raise_for_status()
                 return True
     
-    async def get_response_file(self, hash: str) -> abc.ResponseFile:
-        val = self._redirect_urls.get(hash)
-        if val is not None:
-            return val
-        async with aiohttp.ClientSession(
-            base_url=self._endpoint,
-            headers={
-                "Authorization": await self._get_token() or "",
-                "User-Agent": USER_AGENT
-            }
-        ) as session:
-            async with session.post(
-                f"/api/fs/get",
-                json={
-                    "path": str(self._path / "download" / hash[:2] / hash),
-                }
-            ) as resp:
-                data = AlistResponse(await resp.json())
-                self._redirect_urls[hash] = abc.ResponseFileRemote(
-                    url=data.data["raw_url"],
-                    size=data.data["size"]
-                )
-        return self._redirect_urls[hash]
     
     async def get_file(self, path: str) -> abc.ResponseFile:
         path = str(self._path / path)
