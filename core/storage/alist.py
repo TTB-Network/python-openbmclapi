@@ -112,6 +112,26 @@ class AlistStorage(abc.Storage):
                     self.emit_status()
                     await anyio.sleep(60)
 
+    async def check_measure(self, size: int):
+        path = str(self._path / "measure" / size)
+        async with aiohttp.ClientSession(
+            base_url=self._endpoint,
+            headers={
+                "Authorization": await self._get_token() or "",
+                "User-Agent": USER_AGENT
+            }
+        ) as session:
+            async with session.post(
+                f"/api/fs/get",
+                json={
+                    "path": path
+                }
+            ) as resp:
+                data = AlistResponse(await resp.json())
+                if data.code == 200 and data.data["size"] == size * 1024 * 1024:
+                    return True
+        return False
+
     async def setup(
         self,
         task_group: anyio.abc.TaskGroup
@@ -165,7 +185,6 @@ class AlistStorage(abc.Storage):
                 data = AlistResponse(await resp.json())
                 data.raise_for_status()
                 return True
-    
     
     async def get_file(self, path: str) -> abc.ResponseFile:
         path = str(self._path / path)

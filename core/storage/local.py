@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import tempfile
 import time
@@ -91,3 +92,6 @@ class LocalStorage(Storage):
             path=p
         )
     
+    async def check_measure(self, size: int) -> bool:
+        p = Path(str(self.path / "measure" / size))
+        return p.exists() and p.stat().st_size == size * 1024 * 1024

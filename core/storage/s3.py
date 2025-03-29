@@ -263,3 +263,18 @@ class S3Storage(abc.Storage):
             )
         return self._cache[path]
             
+
+    async def check_measure(self, size: int) -> bool:
+        cpath = str(self.path / "measure" / size)
+        async with self.session.resource(
+            "s3",
+            endpoint_url=self.endpoint,
+            aws_access_key_id=self.access_key,
+            aws_secret_access_key=self.secret_key,
+            region_name=self.region
+        ) as resource:
+            bucket = await resource.Bucket(self.bucket)
+            obj = await bucket.Object(cpath)
+            info = await obj.get()
+            return info["ContentLength"] == size * 1024 * 1024
+            

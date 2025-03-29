@@ -129,16 +129,21 @@ class MinioStorage(Storage):
                 await anyio.sleep(60)
         
     async def get_file(self, path: str) -> ResponseFile:
-        cname = str((self.path / path).name)
         cpath = str(self.path / path)
         # get file info
         file = self._cache.get(cpath)
         if file is not None:
             return file
-        stat = await self.minio.stat_object(
-            self.bucket,
-            cpath[1:],
-        )
+        try:
+            stat = await self.minio.stat_object(
+                self.bucket,
+                cpath[1:],
+            )
+        except:
+            stat = Object(
+                bucket_name=self.bucket,
+                object_name=cpath[1:],
+            )
         if stat.size == 0:
             file = ResponseFileMemory(
                 b"",
@@ -176,11 +181,13 @@ class MinioStorage(Storage):
         self._cache[cpath] = file
         return file
 
-
-
-        
-        
-
+    async def check_measure(self, size: int) -> bool:
+        cpath = str(self.path / "measure" / size)
+        stat = await self.minio.stat_object(
+            self.bucket,
+            cpath[1:],
+        )
+        return stat.size == size * 1024 * 1024
 
 async def get_presigned_url(
     minio: Minio,

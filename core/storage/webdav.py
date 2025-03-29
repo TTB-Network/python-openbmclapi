@@ -135,3 +135,7 @@ class WebDavStorage(abc.Storage):
         return True
     
     
+    async def check_measure(self, size: int) -> bool:
+        path = str(self._path / "measure" / size)
+        res = await self.client.info(path)
+        return int(res['size']) == size * 1024 * 1024

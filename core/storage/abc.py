@@ -7,6 +7,9 @@ from core import utils
 from core.abc import BMCLAPIFile, ResponseFile, ResponseFileNotFound, ResponseFileMemory, ResponseFileLocal, ResponseFileRemote
 from ..logger import logger
 from tianxiu2b2t import units
+from tianxiu2b2t.anyio.concurrency import gather
+
+MEASURE_SIZES = (10, 20, 30, 40, 50, 100, 200)
 
 class FileInfo:
     def __init__(
@@ -71,6 +74,49 @@ class Storage(metaclass=abc.ABCMeta):
         task_group: anyio.abc.TaskGroup
     ):
         self._task_group = task_group
+
+        task_group.start_soon(self.check_measures)
+
+
+    async def check_measures(self):
+        while 1:
+            try:
+                missings = []
+                for size, res in zip(
+                    MEASURE_SIZES,
+                    await gather(
+                        *(self._check_measure(size) for size in MEASURE_SIZES)
+                    )
+                ):
+                    if res:
+                        continue
+                    missings.append(size)
+                if missings:
+                    logger.info(f"Storage {self.name} missing measures: {missings}")
+                    await gather(
+                        *(self.write_measure(size) for size in missings)
+                    )
+            except:
+                logger.tdebug_traceback("storage.check_measures")
+            
+            await anyio.sleep(300)
+
+
+    async def _check_measure(self, size: int) -> bool:
+        try:
+            return await self.check_measure(size)
+        except:
+            logger.ttraceback("storage.check_measure", size=size, name=self.name, type=self.type)
+            return False
+        
+
+    @abc.abstractmethod
+    async def check_measure(
+        self,
+        size: int
+    ) -> bool:
+        raise NotImplementedError
+        
 
     @abc.abstractmethod
     async def list_files(
@@ -144,18 +190,24 @@ class Storage(metaclass=abc.ABCMeta):
     
     async def write_measure(self, size: int):
         path = f"measure/{size}"
-        file = await self.get_file(path)
-        size = size * 1024 * 1024
-        if isinstance(file, (ResponseFileRemote, ResponseFileMemory, ResponseFileLocal)) and file.size == size:
-            return
+        try:
+            file = await self.get_file(path)
+            size = size * 1024 * 1024
+            if isinstance(file, (ResponseFileRemote, ResponseFileMemory, ResponseFileLocal)) and file.size == size:
+                return
+        except:
+            pass
         
-        tmp = tempfile.TemporaryFile()
-        tmp.write(b'\x00' * size)
-        await self.upload(
-            path,
-            tmp,
-            size
-        )
+        with tempfile.TemporaryFile() as tmp:
+            tmp.write(b'\x00' * size)
+            tmp.seek(0)
+            await self.upload(
+                path,
+                tmp,
+                size
+            )
+            logger.tsuccess("storage.write_measure", size=size, name=self.name, type=self.type)
+
 
     def get_py_check_path(self) -> 'CPath':
         return self.path / ".py_check"
@@ -191,11 +243,15 @@ class CPath:
         return hash(self._path)
     
     def __truediv__(self, __o: object) -> "CPath":
+        if isinstance(__o, (int, float)):
+            __o = str(__o)
         if not isinstance(__o, str):
             raise TypeError("unsupported operand type(s) for /: 'CPath' and '{}'".format(type(__o).__name__))
         return CPath(self._path + "/" + __o)
     
     def __rtruediv__(self, __o: object) -> "CPath":
+        if isinstance(__o, (int, float)):
+            __o = str(__o)
         if not isinstance(__o, str):
             raise TypeError("unsupported operand type(s) for /: '{}' and 'CPath'".format(type(__o).__name__))
         return CPath(__o + self._path)
