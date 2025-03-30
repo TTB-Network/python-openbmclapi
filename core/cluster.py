@@ -4,6 +4,7 @@ import contextlib
 import datetime
 import hmac
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -545,6 +546,7 @@ class DownloadManager:
             hash = utils.get_hash_obj(file.hash)
             with tempfile.NamedTemporaryFile(
                 dir=self._cache_dir,
+                delete=False
             ) as tmp_file:
                 try:
                     async with session.get(
@@ -568,6 +570,9 @@ class DownloadManager:
                     pbar.update(-size)
                     self.update_failed()
                     continue
+                finally:
+                    tmp_file.close()
+                    os.remove(tmp_file.name)
                 return None
         if last_error is not None:
             raise last_error
