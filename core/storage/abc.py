@@ -156,6 +156,11 @@ class Storage(metaclass=abc.ABCMeta):
     ):
         raise NotImplementedError
 
+    async def upload_download_file(self, path: str, tmp_file: tempfile._TemporaryFileWrapper, size: int):
+        if self.download_dir:
+            path = f"download/{path}"
+        await self.upload(f"download/{path}", tmp_file, size)
+
     async def get_response_file(
         self,
         hash: str

@@ -589,7 +589,7 @@ class DownloadManager:
             retries = 0
             while 1:
                 try:
-                    await storage.storage.upload(f"download/{file.hash[:2]}/{file.hash}", tmp_file, size)
+                    await storage.storage.upload_download_file(f"{file.hash[:2]}/{file.hash}", tmp_file, size)
                     break
                 except:
                     if retries >= 10:
