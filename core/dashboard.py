@@ -1,11 +1,12 @@
 from collections import defaultdict
-from typing import Any
+from typing import Any, Optional
 import anyio
 from bson import ObjectId
 import fastapi
 from fastapi.staticfiles import StaticFiles
 
 from .config import ROOT_PATH, DEBUG
+from .web import query_per_second_statistics
 
 
 class StreamNotice:
@@ -51,6 +52,12 @@ async def setup(
     @app.get("/api/receive")
     async def _(request: fastapi.Request):
         return notice.add_client(request)
+    
+    @app.get("/api/qps")
+    async def _(request: fastapi.Request, interval: Optional[int] = 5):
+        if interval is None:
+            return query_per_second_statistics.get_all()
+        return query_per_second_statistics.merge_data(interval)
 
     @app.get("/")
     @app.get("/{page}")

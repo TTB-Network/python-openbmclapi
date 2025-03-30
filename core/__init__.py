@@ -226,7 +226,8 @@ def access_log(request: fastapi.Request, response: fastapi.Response, total_time:
     )
 
 @web.app.middleware("http")
-async def auth_middleware(request: fastapi.Request, call_next):
+async def access_log_middleware(request: fastapi.Request, call_next):
+    web.query_per_second_statistics.add()
     start_time = runtime.get_perf_counter_ns()
     try:
         result = await call_next(request)

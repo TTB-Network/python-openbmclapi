@@ -114,7 +114,6 @@ class AlistStorage(abc.Storage):
 
     async def check_measure(self, size: int):
         path = str(self._path / "measure" / size)
-        print(path)
         async with aiohttp.ClientSession(
             base_url=self._endpoint,
             headers={

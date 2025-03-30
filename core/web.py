@@ -1,4 +1,5 @@
 from collections import defaultdict
+import datetime
 import ssl
 import anyio
 import anyio.abc
@@ -8,6 +9,7 @@ import fastapi
 import uvicorn
 import tianxiu2b2t.anyio.streams as streams
 from tianxiu2b2t.anyio import concurrency
+from tianxiu2b2t.utils import runtime
 
 from . import utils, abc
 from .logger import logger
@@ -35,6 +37,48 @@ class ForwardAddress:
             del forwards[self.sockname]
             del forwards_count[self.sockname]
 
+class QueryPerSecondStatistics:
+    def __init__(
+        self,
+        expires: int = 600
+    ):
+        self._timer = lambda: runtime.monotonic()
+        self._data: defaultdict[int, int] = defaultdict(int)
+        self._expires = expires
+
+
+    def add(self):
+        self._data[int(self._timer())] += 1
+        self.expire()
+    
+    def expire(self):
+        t = self._timer()
+        for k, v in list(self._data.items()):
+            if k + self._expires < t:
+                del self._data[k]
+
+    def get_all(self) -> dict[datetime.datetime, int]:
+        now = datetime.datetime.now().replace(microsecond=0)
+        t = self._timer()
+        data = {}
+        for k, v in self._data.items():
+            if k >= t:
+                continue
+            data[(now - datetime.timedelta(seconds=t - k)).replace(microsecond=0)] += v
+        return data
+    
+    def merge_data(self, interval: int = 5) -> dict[datetime.datetime, int]:
+        timestamp = datetime.datetime.fromtimestamp(datetime.datetime.now().timestamp() // interval * interval)
+        res: defaultdict[datetime.datetime, int] = defaultdict(int)
+        cur = int(self._timer() // interval)
+        for k, v in self._data.items():
+            c = int(k // interval)
+            if c > cur:
+                continue
+            res[timestamp + datetime.timedelta(seconds=c * interval)] += v
+        return res
+
+
 app = fastapi.FastAPI(
     redoc_url=None,
     docs_url=None,
@@ -45,6 +89,7 @@ certificates: list[abc.Certificate] = []
 tls_listener: streams.AutoTLSListener | None = None
 forwards: dict[tuple[str, int], tuple[str, int]] = {}
 forwards_count: defaultdict[tuple[str, int], int] = defaultdict(int)
+query_per_second_statistics = QueryPerSecondStatistics()
 
 async def get_free_port():
     listener = await anyio.create_tcp_listener()
