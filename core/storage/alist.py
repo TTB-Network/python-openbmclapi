@@ -157,7 +157,7 @@ class AlistStorage(abc.Storage):
                 }
             ) as resp:
                 data = AlistResponse(await resp.json())
-                for item in (data.data or {}).get("content", []):
+                for item in (data.data or {}).get("content", []) or []:
                     if item["is_dir"]:
                         continue
                     res.append(abc.FileInfo(
