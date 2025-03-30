@@ -73,9 +73,9 @@ class QueryPerSecondStatistics:
         cur = int(self._timer() // interval)
         for k, v in self._data.items():
             c = int(k // interval)
-            if c > cur:
+            if c >= cur:
                 continue
-            res[timestamp + datetime.timedelta(seconds=c * interval)] += v
+            res[timestamp - datetime.timedelta(seconds=c * interval)] += v
         return res
 
 
