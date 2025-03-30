@@ -65,18 +65,19 @@ class WebDavStorage(abc.Storage):
 
 
     async def list_files(self, path: str) -> list[abc.FileInfo]:
+        root = self._path / path
         result = []
         try:
-            for res in await self.client.list(str(path) + "/", get_info=True):
+            for res in await self.client.list("/" + str(root), get_info=True):
                 if res["isdir"]:
                     continue
                 result.append(abc.FileInfo(
-                    path=str(self._path / path / res['name']),
+                    path=str(root / res['name']),
                     size=int(res['size']),
                     name=res['name'],
                 ))
         except:
-            ...
+            logger.debug_traceback()
         return result
         
 

@@ -175,6 +175,8 @@ class Lock:
         try:
             await fut.wait()
         finally:
+            if fut not in self._fut:
+                return
             self._fut.remove(fut)
 
     def release(
