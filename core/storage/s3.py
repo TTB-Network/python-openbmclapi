@@ -53,7 +53,7 @@ class S3Storage(abc.Storage):
         secret_key: str,
         **kwargs
     ):
-        super().__init__(name, path, weight)
+        super().__init__(name, path, weight, **kwargs)
         self.endpoint = endpoint
         self.bucket = bucket
         self.access_key = access_key

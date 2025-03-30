@@ -195,13 +195,7 @@ class Storage(metaclass=abc.ABCMeta):
     
     async def write_measure(self, size: int):
         path = f"measure/{size}"
-        try:
-            file = await self.get_file(path)
-            size = size * 1024 * 1024
-            if isinstance(file, (ResponseFileRemote, ResponseFileMemory, ResponseFileLocal)) and file.size == size:
-                return
-        except:
-            pass
+        size = size * 1024 * 1024
         
         with tempfile.NamedTemporaryFile() as tmp:
             tmp.write(b'\x00' * size)
@@ -211,7 +205,7 @@ class Storage(metaclass=abc.ABCMeta):
                 tmp,
                 size
             )
-            logger.tsuccess("storage.write_measure", size=size / (1024 * 1024), name=self.name, type=self.type)
+            logger.tsuccess("storage.write_measure", size=int(size / (1024 * 1024)), name=self.name, type=self.type)
 
 
     def get_py_check_path(self) -> 'CPath':

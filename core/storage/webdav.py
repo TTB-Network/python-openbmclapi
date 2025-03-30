@@ -26,7 +26,7 @@ class WebDavStorage(abc.Storage):
         password: str,
         **kwargs
     ):
-        super().__init__(name, path, weight)
+        super().__init__(name, path, weight, **kwargs)
         self.endpoint = endpoint
         self.username = username
         self.password = password

@@ -19,7 +19,7 @@ class LocalStorage(Storage):
         weight: int,
         **kwargs
     ):
-        super().__init__(name, path, weight)
+        super().__init__(name, path, weight, **kwargs)
 
     async def setup(
         self,

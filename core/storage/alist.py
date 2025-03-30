@@ -40,7 +40,7 @@ class AlistStorage(abc.Storage):
         password: str,
         **kwargs
     ):
-        super().__init__(name, path, weight)
+        super().__init__(name, path, weight, **kwargs)
         self._endpoint = endpoint
         self._username = username
         self._password = password
@@ -114,6 +114,7 @@ class AlistStorage(abc.Storage):
 
     async def check_measure(self, size: int):
         path = str(self._path / "measure" / size)
+        print(path)
         async with aiohttp.ClientSession(
             base_url=self._endpoint,
             headers={

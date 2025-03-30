@@ -32,7 +32,7 @@ class MinioStorage(Storage):
         bucket: str,
         **kwargs
     ):
-        super().__init__(name, path, weight)
+        super().__init__(name, path, weight, **kwargs)
 
         self.endpoint = endpoint
         self.bucket = bucket
