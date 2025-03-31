@@ -105,7 +105,7 @@ class Config:
         return datetime.timedelta(seconds=units.parse_time_units(self.get("advanced.cluster_up_failed_interval") or "24h"))
 
 API_VERSION = "1.13.1"
-VERSION = "4.0.15"
+VERSION = "4.0.16"
 PROJECT = "PythonOpenBMCLAPI"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} {PROJECT}/{VERSION}"
 ROOT_PATH = Path(__file__).parent.parent
