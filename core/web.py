@@ -8,6 +8,7 @@ import anyio.streams.tls
 import fastapi
 import uvicorn
 import tianxiu2b2t.anyio.streams as streams
+import tianxiu2b2t.anyio.streams.proxy as streams_proxy
 from tianxiu2b2t.anyio import concurrency
 from tianxiu2b2t.utils import runtime
 
@@ -68,15 +69,22 @@ class QueryPerSecondStatistics:
         return data
     
     def merge_data(self, interval: int = 5) -> dict[datetime.datetime, int]:
-        timestamp = datetime.datetime.fromtimestamp(datetime.datetime.now().timestamp() // interval * interval)
-        res: defaultdict[datetime.datetime, int] = defaultdict(int)
-        cur = int(self._timer() // interval)
+        res: defaultdict[int, int] = defaultdict(int)
+        timer = self._timer()
+        stop_timer = timer - timer % interval
         for k, v in self._data.items():
-            c = int(k // interval)
-            if c >= cur:
+            if k > stop_timer:
                 continue
-            res[timestamp - datetime.timedelta(seconds=c * interval)] += v
-        return res
+            res[k // interval] += v
+        
+        now = datetime.datetime.now().timestamp()
+        timestamp = datetime.datetime.fromtimestamp(
+            (now - now % interval) - stop_timer
+        ).replace(microsecond=0)
+        return {
+            timestamp + datetime.timedelta(seconds=i * interval): n
+            for i, n in res.items()
+        }
 
 
 app = fastapi.FastAPI(
@@ -110,14 +118,16 @@ async def pub_listener(
     )
 
     tls_listener = streams.AutoTLSListener(
-        streams.FixedSocketListener(
-            listener
-        ),
+        streams_proxy.ProxyProtocolV2Listener(
+            streams.FixedSocketListener(
+                listener
+            ),
+        )
     )
     task_group.start_soon(serve, tls_listener)
 
 async def serve(
-    listener: streams.AutoTLSListener,
+    listener: anyio.abc.Listener,
 ):
     async with listener:
         logger.tinfo("web.forward.pub_port", port=pub_port)
@@ -125,7 +135,6 @@ async def serve(
 
 async def pub_handler(
     sock: streams.BufferedByteStream,
-    extra: streams.TLSExtraData
 ):
     try:
         async with sock:

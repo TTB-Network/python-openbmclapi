@@ -158,6 +158,7 @@ class Cluster:
         self._last_modified = 0
         self.sio = socketio.AsyncClient(
             handle_sigint=False,
+            reconnection_attempts=10,
         )
         self._keepalive_lock = utils.CustomLock(locked=True)
         self._storage_wait = utils.CustomLock(locked=True)
