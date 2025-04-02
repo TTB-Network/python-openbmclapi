@@ -1,5 +1,3 @@
-from collections import deque
-from contextlib import contextmanager
 import contextlib
 import datetime
 import hmac
@@ -22,7 +20,7 @@ from tianxiu2b2t.anyio import concurrency
 from . import utils
 from .abc import BMCLAPIFile, Certificate, CertificateType, OpenBMCLAPIConfiguration, ResponseFile, SocketEmitResult
 from .logger import logger
-from .config import API_VERSION, ROOT_PATH, cfg, USER_AGENT
+from .config import API_VERSION, ROOT_PATH, cfg, USER_AGENT, DEBUG
 from .storage import CheckStorage, StorageManager
 from .database import get_db
 
@@ -159,6 +157,7 @@ class Cluster:
         self.sio = socketio.AsyncClient(
             handle_sigint=False,
             reconnection_attempts=10,
+            logger=DEBUG
         )
         self._keepalive_lock = utils.CustomLock(locked=True)
         self._storage_wait = utils.CustomLock(locked=True)
@@ -171,6 +170,7 @@ class Cluster:
         self._retry_times = 0
         self._task_group = None
         self._display_name = None
+        self._reconnect_task = None
         self._manager = manager
 
     @property
@@ -216,15 +216,29 @@ class Cluster:
             if not self._enabled:
                 return
             self._enabled = False
-            logger.tinfo("cluster.reconnect", id=self.id, name=self.display_name)
-            await get_db().insert_cluster_info(self.id, "socketio", "reconnect")
-            await self.enable()
+            self._want_enable = False
 
 
         @self.sio.on("disconnect") # type: ignore
         async def _():
             logger.tinfo("cluster.disconnected", id=self.id, name=self.display_name)
             await self.disable()
+
+        @self.sio.eio.on("reconnect")
+        async def _(attempt: int):
+            logger.tinfo("cluster.reconnect", id=self.id, name=self.display_name, attempt=attempt)
+            await get_db().insert_cluster_info(self.id, "socketio", "reconnect")
+            await self.enable()
+
+        @self.sio.eio.on("reconnect_error")
+        async def _(err):
+            logger.terror("cluster.reconnect_error", id=self.id, name=self.display_name, err=err)
+
+        @self.sio.eio.on("reconnect_failed")
+        async def _():
+            logger.terror("cluster.reconnect_failed", id=self.id, name=self.display_name)
+
+            task_group.start_soon(self.reconnect)
 
         task_group.start_soon(self.keepalive)
 
@@ -237,6 +251,14 @@ class Cluster:
             self._storage_wait.release()
 
         await self.connect()
+
+    async def reconnect(self):
+        if self._reconnect_task is not None:
+            return
+        await anyio.sleep(60)
+        self._reconnect_task = True
+        await self.connect()
+        self._reconnect_task = None
 
     async def keepalive(self):
         while not self._stop:
