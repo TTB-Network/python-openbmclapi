@@ -105,11 +105,20 @@ class InterceptHandler(logging.Handler):
             record.getMessage(),
         )
 
+class DebugHandler(logging.Handler):
+    def emit(self, record):
+        logger.log.opt(depth=6).log(
+            Logger.level('DEBUG').no,
+            record.getMessage(),
+        )
+
 # 配置拦截处理器
 logging.basicConfig(handlers=[InterceptHandler()], level=logging.DEBUG)
 logging.getLogger("uvicorn").handlers = [InterceptHandler()]
 logging.getLogger("uvicorn.access").handlers = [InterceptHandler()]
 logging.getLogger("uvicorn.error").handlers = [InterceptHandler()]
+logging.getLogger("engineio.client").handlers = [DebugHandler()]
+logging.getLogger("socketio.client").handlers = [DebugHandler()]
 
 
 

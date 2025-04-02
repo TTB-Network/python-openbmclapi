@@ -157,7 +157,8 @@ class Cluster:
         self.sio = socketio.AsyncClient(
             handle_sigint=False,
             reconnection_attempts=10,
-            logger=DEBUG
+            logger=DEBUG,
+            engineio_logger=DEBUG,
         )
         self._keepalive_lock = utils.CustomLock(locked=True)
         self._storage_wait = utils.CustomLock(locked=True)
@@ -224,17 +225,17 @@ class Cluster:
             logger.tinfo("cluster.disconnected", id=self.id, name=self.display_name)
             await self.disable()
 
-        @self.sio.eio.on("reconnect")
+        @self.sio.on("reconnect") # type: ignore
         async def _(attempt: int):
             logger.tinfo("cluster.reconnect", id=self.id, name=self.display_name, attempt=attempt)
             await get_db().insert_cluster_info(self.id, "socketio", "reconnect")
             await self.enable()
 
-        @self.sio.eio.on("reconnect_error")
+        @self.sio.on("reconnect_error") # type: ignore
         async def _(err):
             logger.terror("cluster.reconnect_error", id=self.id, name=self.display_name, err=err)
 
-        @self.sio.eio.on("reconnect_failed")
+        @self.sio.on("reconnect_failed") # type: ignore
         async def _():
             logger.terror("cluster.reconnect_failed", id=self.id, name=self.display_name)
 
