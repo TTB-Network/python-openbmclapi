@@ -157,6 +157,8 @@ class Cluster:
         self.sio = socketio.AsyncClient(
             handle_sigint=False,
             reconnection_attempts=10,
+            reconnection_delay=10,
+            reconnection_delay_max=100,
             logger=DEBUG,
             engineio_logger=DEBUG,
         )
@@ -224,6 +226,9 @@ class Cluster:
         async def _():
             logger.tinfo("cluster.disconnected", id=self.id, name=self.display_name)
             await self.disable()
+
+            await anyio.sleep(600)
+            await self.connect()
 
         @self.sio.on("reconnect") # type: ignore
         async def _(attempt: int):
