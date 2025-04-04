@@ -321,6 +321,10 @@ class Cluster:
 
     async def connect(self):
         try:
+            await self.sio.disconnect()
+        except:
+            pass
+        try:
             await self.sio.connect(
                 cfg.base_url,
                 transports=['websocket'],
