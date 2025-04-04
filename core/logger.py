@@ -119,7 +119,9 @@ class DebugHandler(logging.Handler):
 #logging.getLogger("uvicorn.error").handlers = [InterceptHandler()]
 #logging.getLogger("engineio.client").handlers = [DebugHandler()]
 #logging.getLogger("socketio.client").handlers = [DebugHandler()]
-
+logging.basicConfig(
+    filename="./logs/logging.log"
+)
 
 
 
