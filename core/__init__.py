@@ -14,9 +14,12 @@ from .locale import load_languages
 from .cluster import ClusterManager
 from .config import API_VERSION, VERSION, cfg
 from .logger import logger
-from .utils import runtime
+from .utils import runtime, scheduler
 from .database import init as init_database
-from .dashboard import setup as setup_dashboard
+from .dashboard import (
+    setup as setup_dashboard,
+    stop as stop_dashboard
+)
 from . import web
 import platform
 
@@ -80,13 +83,15 @@ async def main():
         async with anyio.create_task_group() as task_group:
             await load_config()
 
+            scheduler.start()
+
             await utils.event.setup(task_group)
 
             await clusters.setup(task_group)
 
             await web.setup(task_group, clusters)
 
-            await setup_dashboard(web.app)
+            await setup_dashboard(web.app, task_group)
 
             await clusters.sync()
 
@@ -98,7 +103,9 @@ async def main():
         logger.traceback()
 
     finally:
+        stop_dashboard()
         await clusters.stop()
+        scheduler.shutdown(False)
         await anyio.sleep(max(0, 5 - runtime.get_perf_counter()))
         logger.tinfo("core.exit")
 

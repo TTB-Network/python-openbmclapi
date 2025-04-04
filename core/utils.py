@@ -18,6 +18,7 @@ import anyio.abc
 import cachetools
 from tqdm import tqdm
 from functools import lru_cache
+import apscheduler.schedulers.asyncio
 
 from .logger import logger
 
@@ -402,3 +403,9 @@ class UnboundTTLCache(cachetools.TTLCache[K, V]):
 
 runtime = Runtime()
 event = Event()
+
+scheduler = apscheduler.schedulers.asyncio.AsyncIOScheduler(
+    timezone="Asia/Shanghai",
+    missfire_grace_time=99999999,
+    coalesce=True,
+)

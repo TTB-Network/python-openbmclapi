@@ -287,16 +287,7 @@ class Application extends CTElement {
             icon: CTSVG.iconDashboard,
             key: "/dashboard",
             title: 'i18n:dashboard',
-            children: [
-                {
-                    key: "/system",
-                    title: 'i18n:system',
-                },
-                {
-                    key: "/web",
-                    title: 'i18n:web',
-                }
-            ]
+            defaultRoute: true
         })
         this.menu.add({
             icon: CTSVG.iconDashboard,
@@ -319,7 +310,7 @@ class Application extends CTElement {
         app.router.beforeHandler(() => {
             this.container.clear()
         })
-        app.addRoute("/dashboard/system", () => {
+        app.addRoute("/dashboard", () => {
             this.container.append((new CTFlex({
                 width: {
                     500: 1,
