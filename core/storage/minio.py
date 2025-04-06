@@ -94,7 +94,7 @@ class MinioStorage(Storage):
     async def upload(
         self,
         path: str,
-        tmp_file: tempfile._TemporaryFileWrapper,
+        data: io.BytesIO,
         size: int
     ):
         root = self.path / path
@@ -102,7 +102,7 @@ class MinioStorage(Storage):
         await self.minio.put_object(
             self.bucket,
             str(root)[1:],
-            tmp_file,
+            data.getbuffer(),
             size
         )
         return True

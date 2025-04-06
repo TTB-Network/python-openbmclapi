@@ -1,6 +1,5 @@
-import os
 from pathlib import Path
-import tempfile
+import io
 import time
 import anyio.abc
 
@@ -54,16 +53,13 @@ class LocalStorage(Storage):
     async def upload(
         self,
         path: str,
-        tmp_file: tempfile._TemporaryFileWrapper,
+        data: io.BytesIO,
         size: int
     ):
         root = Path(str(self.path)) / path
         root.parent.mkdir(parents=True, exist_ok=True)
         with open(root, "wb") as f:
-            while (data := tmp_file.read(65536)):
-                if not data:
-                    break
-                f.write(data)
+            f.write(data.getbuffer())
         return True
 
     async def _check(

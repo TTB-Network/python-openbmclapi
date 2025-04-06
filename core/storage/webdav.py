@@ -1,11 +1,9 @@
 import io
-from tempfile import _TemporaryFileWrapper
 import time
 import aiohttp
 import aiowebdav.client
 import anyio
 from anyio.abc._tasks import TaskGroup as TaskGroup
-from tianxiu2b2t import units
 
 from . import abc
 from ..logger import logger
@@ -129,10 +127,10 @@ class WebDavStorage(abc.Storage):
             for parent in parent.parents:
                 await self.client.mkdir(str(parent))
 
-    async def upload(self, path: str, tmp_file: _TemporaryFileWrapper, size: int):
+    async def upload(self, path: str, data: io.BytesIO, size: int):
         # check dir
         await self._mkdir((self._path / path).parent)
-        await self.client.upload_to(tmp_file.file, str(self._path / path))
+        await self.client.upload_to(io.BytesIO(data.getbuffer()), str(self._path / path))
         return True
     
     

@@ -7,6 +7,7 @@ config
 cache
 database/*.db
 cluster_status
+tianxiu2b2t
 
 **/__pycache__
 

@@ -1,4 +1,5 @@
 from io import BytesIO
+import io
 import tempfile
 import time
 import aioboto3.session
@@ -137,7 +138,7 @@ class S3Storage(abc.Storage):
     async def upload(
         self,
         path: str,
-        tmp_file: tempfile._TemporaryFileWrapper,
+        data: io.BytesIO,
         size: int
     ):
         async with self.session.resource(
@@ -149,7 +150,7 @@ class S3Storage(abc.Storage):
         ) as resource:
             bucket = await resource.Bucket(self.bucket)
             obj = await bucket.Object(str(self.path / path))
-            await obj.upload_fileobj(tmp_file)
+            await obj.upload_fileobj(data)
         return True
 
 

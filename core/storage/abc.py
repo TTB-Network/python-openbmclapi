@@ -2,6 +2,7 @@ import abc
 import tempfile
 
 import anyio.abc
+import io
 
 from core import utils
 from core.abc import BMCLAPIFile, ResponseFile, ResponseFileNotFound, ResponseFileMemory, ResponseFileLocal, ResponseFileRemote
@@ -151,15 +152,15 @@ class Storage(metaclass=abc.ABCMeta):
     async def upload(
         self,
         path: str,
-        tmp_file: tempfile._TemporaryFileWrapper,
+        data: io.BytesIO,
         size: int
     ):
         raise NotImplementedError
 
-    async def upload_download_file(self, path: str, tmp_file: tempfile._TemporaryFileWrapper, size: int):
+    async def upload_download_file(self, path: str, data: io.BytesIO, size: int):
         if self.download_dir:
             path = f"download/{path}"
-        await self.upload(f"download/{path}", tmp_file, size)
+        await self.upload(f"download/{path}", data, size)
 
     async def get_response_file(
         self,
@@ -197,15 +198,12 @@ class Storage(metaclass=abc.ABCMeta):
         path = f"measure/{size}"
         size = size * 1024 * 1024
         
-        with tempfile.NamedTemporaryFile() as tmp:
-            tmp.write(b'\x00' * size)
-            tmp.seek(0)
-            await self.upload(
-                path,
-                tmp,
-                size
-            )
-            logger.tsuccess("storage.write_measure", size=int(size / (1024 * 1024)), name=self.name, type=self.type)
+        await self.upload(
+            path,
+            io.BytesIO(b"\x00" * size),
+            size
+        )
+        logger.tsuccess("storage.write_measure", size=int(size / (1024 * 1024)), name=self.name, type=self.type)
 
 
     def get_py_check_path(self) -> 'CPath':

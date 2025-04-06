@@ -114,13 +114,16 @@ class DebugHandler(logging.Handler):
 
 # 配置拦截处理器
 #logging.basicConfig(handlers=[InterceptHandler()], level=logging.DEBUG)
-#logging.getLogger("uvicorn").handlers = [InterceptHandler()]
-#logging.getLogger("uvicorn.access").handlers = [InterceptHandler()]
-#logging.getLogger("uvicorn.error").handlers = [InterceptHandler()]
-#logging.getLogger("engineio.client").handlers = [DebugHandler()]
-#logging.getLogger("socketio.client").handlers = [DebugHandler()]
+logging.getLogger("uvicorn").handlers = [InterceptHandler()]
+logging.getLogger("uvicorn.access").handlers = [InterceptHandler()]
+logging.getLogger("uvicorn.error").handlers = [InterceptHandler()]
+logging.getLogger("engineio.client").handlers.append(InterceptHandler())
+logging.getLogger("socketio.client").handlers.append(InterceptHandler())
 logging.basicConfig(
-    filename="./logs/logging.log"
+    #format=LOGGER_FORMAT,
+    handlers=[InterceptHandler()],
+    #filename="./logs/logging.log",
+    level=logging.DEBUG
 )
 
 

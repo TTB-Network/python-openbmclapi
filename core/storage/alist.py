@@ -1,3 +1,4 @@
+import io
 from tempfile import _TemporaryFileWrapper
 import time
 from typing import Any
@@ -167,7 +168,7 @@ class AlistStorage(abc.Storage):
                     ))
         return res
     
-    async def upload(self, path: str, tmp_file: _TemporaryFileWrapper, size: int):
+    async def upload(self, path: str, data: io.BytesIO, size: int):
         async with aiohttp.ClientSession(
             base_url=self._endpoint,
             headers={
@@ -180,10 +181,10 @@ class AlistStorage(abc.Storage):
                 headers={
                     "File-Path": urlparse.quote(str(self._path / path)),
                 },
-                data=tmp_file.file
+                data=data.getbuffer()
             ) as resp:
-                data = AlistResponse(await resp.json())
-                data.raise_for_status()
+                alist_resp = AlistResponse(await resp.json())
+                alist_resp.raise_for_status()
                 return True
     
     async def get_file(self, path: str) -> abc.ResponseFile:

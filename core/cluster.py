@@ -1,6 +1,7 @@
 import contextlib
 import datetime
 import hmac
+import io
 import json
 import os
 from pathlib import Path
@@ -577,36 +578,32 @@ class DownloadManager:
         for _ in range(10):
             size = 0
             hash = utils.get_hash_obj(file.hash)
-            with tempfile.NamedTemporaryFile(
-                dir=self._cache_dir,
-                delete=False
-            ) as tmp_file:
-                try:
-                    async with session.get(
-                        file.path
-                    ) as resp:
-                        while (data := await resp.content.read(1024 * 1024 * 16)):
-                            tmp_file.write(data)
-                            hash.update(data)
-                            inc = len(data)
-                            size += inc
-                            self._pbar.update(inc)
-                            pbar.update(inc)
-                        if hash.hexdigest() != file.hash or size != file.size:
-                            await anyio.sleep(50)
-                            raise Exception(f"hash mismatch, got {hash.hexdigest()} expected {file.hash}")
-                    await self.upload_storage(file, tmp_file, size)
-                    self.update_success()
-                except Exception as e:
-                    last_error = e
-                    self._pbar.update(-size)
-                    pbar.update(-size)
-                    self.update_failed()
-                    continue
-                finally:
-                    tmp_file.close()
-                    os.remove(tmp_file.name)
-                return None
+            tmp_file = io.BytesIO()
+            try:
+                async with session.get(
+                    file.path
+                ) as resp:
+                    while (data := await resp.content.read(1024 * 1024 * 16)):
+                        tmp_file.write(data)
+                        hash.update(data)
+                        inc = len(data)
+                        size += inc
+                        self._pbar.update(inc)
+                        pbar.update(inc)
+                    if hash.hexdigest() != file.hash or size != file.size:
+                        await anyio.sleep(50)
+                        raise Exception(f"hash mismatch, got {hash.hexdigest()} expected {file.hash}")
+                await self.upload_storage(file, tmp_file, size)
+                self.update_success()
+            except Exception as e:
+                last_error = e
+                self._pbar.update(-size)
+                pbar.update(-size)
+                self.update_failed()
+                continue
+            finally:
+                tmp_file.close()
+            return None
         if last_error is not None:
             raise last_error
 
@@ -614,7 +611,7 @@ class DownloadManager:
     async def upload_storage(
         self,
         file: BMCLAPIFile,
-        tmp_file: 'tempfile._TemporaryFileWrapper',
+        data: io.BytesIO,
         size: int
     ):
         missing_storage = [
@@ -623,11 +620,11 @@ class DownloadManager:
         if len(missing_storage) == 0:
             return
         for storage in missing_storage:
-            tmp_file.seek(0)
+            data.seek(0)
             retries = 0
             while 1:
                 try:
-                    await storage.storage.upload_download_file(f"{file.hash[:2]}/{file.hash}", tmp_file, size)
+                    await storage.storage.upload_download_file(f"{file.hash[:2]}/{file.hash}", data, size)
                     break
                 except:
                     if retries >= 10:

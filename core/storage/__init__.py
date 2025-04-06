@@ -21,7 +21,7 @@ storages: dict[str, Type[Storage]] = {
     "local": LocalStorage,
     "alist": AlistStorage,
     "webdav": WebDavStorage,
-    "s3": S3Storage,
+    #"s3": S3Storage,
     "minio": MinioStorage
 }
 

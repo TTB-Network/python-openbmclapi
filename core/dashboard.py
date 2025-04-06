@@ -101,8 +101,8 @@ async def setup(
     app: fastapi.FastAPI,
     task_group: anyio.abc.TaskGroup,
 ):
-    if not DEBUG:
-        return
+    #if not DEBUG:
+    #    return
 
     systeminfo.setup()
 
