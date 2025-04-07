@@ -321,10 +321,11 @@ class Cluster:
         return Certificate(CertificateType.CLUSTER, str(cert), str(key))
 
     async def connect(self):
-        try:
-            await self.sio.disconnect()
-        except:
-            pass
+        if self.sio.connected:
+            try:
+                await self.sio.disconnect()
+            except:
+                logger.debug_traceback()
         try:
             await self.sio.connect(
                 cfg.base_url,
