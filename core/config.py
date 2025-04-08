@@ -103,6 +103,10 @@ class Config:
     @property
     def cluster_up_failed_interval(self) -> datetime.timedelta: # 24 hours
         return datetime.timedelta(seconds=units.parse_time_units(self.get("advanced.cluster_up_failed_interval") or "24h"))
+    
+    @property
+    def bridge_web_application(self) -> bool:
+        return self.get("advanced.bridge_web_application") or False
 
 API_VERSION = "1.13.1"
 VERSION = "4.0.16"
@@ -121,6 +125,7 @@ DEFAULT_CONFIG = {
     "advanced.base_url": "https://openbmclapi.bangbang93.com",
     "advanced.bd_url": "https://bd.bangbang93.com",
     "advanced.storage_measure": False,
+    "advanced.bridge_web_application": False,
     "web.port": 6543,
     "web.public_port": 6543,
     "web.proxy": False,

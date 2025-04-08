@@ -11,6 +11,7 @@ import tianxiu2b2t.anyio.streams as streams
 import tianxiu2b2t.anyio.streams.proxy as streams_proxy
 from tianxiu2b2t.anyio import concurrency
 from tianxiu2b2t.utils import runtime
+from tianxiu2b2t.http.asgi import ASGIApplicationBridge
 
 from . import utils, abc
 from .logger import logger
@@ -118,7 +119,7 @@ async def pub_listener(
     )
 
     tls_listener = streams.AutoTLSListener(
-        streams_proxy.ProxyProtocolV2Listener(
+        streams_proxy.ProxyProtocolMixedListener(
             streams.FixedSocketListener(
                 listener
             ),
@@ -131,7 +132,13 @@ async def serve(
 ):
     async with listener:
         logger.tinfo("web.forward.pub_port", port=pub_port)
-        await listener.serve(pub_handler)
+        if not cfg.bridge_web_application:
+            await listener.serve(pub_handler)
+            return
+        await ASGIApplicationBridge(
+            app,
+            listener,
+        ).serve()
 
 async def pub_handler(
     sock: streams.BufferedByteStream,
@@ -253,6 +260,8 @@ async def setup(
         context.check_hostname = False
         context.hostname_checks_common_name = False
         context.verify_mode = ssl.CERT_NONE
+        if cfg.bridge_web_application:
+            context.set_alpn_protocols(["h2", "http/1.1"])
         
         for domain in cert.domains:
             tls_listener.add_context(
