@@ -23,8 +23,11 @@ jobs:
         run: npx changelogithub-chinese
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
-  build:
+  build-multiarch:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [linux/amd64, linux/arm64]
     steps:
       - uses: actions/checkout@v4
       - name: Set env
@@ -34,14 +37,14 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{secrets.HUB_USERNAME}}
-          password: ${{secrets.HUB_PASSWORD}}
-      - name: Build and push
+          username: ${{ secrets.HUB_USERNAME }}
+          password: ${{ secrets.HUB_PASSWORD }}
+      - name: Build and push for ${{ matrix.platform }}
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: |
             atianxiua/python-openbmclapi:latest
-            atianxiua/python-openbmclapi:${{env.RELEASE_VERSION}}
-          platforms: linux/amd64, linux/arm64
+            atianxiua/python-openbmclapi:${{ env.RELEASE_VERSION }}
+          platforms: ${{ matrix.platform }}
