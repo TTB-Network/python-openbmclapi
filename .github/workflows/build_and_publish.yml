@@ -25,9 +25,6 @@ jobs:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
   build-multiarch:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        platform: [linux/amd64, linux/arm64]
     steps:
       - uses: actions/checkout@v4
       - name: Set env
@@ -39,7 +36,7 @@ jobs:
         with:
           username: ${{ secrets.HUB_USERNAME }}
           password: ${{ secrets.HUB_PASSWORD }}
-      - name: Build and push for ${{ matrix.platform }}
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -47,4 +44,4 @@ jobs:
           tags: |
             atianxiua/python-openbmclapi:latest
             atianxiua/python-openbmclapi:${{ env.RELEASE_VERSION }}
-          platforms: ${{ matrix.platform }}
+          platforms: linux/amd64,linux/arm64
