@@ -11,7 +11,6 @@ import tianxiu2b2t.anyio.streams as streams
 import tianxiu2b2t.anyio.streams.proxy as streams_proxy
 from tianxiu2b2t.anyio import concurrency
 from tianxiu2b2t.utils import runtime
-from tianxiu2b2t.http.asgi import ASGIApplicationBridge
 
 from . import utils, abc
 from .logger import logger
@@ -132,13 +131,9 @@ async def serve(
 ):
     async with listener:
         logger.tinfo("web.forward.pub_port", port=pub_port)
-        if not cfg.bridge_web_application:
-            await listener.serve(pub_handler)
-            return
-        await ASGIApplicationBridge(
-            app,
-            listener,
-        ).serve()
+        #if not cfg.bridge_web_application:
+        await listener.serve(pub_handler)
+        #return
 
 async def pub_handler(
     sock: streams.BufferedByteStream,
