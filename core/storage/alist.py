@@ -1,11 +1,9 @@
 import io
-from tempfile import _TemporaryFileWrapper
 import time
 from typing import Any
 import urllib.parse as urlparse
 import aiohttp
 import anyio.abc
-from tianxiu2b2t import units
 
 from . import abc
 from ..config import USER_AGENT

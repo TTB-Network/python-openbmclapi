@@ -1,13 +1,11 @@
 from io import BytesIO
 import io
-import tempfile
 import time
 import aioboto3.session
 import anyio.abc
 import anyio.to_thread
 import aioboto3
 import urllib.parse as urlparse
-from tianxiu2b2t import units
 
 from ..logger import logger
 from ..utils import UnboundTTLCache

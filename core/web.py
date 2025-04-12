@@ -11,7 +11,7 @@ import tianxiu2b2t.anyio.streams as streams
 import tianxiu2b2t.anyio.streams.proxy as streams_proxy
 from tianxiu2b2t.anyio import concurrency
 from tianxiu2b2t.utils import runtime
-from tianxiu2b2t.http.asgi import ASGIApplicationBridge, ASGIConfig
+from tianxiu2b2t.http.asgi import ASGIApplicationBridge, ASGIConfig, ASGIListener
 
 from . import utils, abc
 from .logger import logger
@@ -130,16 +130,18 @@ async def pub_listener(
 async def serve(
     listener: anyio.abc.Listener,
 ):
-    async with listener:
-        logger.tinfo("web.forward.pub_port", port=pub_port)
-        if not cfg.bridge_web_application:
-            await listener.serve(pub_handler)
-        async with ASGIApplicationBridge(
+    logger.tinfo("web.forward.pub_port", port=pub_port)
+    if cfg.bridge_web_application:
+        asgi_listener = ASGIListener(
             ASGIConfig(
                 app,
-            )
-        ) as bridge:
-            await bridge.serve(listener)
+            ),
+            listener
+        )
+        await asgi_listener.serve()
+        return
+    async with listener:
+        await listener.serve(pub_handler)
 
 async def pub_handler(
     sock: streams.BufferedByteStream,
@@ -241,21 +243,14 @@ async def setup(
             cfg.get("cert.cert"),
             cfg.get("cert.key")
         ))
-    elif cert_type == abc.CertificateType.CLUSTER:
-        for cert in await concurrency.gather(*(
-            cluster.request_cert() for cluster in clusters.clusters
-        )):
-            if cert is None:
-                continue
-            certificates.append(cert)
 
-    if len(certificates) == 0:
-        raise RuntimeError(t("error.web.certificates"))
+    update_certificates(certificates)
 
-    if tls_listener is None:
-        raise RuntimeError(t("error.web.tls_listener"))
-
-    for cert in certificates:
+def update_certificates(
+    certicates: list[abc.Certificate]
+):
+    assert tls_listener is not None
+    for cert in certicates:
         context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         context.load_cert_chain(cert.cert, cert.key)
         context.check_hostname = False
@@ -263,7 +258,7 @@ async def setup(
         context.verify_mode = ssl.CERT_NONE
         if cfg.bridge_web_application:
             context.set_alpn_protocols(["h2", "http/1.1"])
-        
+
         for domain in cert.domains:
             tls_listener.add_context(
                 domain,

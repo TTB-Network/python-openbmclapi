@@ -1,5 +1,4 @@
 import abc
-import tempfile
 
 import anyio.abc
 import io

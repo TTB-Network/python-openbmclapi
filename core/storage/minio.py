@@ -1,14 +1,13 @@
 from datetime import timedelta
 import datetime
 import io
-import tempfile
 import time
 from typing import Optional
 import urllib.parse as urlparse
 import aiohttp
 import anyio.abc
 
-from ..abc import ResponseFile, ResponseFileMemory, ResponseFileRemote, ResponseFileNotFound
+from ..abc import ResponseFile, ResponseFileMemory, ResponseFileRemote
 from ..utils import UnboundTTLCache
 from ..logger import logger
 
@@ -16,7 +15,6 @@ from .abc import CPath, FileInfo, Storage
 from miniopy_async import Minio
 from miniopy_async.api import BaseURL, presign_v4
 from miniopy_async.datatypes import Object
-from tianxiu2b2t import units
 
 
 class MinioStorage(Storage):

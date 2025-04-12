@@ -9,7 +9,7 @@ import fastapi
 import psutil
 from fastapi.staticfiles import StaticFiles
 
-from .config import ROOT_PATH, DEBUG
+from .config import ROOT_PATH
 from .web import query_per_second_statistics
 from .utils import scheduler
 from tianxiu2b2t.utils import runtime

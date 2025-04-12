@@ -70,6 +70,10 @@ async def load_config():
     if clusters.count == 0 or clusters.storages.count == 0:
         logger.terror("core.initialize.missing", clusters=clusters.count, storages=clusters.storages.count)
 
+async def load_cluster_certificates():
+    certificates = await clusters.load_certificates()
+    web.update_certificates(certificates)
+
 async def main():
     global clusters
 
@@ -92,6 +96,8 @@ async def main():
             await web.setup(task_group, clusters)
 
             await setup_dashboard(web.app, task_group)
+
+            await load_cluster_certificates()
 
             await clusters.sync()
 
@@ -229,7 +235,7 @@ def access_log(request: fastapi.Request, response: fastapi.Response, total_time:
         status=response.status_code,
         total_time=units.format_count_time(total_time, 4).rjust(14),
         user_agent=request.headers.get("User-Agent") or "",
-        address=address,
+        address=address.ljust(16),
     )
 
 @web.app.middleware("http")

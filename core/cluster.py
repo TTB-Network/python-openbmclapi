@@ -1,12 +1,11 @@
+from . import abc
 import contextlib
 import datetime
 import hmac
 import io
 import json
-import os
 from pathlib import Path
 import sys
-import tempfile
 import time
 from typing import Any, Optional
 import aiohttp
@@ -753,6 +752,20 @@ class ClusterManager:
     async def stop(self):
         for cluster in self.clusters:
             await cluster.stop_serve()
+
+    async def load_certificates(self):
+        cert_type = utils.get_certificate_type()
+        if cert_type != abc.CertificateType.CLUSTER:
+            return []
+        certificates = []
+        for cert in await concurrency.gather(*(
+            cluster.request_cert() for cluster in self.clusters
+        )):
+            if cert is None:
+                continue
+            certificates.append(cert)
+        
+        return certificates
 
     async def fetch_cluster_name(self):
         assert self._task_group is not None
