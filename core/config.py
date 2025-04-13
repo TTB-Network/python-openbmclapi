@@ -108,7 +108,7 @@ class Config:
     def bridge_web_application(self) -> bool:
         return self.get("advanced.bridge_web_application") or False
 
-API_VERSION = "1.13.1"
+API_VERSION = "1.14.0"
 VERSION = "4.0.16"
 PROJECT = "PythonOpenBMCLAPI"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} {PROJECT}/{VERSION}"
