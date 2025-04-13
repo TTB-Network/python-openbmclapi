@@ -145,6 +145,214 @@ class ClusterCounter:
     def clone(self):
         return ClusterCounter(self.hits, self.bytes)
 
+class DownloadManager:
+    def __init__(
+        self,
+        missing_files: set[BMCLAPIFile],
+        clusters: list['Cluster'],
+        storages: list[CheckStorage]
+    ):
+        self._missing_files = missing_files
+        self._clusters = clusters
+        self._storages = storages
+        self._pbar = utils.MultiTQDM(
+            total=sum(missing_file.size for missing_file in missing_files),
+            description="Download",
+            unit="B",
+            unit_scale=True,
+            unit_divisor=1024,
+        )
+        self._failed = 0
+        self._success = 0
+        self._cache_dir = ROOT_PATH / "cache"
+
+        self._cache_dir.mkdir(exist_ok=True, parents=True)
+
+    def update_success(self):
+        self._success += 1
+        self.update_display()
+    
+    def update_failed(self):
+        self._failed += 1
+        self.update_display()
+
+    def update_display(self):
+        self._pbar.set_postfix_str(f"{self._success}/{len(self._missing_files)}, {self._failed}")
+    
+    async def download(self):
+        configuration = await self.get_configurations()
+        logger.tinfo("download.configuration", source=configuration.source, concurrency=configuration.concurrency)
+        async with anyio.create_task_group() as task_group:
+            queue = utils.Queue()
+            for file in self._missing_files:
+                queue.put_item(file)
+            for _ in range(configuration.concurrency):
+                task_group.start_soon(self._download_files, queue, _)
+
+    async def _download_files(
+        self,
+        files: utils.Queue[BMCLAPIFile],
+        worker_id: int
+    ):
+        async with aiohttp.ClientSession(
+            base_url=cfg.base_url,
+            headers={
+                "Authorization": f"Bearer {await self._clusters[0].get_token()}",
+                "User-Agent": USER_AGENT,
+            }
+        ) as session:
+            with self._pbar.sub(0, f"Worker {worker_id}", unit="B", unit_scale=True, unit_divisor=1024) as pbar:
+                while len(files) != 0:
+                    file = await files.get_item()
+                    pbar._tqdm.total = file.size
+                    pbar._tqdm.n = 0
+                    pbar._tqdm.set_description_str(file.path)
+                    pbar._tqdm.refresh()
+                    pbar._tqdm.update(0)
+                    await self._download_file(file, session, pbar)
+
+    async def _download_file(
+        self,
+        file: BMCLAPIFile,
+        session: aiohttp.ClientSession,
+        pbar: utils.SubTQDM
+    ):
+        last_error = None
+        for _ in range(10):
+            size = 0
+            hash = utils.get_hash_obj(file.hash)
+            tmp_file = io.BytesIO()
+            try:
+                async with session.get(
+                    file.path
+                ) as resp:
+                    while (data := await resp.content.read(1024 * 1024 * 16)):
+                        tmp_file.write(data)
+                        hash.update(data)
+                        inc = len(data)
+                        size += inc
+                        self._pbar.update(inc)
+                        pbar.update(inc)
+                    if hash.hexdigest() != file.hash or size != file.size:
+                        await anyio.sleep(50)
+                        raise Exception(f"hash mismatch, got {hash.hexdigest()} expected {file.hash}")
+                await self.upload_storage(file, tmp_file, size)
+                self.update_success()
+            except Exception as e:
+                last_error = e
+                self._pbar.update(-size)
+                pbar.update(-size)
+                self.update_failed()
+                continue
+            finally:
+                tmp_file.close()
+            return None
+        if last_error is not None:
+            raise last_error
+
+    async def upload_storage(
+        self,
+        file: BMCLAPIFile,
+        data: io.BytesIO,
+        size: int
+    ):
+        missing_storage = [
+            storage for storage in self._storages if file in storage.missing_files
+        ]
+        if len(missing_storage) == 0:
+            return
+        for storage in missing_storage:
+            data.seek(0)
+            retries = 0
+            while 1:
+                try:
+                    await storage.storage.upload_download_file(f"{file.hash[:2]}/{file.hash}", data, size)
+                    break
+                except:
+                    if retries >= 10:
+                        raise
+                    retries += 1
+                    next = 10 * (retries + 1)
+                    logger.twarning("storage.retry_upload", name=storage.storage.name, times=retries, time=next)
+                    logger.traceback()
+                    await anyio.sleep(next)
+
+    async def get_configurations(self):
+        configurations: list[OpenBMCLAPIConfiguration] = await concurrency.gather(*[
+            cluster.get_configuration() for cluster in self._clusters
+        ])
+        # select max concurrency
+        return max(configurations, key=lambda x: x.concurrency)
+
+class ClusterStatus:
+    def __init__(self):
+        self.dir = ROOT_PATH / "cluster_status"
+
+    def log_enable(self, cluster: str):
+        self.log_cluster(cluster, "enable")
+
+    def log_enable_failed(self, cluster: str, error: Any):
+        self.log_cluster(cluster, "enable_failed", error)
+
+    def log_cluster(
+        self,
+        cluster: str,
+        type: str,
+        extra: Any = None
+    ):
+        file = self.dir / f"{cluster}.log"
+    
+        file.parent.mkdir(parents=True, exist_ok=True)
+
+        data = {
+            "time": datetime.datetime.now().isoformat(),
+            "type": type,
+            "cluster": cluster,
+        }
+        if extra is not None:
+            data["extra"] = extra
+        # append to file
+        with open(file, "a") as f:
+            f.write(f"{json.dumps(data)}\n")
+
+    def get_cluster_failed_count(self, cluster: str, timedelta: datetime.timedelta) -> int:
+        return len(self.get_cluster_failed_logs(cluster, timedelta))
+    
+    def get_cluster_next_up(self, cluster: str, timedelta: datetime.timedelta, max_count: int) -> datetime.datetime:
+        logs = self.get_cluster_failed_logs(cluster, timedelta)
+        
+        # sort by time
+        logs.sort(key=lambda x: x["time"])
+        if len(logs) < max_count:
+            return datetime.datetime.now()
+        
+        # 获取最后第 max_count 个日志的时间
+        n = max(0, len(logs) - max_count)
+        time: datetime.datetime = logs[n]["time"]
+        return time + timedelta
+
+    def get_cluster_failed_logs(self, cluster: str, timedelta: datetime.timedelta) -> list[dict]:
+        file = self.dir / f"{cluster}.log"
+        current_now = datetime.datetime.now()
+
+        if not file.exists():
+            return []
+
+        logs: list[dict] = []
+        with open(file, "r") as f:
+            lines = f.readlines()
+            for line in lines:
+                data = json.loads(line)
+                if data["type"] == "enable_failed":
+                    time = datetime.datetime.fromisoformat(data["time"])
+                    data = {
+                        **data,
+                        "time": time,   
+                    }
+                    if (current_now - time).total_seconds() < timedelta.total_seconds():
+                        logs.append(data)
+        return logs
+
 class Cluster:
     def __init__(
         self,
@@ -227,6 +435,8 @@ class Cluster:
             logger.tinfo("cluster.disconnected", id=self.id, name=self.display_name)
             await self.disable()
 
+            if self.sio.connected:
+                return
             await anyio.sleep(600)
             await self.connect()
 
@@ -502,146 +712,6 @@ class Cluster:
         self._stop = True
         await self.disable()
 
-class DownloadManager:
-    def __init__(
-        self,
-        missing_files: set[BMCLAPIFile],
-        clusters: list[Cluster],
-        storages: list[CheckStorage]
-    ):
-        self._missing_files = missing_files
-        self._clusters = clusters
-        self._storages = storages
-        self._pbar = utils.MultiTQDM(
-            total=sum(missing_file.size for missing_file in missing_files),
-            description="Download",
-            unit="B",
-            unit_scale=True,
-            unit_divisor=1024,
-        )
-        self._failed = 0
-        self._success = 0
-        self._cache_dir = ROOT_PATH / "cache"
-
-        self._cache_dir.mkdir(exist_ok=True, parents=True)
-
-    def update_success(self):
-        self._success += 1
-        self.update_display()
-    
-    def update_failed(self):
-        self._failed += 1
-        self.update_display()
-
-    def update_display(self):
-        self._pbar.set_postfix_str(f"{self._success}/{len(self._missing_files)}, {self._failed}")
-    
-    async def download(self):
-        configuration = await self.get_configurations()
-        logger.tinfo("download.configuration", source=configuration.source, concurrency=configuration.concurrency)
-        async with anyio.create_task_group() as task_group:
-            queue = utils.Queue()
-            for file in self._missing_files:
-                queue.put_item(file)
-            for _ in range(configuration.concurrency):
-                task_group.start_soon(self._download_files, queue, _)
-
-    async def _download_files(
-        self,
-        files: utils.Queue[BMCLAPIFile],
-        worker_id: int
-    ):
-        async with aiohttp.ClientSession(
-            base_url=cfg.base_url,
-            headers={
-                "Authorization": f"Bearer {await self._clusters[0].get_token()}",
-                "User-Agent": USER_AGENT,
-            }
-        ) as session:
-            with self._pbar.sub(0, f"Worker {worker_id}", unit="B", unit_scale=True, unit_divisor=1024) as pbar:
-                while len(files) != 0:
-                    file = await files.get_item()
-                    pbar._tqdm.total = file.size
-                    pbar._tqdm.n = 0
-                    pbar._tqdm.set_description_str(file.path)
-                    pbar._tqdm.refresh()
-                    pbar._tqdm.update(0)
-                    await self._download_file(file, session, pbar)
-
-    async def _download_file(
-        self,
-        file: BMCLAPIFile,
-        session: aiohttp.ClientSession,
-        pbar: utils.SubTQDM
-    ):
-        last_error = None
-        for _ in range(10):
-            size = 0
-            hash = utils.get_hash_obj(file.hash)
-            tmp_file = io.BytesIO()
-            try:
-                async with session.get(
-                    file.path
-                ) as resp:
-                    while (data := await resp.content.read(1024 * 1024 * 16)):
-                        tmp_file.write(data)
-                        hash.update(data)
-                        inc = len(data)
-                        size += inc
-                        self._pbar.update(inc)
-                        pbar.update(inc)
-                    if hash.hexdigest() != file.hash or size != file.size:
-                        await anyio.sleep(50)
-                        raise Exception(f"hash mismatch, got {hash.hexdigest()} expected {file.hash}")
-                await self.upload_storage(file, tmp_file, size)
-                self.update_success()
-            except Exception as e:
-                last_error = e
-                self._pbar.update(-size)
-                pbar.update(-size)
-                self.update_failed()
-                continue
-            finally:
-                tmp_file.close()
-            return None
-        if last_error is not None:
-            raise last_error
-
-
-    async def upload_storage(
-        self,
-        file: BMCLAPIFile,
-        data: io.BytesIO,
-        size: int
-    ):
-        missing_storage = [
-            storage for storage in self._storages if file in storage.missing_files
-        ]
-        if len(missing_storage) == 0:
-            return
-        for storage in missing_storage:
-            data.seek(0)
-            retries = 0
-            while 1:
-                try:
-                    await storage.storage.upload_download_file(f"{file.hash[:2]}/{file.hash}", data, size)
-                    break
-                except:
-                    if retries >= 10:
-                        raise
-                    retries += 1
-                    next = 10 * (retries + 1)
-                    logger.twarning("storage.retry_upload", name=storage.storage.name, times=retries, time=next)
-                    logger.traceback()
-                    await anyio.sleep(next)
-
-    async def get_configurations(self):
-        configurations: list[OpenBMCLAPIConfiguration] = await concurrency.gather(*[
-            cluster.get_configuration() for cluster in self._clusters
-        ])
-        # select max concurrency
-        return max(configurations, key=lambda x: x.concurrency)
-
 class ClusterManager:
     def __init__(
         self,
@@ -784,7 +854,6 @@ class ClusterManager:
             return
         utils.schedule_once(self._task_group, self._fetch_cluster_name, 600)
 
-
     async def _fetch_cluster_name(self):
         self._cluster_name = False
         await self.fetch_cluster_name()
@@ -823,76 +892,6 @@ class ClusterManager:
         except:
             return None
     
-class ClusterStatus:
-    def __init__(self):
-        self.dir = ROOT_PATH / "cluster_status"
-
-    def log_enable(self, cluster: str):
-        self.log_cluster(cluster, "enable")
-
-    def log_enable_failed(self, cluster: str, error: Any):
-        self.log_cluster(cluster, "enable_failed", error)
-
-    def log_cluster(
-        self,
-        cluster: str,
-        type: str,
-        extra: Any = None
-    ):
-        file = self.dir / f"{cluster}.log"
-    
-        file.parent.mkdir(parents=True, exist_ok=True)
-
-        data = {
-            "time": datetime.datetime.now().isoformat(),
-            "type": type,
-            "cluster": cluster,
-        }
-        if extra is not None:
-            data["extra"] = extra
-        # append to file
-        with open(file, "a") as f:
-            f.write(f"{json.dumps(data)}\n")
-
-    def get_cluster_failed_count(self, cluster: str, timedelta: datetime.timedelta) -> int:
-        return len(self.get_cluster_failed_logs(cluster, timedelta))
-    
-    def get_cluster_next_up(self, cluster: str, timedelta: datetime.timedelta, max_count: int) -> datetime.datetime:
-        logs = self.get_cluster_failed_logs(cluster, timedelta)
-        
-        # sort by time
-        logs.sort(key=lambda x: x["time"])
-        if len(logs) < max_count:
-            return datetime.datetime.now()
-        
-        # 获取最后第 max_count 个日志的时间
-        n = max(0, len(logs) - max_count)
-        time: datetime.datetime = logs[n]["time"]
-        return time + timedelta
-
-    def get_cluster_failed_logs(self, cluster: str, timedelta: datetime.timedelta) -> list[dict]:
-        file = self.dir / f"{cluster}.log"
-        current_now = datetime.datetime.now()
-
-        if not file.exists():
-            return []
-
-        logs: list[dict] = []
-        with open(file, "r") as f:
-            lines = f.readlines()
-            for line in lines:
-                data = json.loads(line)
-                if data["type"] == "enable_failed":
-                    time = datetime.datetime.fromisoformat(data["time"])
-                    data = {
-                        **data,
-                        "time": time,   
-                    }
-                    if (current_now - time).total_seconds() < timedelta.total_seconds():
-                        logs.append(data)
-        return logs
-
-
 status = ClusterStatus()
 
 if cfg.concurrency_enable_cluster:
