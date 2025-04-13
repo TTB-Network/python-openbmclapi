@@ -43,40 +43,43 @@ class TokenManager:
         return self._token
     
     async def fetch_token(self):
-        async with aiohttp.ClientSession(
-            base_url=cfg.base_url,
-            headers={
-                "User-Agent": USER_AGENT,
-            }
-        ) as session:
-            
-            # challenge
-            async with session.get(
-                "/openbmclapi-agent/challenge",
-                params={
-                    "clusterId": self._id
+        try:
+            async with aiohttp.ClientSession(
+                base_url=cfg.base_url,
+                headers={
+                    "User-Agent": USER_AGENT,
                 }
-            ) as resp:
-                challenge = (await resp.json())['challenge']
-            
-            signature = hmac.new(
-                self._secret.encode('utf-8'),
-                challenge.encode('utf-8'),
-                'sha256'
-            ).hexdigest()
+            ) as session:
 
-            async with session.post(
-                "/openbmclapi-agent/token",
-                json={
-                    "clusterId": self._id,
-                    "challenge": challenge,
-                    "signature": signature
-                }
-            ) as resp:
-                data = await resp.json()
-                self._token = data['token']
-                ttl = data['ttl'] / 1000.0
-                self.schedule_refresh_token(ttl)
+                # challenge
+                async with session.get(
+                    "/openbmclapi-agent/challenge",
+                    params={
+                        "clusterId": self._id
+                    }
+                ) as resp:
+                    challenge = (await resp.json())['challenge']
+
+                signature = hmac.new(
+                    self._secret.encode('utf-8'),
+                    challenge.encode('utf-8'),
+                    'sha256'
+                ).hexdigest()
+
+                async with session.post(
+                    "/openbmclapi-agent/token",
+                    json={
+                        "clusterId": self._id,
+                        "challenge": challenge,
+                        "signature": signature
+                    }
+                ) as resp:
+                    data = await resp.json()
+                    self._token = data['token']
+                    ttl = data['ttl'] / 1000.0
+                    self.schedule_refresh_token(ttl)
+        except:
+            logger.ttraceback("cluster.token.fetch", id=self._id, name=self.display_name)
 
     def setup(self, task_group: anyio.abc.TaskGroup):
         self._task_group = task_group
@@ -575,46 +578,56 @@ class Cluster:
         
     async def get_files(self) -> list[BMCLAPIFile]:
         results: list[BMCLAPIFile] = []
-        async with aiohttp.ClientSession(
-            base_url=cfg.base_url,
-            headers={
-                "User-Agent": USER_AGENT,
-                "Authorization": f"Bearer {await self._token.get_token()}",
-            }
-        ) as session:
-            async with session.get(
-                "/openbmclapi/files",
-                params={
-                    "lastModified": int(self._last_modified * 1000)
+        try:
+            async with aiohttp.ClientSession(
+                base_url=cfg.base_url,
+                headers={
+                    "User-Agent": USER_AGENT,
+                    "Authorization": f"Bearer {await self._token.get_token()}",
                 }
-            ) as resp:
-                if resp.status == 204: # no new files
-                    #logger.tdebug("cluster.get_files.no_new_files", id=self.id)
-                    return results
-                reader = utils.AvroParser(zstd.decompress(await resp.read()))
-                for _ in range(reader.read_long()):
-                    results.append(BMCLAPIFile(
-                        reader.read_string(),
-                        reader.read_string(),
-                        reader.read_long(),
-                        reader.read_long() / 1000.0,
-                    ))
-                self._last_modified = max(results, key=lambda x: x.mtime).mtime
-                logger.tdebug("cluster.get_files", id=self.id, name=self.display_name, count=len(results), size=units.format_bytes(sum([f.size for f in results])), last_modified=units.format_datetime_from_timestamp(self._last_modified))
+            ) as session:
+                async with session.get(
+                    "/openbmclapi/files",
+                    params={
+                        "lastModified": int(self._last_modified * 1000)
+                    }
+                ) as resp:
+                    if resp.status == 204: # no new files
+                        #logger.tdebug("cluster.get_files.no_new_files", id=self.id)
+                        return results
+                    reader = utils.AvroParser(zstd.decompress(await resp.read()))
+                    for _ in range(reader.read_long()):
+                        results.append(BMCLAPIFile(
+                            reader.read_string(),
+                            reader.read_string(),
+                            reader.read_long(),
+                            reader.read_long() / 1000.0,
+                        ))
+                    self._last_modified = max(results, key=lambda x: x.mtime).mtime
+                    logger.tdebug("cluster.get_files", id=self.id, name=self.display_name, count=len(results), size=units.format_bytes(sum([f.size for f in results])), last_modified=units.format_datetime_from_timestamp(self._last_modified))
+        except:
+            logger.debug_traceback()
         return results
 
     async def get_configuration(self) -> OpenBMCLAPIConfiguration:
-        async with aiohttp.ClientSession(
-            base_url=cfg.base_url,
-            headers={
-                "User-Agent": USER_AGENT,
-                "Authorization": f"Bearer {await self._token.get_token()}",
-            }
-        ) as session:
-            async with session.get(
-                "/openbmclapi/configuration",
-            ) as resp:
-                return OpenBMCLAPIConfiguration(**(await resp.json())['sync'])
+        try:
+            async with aiohttp.ClientSession(
+                base_url=cfg.base_url,
+                headers={
+                    "User-Agent": USER_AGENT,
+                    "Authorization": f"Bearer {await self._token.get_token()}",
+                }
+            ) as session:
+                async with session.get(
+                    "/openbmclapi/configuration",
+                ) as resp:
+                    return OpenBMCLAPIConfiguration(**(await resp.json())['sync'])
+        except:
+            logger.debug_traceback()
+            return OpenBMCLAPIConfiguration(
+                'default',
+                5
+            )
 
     async def get_token(self):
         return await self._token.get_token()
@@ -839,17 +852,20 @@ class ClusterManager:
 
     async def fetch_cluster_name(self):
         assert self._task_group is not None
-        async with aiohttp.ClientSession(
-            cfg.bd_url
-        ) as session:
-            async with session.get(
-                "/openbmclapi/metric/rank"
-            ) as response:
-                for resp_cluster in await response.json():
-                    id = resp_cluster["_id"]
-                    name = resp_cluster["name"]
-                    if id in self._clusters:
-                        self._clusters[id].display_name = name
+        try:
+            async with aiohttp.ClientSession(
+                cfg.bd_url
+            ) as session:
+                async with session.get(
+                    "/openbmclapi/metric/rank"
+                ) as response:
+                    for resp_cluster in await response.json():
+                        id = resp_cluster["_id"]
+                        name = resp_cluster["name"]
+                        if id in self._clusters:
+                            self._clusters[id].display_name = name
+        except:
+            ...
         if self._cluster_name:
             return
         utils.schedule_once(self._task_group, self._fetch_cluster_name, 600)

@@ -109,7 +109,7 @@ class Config:
         return self.get("advanced.bridge_web_application") or False
 
 API_VERSION = "1.14.0"
-VERSION = "4.0.16"
+VERSION = "4.0.17"
 PROJECT = "PythonOpenBMCLAPI"
 USER_AGENT = f"openbmclapi-cluster/{API_VERSION} {PROJECT}/{VERSION}"
 ROOT_PATH = Path(__file__).parent.parent

@@ -8,6 +8,7 @@ import anyio.abc
 from . import abc
 from ..config import USER_AGENT
 from .. import utils
+from ..logger import logger
 
 class AlistResponse:
     def __init__(
@@ -55,26 +56,30 @@ class AlistStorage(abc.Storage):
         return self._token
     
     async def _fetch_token(self):
-        async with aiohttp.ClientSession(
-            base_url=self._endpoint,
-            headers={
-                "User-Agent": USER_AGENT
-            }
-        ) as session:
-            async with session.post(
-                "/api/auth/login",
-                json={
-                    "username": self._username,
-                    "password": self._password
+        try:
+            async with aiohttp.ClientSession(
+                base_url=self._endpoint,
+                headers={
+                    "User-Agent": USER_AGENT
                 }
-            ) as resp:
-                data = AlistResponse(await resp.json())
-                data.raise_for_status()
+            ) as session:
+                async with session.post(
+                    "/api/auth/login",
+                    json={
+                        "username": self._username,
+                        "password": self._password
+                    }
+                ) as resp:
+                    data = AlistResponse(await resp.json())
+                    data.raise_for_status()
 
-                self._token = data.data["token"]
+                    self._token = data.data["token"]
 
-                assert self._task_group is not None
-                utils.schedule_once(self._task_group, self._fetch_token, 3600) # refresh token every hour
+                    assert self._task_group is not None
+                    utils.schedule_once(self._task_group, self._fetch_token, 3600) # refresh token every hour
+        except:
+            self._token = None
+            logger.traceback()
 
     async def _check(self):
         while 1:
@@ -113,22 +118,25 @@ class AlistStorage(abc.Storage):
 
     async def check_measure(self, size: int):
         path = str(self._path / "measure" / size)
-        async with aiohttp.ClientSession(
-            base_url=self._endpoint,
-            headers={
-                "Authorization": await self._get_token() or "",
-                "User-Agent": USER_AGENT
-            }
-        ) as session:
-            async with session.post(
-                f"/api/fs/get",
-                json={
-                    "path": path
+        try:
+            async with aiohttp.ClientSession(
+                base_url=self._endpoint,
+                headers={
+                    "Authorization": await self._get_token() or "",
+                    "User-Agent": USER_AGENT
                 }
-            ) as resp:
-                data = AlistResponse(await resp.json())
-                if data.code == 200 and data.data["size"] == size * 1024 * 1024:
-                    return True
+            ) as session:
+                async with session.post(
+                    f"/api/fs/get",
+                    json={
+                        "path": path
+                    }
+                ) as resp:
+                    data = AlistResponse(await resp.json())
+                    if data.code == 200 and data.data["size"] == size * 1024 * 1024:
+                        return True
+        except:
+            logger.traceback()
         return False
 
     async def setup(
