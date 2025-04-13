@@ -9,12 +9,13 @@ import anyio
 import fastapi
 
 from tianxiu2b2t import units
+from tianxiu2b2t.utils import runtime
 from .abc import ResponseFileLocal, ResponseFileMemory, ResponseFileNotFound, ResponseFileRemote
 from .locale import load_languages
 from .cluster import ClusterManager
 from .config import API_VERSION, VERSION, cfg
 from .logger import logger
-from .utils import runtime, scheduler
+from .utils import scheduler
 from .database import init as init_database
 from .dashboard import (
     setup as setup_dashboard,
@@ -112,7 +113,7 @@ async def main():
         stop_dashboard()
         await clusters.stop()
         scheduler.shutdown(False)
-        await anyio.sleep(max(0, 5 - runtime.get_perf_counter()))
+        await anyio.sleep(max(0, 5 - runtime.perf_counter()))
         logger.tinfo("core.exit")
 
 FORBIDDEN = fastapi.responses.Response(
@@ -241,7 +242,7 @@ def access_log(request: fastapi.Request, response: fastapi.Response, total_time:
 @web.app.middleware("http")
 async def access_log_middleware(request: fastapi.Request, call_next):
     web.query_per_second_statistics.add()
-    start_time = runtime.get_perf_counter_ns()
+    start_time = runtime.perf_counter_ns()
     try:
         result = await call_next(request)
     except:
@@ -251,7 +252,7 @@ async def access_log_middleware(request: fastapi.Request, call_next):
             content="Internal Server Error"
         )
 
-    end_time = runtime.get_perf_counter_ns()
+    end_time = runtime.perf_counter_ns()
 
     access_log(request, result, end_time - start_time)
     # access log

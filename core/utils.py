@@ -9,7 +9,6 @@ from typing import (
     Awaitable, 
     Callable, 
     Optional, 
-    Coroutine, 
     TypeVar, 
 )
 
@@ -19,6 +18,7 @@ import cachetools
 from tqdm import tqdm
 from functools import lru_cache
 import apscheduler.schedulers.asyncio
+from tianxiu2b2t.anyio.future import Future
 
 from .logger import logger
 
@@ -29,25 +29,6 @@ K = TypeVar("K")
 V = TypeVar("V") 
 T = TypeVar("T")
 
-class Runtime:
-    def __init__(
-        self
-    ):
-        self._monotic = time.monotonic_ns()
-        self._perf_counter = time.perf_counter_ns()
-
-    def get_monotic_ns(self):
-        return time.monotonic_ns() - self._monotic
-    
-    def get_perf_counter_ns(self):
-        return time.perf_counter_ns() - self._perf_counter
-    
-    def get_monotic(self):
-        return time.monotonic() - self._monotic / 1e9
-
-    def get_perf_counter(self):
-        return time.perf_counter() - self._perf_counter / 1e9
-    
 class AvroParser:
     def __init__(
         self,
@@ -68,139 +49,11 @@ class AvroParser:
     def read_string(self):
         return self.data.read(self.read_long()).decode('utf-8')
 
-class AnyioFuture:
-    def __init__(
-        self,
-    ):
-        self._result = None
-        self._setted = False
-        self._event = anyio.Event()
-    
-    def set_result(
-        self,
-        result: Any
-    ):
-        if self._setted:
-            raise RuntimeError("Future already set")
-        self._result = result
-        self._setted = True
-        self._event.set()
-
-    def result(self):
-        if not self._setted:
-            raise RuntimeError("Future not set")
-        return self._result
-    
-    async def wait(self):
-        await self._event.wait()
-
-    async def __await__(self):
-        await self.wait()
-        return self.result()
-
-class CustomLock:
-    def __init__(
-        self,
-        locked: bool = False
-    ):
-        self._locked = locked
-        self._fut: deque[AnyioFuture] = deque()
-
-    def acquire(
-        self,
-    ):
-        self._locked = True
-
-    def release(
-        self,
-    ):
-        self._locked = False
-
-        for fut in self._fut:
-            fut.set_result(None)
-
-    async def wait(
-        self
-    ):
-        if not self._locked:
-            return
-        fut = AnyioFuture()
-        self._fut.append(fut)
-        try:
-            await fut.wait()
-        finally:
-            self._fut.remove(fut)
-
-class Queue[T]:
-    def __init__(
-        self,
-    ):
-        self._items: deque[T] = deque()
-        self._fut: deque[anyio.Event] = deque()
-
-    def put_item(self, item: T):
-        self._items.append(item)
-        self._wakeup_first()
-
-    def _wakeup_first(self):
-        if self._fut and self._items:
-            fut = self._fut.popleft()
-            fut.set()
-
-    async def get_item(self):
-        if self._fut or not self._items:
-            fut = anyio.Event()
-            self._fut.append(fut)
-            self._wakeup_first()
-            await fut.wait()
-        return self._items.popleft()
-
-    def __len__(self):
-        return len(self._items)
-
-class Lock:
-    def __init__(
-        self,
-    ):
-        self._locked = False
-        self._fut: deque[AnyioFuture] = deque()
-
-    async def acquire(
-        self,
-    ):
-        if not self._locked:
-            self._locked = True
-            return
-        fut = AnyioFuture()
-        self._fut.append(fut)
-        try:
-            await fut.wait()
-        finally:
-            if fut not in self._fut:
-                return
-            self._fut.remove(fut)
-
-    def release(
-        self,
-    ):
-        if not self._locked or not self._fut:
-            return
-        fut = self._fut.popleft()
-        fut.set_result(None)
-        if not self._fut:
-            self._locked = False
-
-    async def __aenter__(self):
-        await self.acquire()
-
-    async def __aexit__(self, exc_type, exc, tb):
-        self.release()
-
 class Event:
     def __init__(
         self
     ):
-        self._fut: defaultdict[str, deque[AnyioFuture]] = defaultdict(deque)
+        self._fut: defaultdict[str, deque[Future]] = defaultdict(deque)
         self._task_group = None
         self._callbacks: defaultdict[str, deque[Callable]] = defaultdict(deque)
 
@@ -401,7 +254,6 @@ class UnboundTTLCache(cachetools.TTLCache[K, V]):
     def maxsize(self):
         return None
 
-runtime = Runtime()
 event = Event()
 
 scheduler = apscheduler.schedulers.asyncio.AsyncIOScheduler(

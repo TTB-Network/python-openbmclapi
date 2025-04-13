@@ -16,6 +16,8 @@ import socketio
 
 from tianxiu2b2t import units
 from tianxiu2b2t.anyio import concurrency
+from tianxiu2b2t.anyio.lock import WaitLock
+from tianxiu2b2t.anyio.queues import Queue
 
 from . import utils
 from .abc import BMCLAPIFile, Certificate, CertificateType, OpenBMCLAPIConfiguration, ResponseFile, SocketEmitResult
@@ -186,15 +188,15 @@ class DownloadManager:
         configuration = await self.get_configurations()
         logger.tinfo("download.configuration", source=configuration.source, concurrency=configuration.concurrency)
         async with anyio.create_task_group() as task_group:
-            queue = utils.Queue()
+            queue = Queue()
             for file in self._missing_files:
-                queue.put_item(file)
+                await queue.put(file)
             for _ in range(configuration.concurrency):
                 task_group.start_soon(self._download_files, queue, _)
 
     async def _download_files(
         self,
-        files: utils.Queue[BMCLAPIFile],
+        files: Queue[BMCLAPIFile],
         worker_id: int
     ):
         async with aiohttp.ClientSession(
@@ -205,8 +207,8 @@ class DownloadManager:
             }
         ) as session:
             with self._pbar.sub(0, f"Worker {worker_id}", unit="B", unit_scale=True, unit_divisor=1024) as pbar:
-                while len(files) != 0:
-                    file = await files.get_item()
+                while files.qsize() != 0:
+                    file = await files.get()
                     pbar._tqdm.total = file.size
                     pbar._tqdm.n = 0
                     pbar._tqdm.set_description_str(file.path)
@@ -373,8 +375,8 @@ class Cluster:
             logger=DEBUG,
             engineio_logger=DEBUG,
         )
-        self._keepalive_lock = utils.CustomLock(locked=True)
-        self._storage_wait = utils.CustomLock(locked=True)
+        self._keepalive_lock = WaitLock(locked=True)
+        self._storage_wait = WaitLock(locked=True)
         self._enabled = False
         self._want_enable = False
         self._start_serving = False

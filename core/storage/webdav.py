@@ -9,6 +9,7 @@ from . import abc
 from ..logger import logger
 from ..config import USER_AGENT
 from .. import utils
+from tianxiu2b2t.anyio.lock import Lock
 
 import aiowebdav
 
@@ -36,7 +37,7 @@ class WebDavStorage(abc.Storage):
             maxsize=self.cache_size, 
             ttl=self.cache_ttl
         )
-        self._mkdir_lock = utils.Lock()
+        self._mkdir_lock = Lock()
 
         self.client = aiowebdav.client.Client({
             "webdav_hostname": self.endpoint,
