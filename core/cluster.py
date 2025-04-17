@@ -118,6 +118,7 @@ class TokenManager:
                     }
                 ) as resp:
                     data = await resp.json()
+                    utils.debug_aiohttp_response(resp, data)
                     self._token = data['token']
                     ttl = data['ttl'] / 1000.0
                     self.schedule_refresh_token(ttl)

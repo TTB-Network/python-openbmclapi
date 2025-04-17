@@ -12,6 +12,7 @@ from typing import (
     TypeVar, 
 )
 
+import aiohttp
 import anyio
 import anyio.abc
 import cachetools
@@ -253,6 +254,18 @@ class UnboundTTLCache(cachetools.TTLCache[K, V]):
     @property
     def maxsize(self):
         return None
+
+def debug_aiohttp_response(
+    response: aiohttp.ClientResponse,
+    body: Any
+):
+    logger.debug(
+        "aiohttp response",
+        response.status,
+        response.reason,
+        response.headers,
+        body
+    )
 
 event = Event()
 
