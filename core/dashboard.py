@@ -68,12 +68,12 @@ class SystemInfo:
     ):
         self._running = 0
 
-    def update(
+    async def update(
         self,
     ):
         while self._running:
             try:
-                self.cpus.append(self.process.cpu_percent(interval=1))
+                self.cpus.append(self.process.cpu_percent(interval=None))
 
                 memory = self.process.memory_full_info()
 
@@ -83,6 +83,7 @@ class SystemInfo:
                 ))
             except:
                 break
+            await anyio.sleep(1)
 
     def get_info(self) -> dict[str, Any]:
         return {

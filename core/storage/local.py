@@ -1,6 +1,8 @@
 from pathlib import Path
 import io
 import time
+import shutil
+from typing import BinaryIO
 import anyio.abc
 
 from core.abc import ResponseFile, ResponseFileLocal, ResponseFileNotFound
@@ -53,13 +55,14 @@ class LocalStorage(Storage):
     async def upload(
         self,
         path: str,
-        data: io.BytesIO,
+        data: BinaryIO,
         size: int
     ):
         root = Path(str(self.path)) / path
         root.parent.mkdir(parents=True, exist_ok=True)
         with open(root, "wb") as f:
-            f.write(data.getbuffer())
+            data.seek(0)
+            shutil.copyfileobj(data, f)
         return True
 
     async def _check(

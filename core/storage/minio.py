@@ -1,6 +1,7 @@
 from datetime import timedelta
 import datetime
 import io
+from typing import BinaryIO
 import time
 from typing import Optional
 import urllib.parse as urlparse
@@ -92,15 +93,15 @@ class MinioStorage(Storage):
     async def upload(
         self,
         path: str,
-        data: io.BytesIO,
+        data: BinaryIO,
         size: int
     ):
         root = self.path / path
-        
+
         await self.minio.put_object(
             self.bucket,
             str(root)[1:],
-            data.getbuffer(),
+            data,
             size
         )
         return True

@@ -1,5 +1,6 @@
 from io import BytesIO
 import io
+from typing import BinaryIO
 import time
 import aioboto3.session
 import anyio.abc
@@ -136,7 +137,7 @@ class S3Storage(abc.Storage):
     async def upload(
         self,
         path: str,
-        data: io.BytesIO,
+        data: BinaryIO,
         size: int
     ):
         async with self.session.resource(

@@ -1,6 +1,6 @@
 import io
 import time
-from typing import Any
+from typing import Any, BinaryIO
 import urllib.parse as urlparse
 import aiohttp
 import anyio.abc
@@ -174,7 +174,7 @@ class AlistStorage(abc.Storage):
                     ))
         return res
     
-    async def upload(self, path: str, data: io.BytesIO, size: int):
+    async def upload(self, path: str, data: BinaryIO, size: int):
         async with aiohttp.ClientSession(
             base_url=self._endpoint,
             headers={
@@ -187,7 +187,7 @@ class AlistStorage(abc.Storage):
                 headers={
                     "File-Path": urlparse.quote(str(self._path / path)),
                 },
-                data=data.getbuffer()
+                data=data
             ) as resp:
                 alist_resp = AlistResponse(await resp.json())
                 alist_resp.raise_for_status()

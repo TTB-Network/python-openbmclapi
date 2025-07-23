@@ -2,6 +2,8 @@ import abc
 
 import anyio.abc
 import io
+import tempfile
+from typing import BinaryIO
 
 from core import utils
 from core.abc import BMCLAPIFile, ResponseFile, ResponseFileNotFound, ResponseFileMemory, ResponseFileLocal, ResponseFileRemote
@@ -151,12 +153,12 @@ class Storage(metaclass=abc.ABCMeta):
     async def upload(
         self,
         path: str,
-        data: io.BytesIO,
+        data: BinaryIO,
         size: int
     ):
         raise NotImplementedError
 
-    async def upload_download_file(self, path: str, data: io.BytesIO, size: int):
+    async def upload_download_file(self, path: str, data: BinaryIO, size: int):
         if self.download_dir:
             path = f"download/{path}"
         await self.upload(f"download/{path}", data, size)
@@ -196,12 +198,20 @@ class Storage(metaclass=abc.ABCMeta):
     async def write_measure(self, size: int):
         path = f"measure/{size}"
         size = size * 1024 * 1024
-        
+        tmp = tempfile.TemporaryFile()
+        chunk = b"\x00" * (1024 * 1024)
+        remain = size
+        while remain > 0:
+            w = min(remain, len(chunk))
+            tmp.write(chunk[:w])
+            remain -= w
+        tmp.seek(0)
         await self.upload(
             path,
-            io.BytesIO(b"\x00" * size),
+            tmp,
             size
         )
+        tmp.close()
         logger.tsuccess("storage.write_measure", size=int(size / (1024 * 1024)), name=self.name, type=self.type)
 
 
