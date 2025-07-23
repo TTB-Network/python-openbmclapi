@@ -30,12 +30,17 @@ K = TypeVar("K")
 V = TypeVar("V") 
 T = TypeVar("T")
 
+from typing import BinaryIO
+
 class AvroParser:
     def __init__(
         self,
-        data: bytes
+        data: bytes | BinaryIO
     ):
-        self.data = io.BytesIO(data)
+        if isinstance(data, (bytes, bytearray)):
+            self.data = io.BytesIO(data)
+        else:
+            self.data = data
 
     def read_long(self): 
         result, shift = 0, 0

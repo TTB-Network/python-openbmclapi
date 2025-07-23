@@ -1,5 +1,6 @@
 import io
 import time
+from typing import BinaryIO
 import aiohttp
 import aiowebdav.client
 import anyio
@@ -128,10 +129,10 @@ class WebDavStorage(abc.Storage):
             for parent in parent.parents:
                 await self.client.mkdir(str(parent))
 
-    async def upload(self, path: str, data: io.BytesIO, size: int):
+    async def upload(self, path: str, data: BinaryIO, size: int):
         # check dir
         await self._mkdir((self._path / path).parent)
-        await self.client.upload_to(io.BytesIO(data.getbuffer()), str(self._path / path))
+        await self.client.upload_to(data, str(self._path / path))
         return True
     
     
