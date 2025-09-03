@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import defaultdict, deque
 from datetime import datetime
 from typing import Any
 from .abc import DataBase, ClusterCounterInfo
@@ -11,7 +11,7 @@ class MemoryDataBase(DataBase):
     ):
         super().__init__(database_name)
 
-        self._clusters_logs = []
+        self._clusters_logs = deque(maxlen=10000)
         self._clusters_counters: defaultdict[int, defaultdict[str, defaultdict[str, int]]] = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
 
     async def insert_cluster_info(self, cluster_id: str, type: str, event: str, data: Any | None = None):
