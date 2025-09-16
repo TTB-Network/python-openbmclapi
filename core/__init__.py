@@ -261,7 +261,7 @@ async def access_log_middleware(request: fastapi.Request, call_next):
 
 def get_cluster_from_sign(hash: str, s: str, e: str) -> Optional[str]:
     for cluster in clusters.clusters:
-        if check_sign_without_time(hash, cluster._token._secret, s, e):
+        if check_sign(hash, cluster._token._secret, s, e):
             return cluster.id
     return None
 
