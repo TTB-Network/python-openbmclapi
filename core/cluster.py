@@ -3,11 +3,12 @@ import contextlib
 import datetime
 import hmac
 import io
+import tempfile
 import json
 from pathlib import Path
 import sys
 import time
-from typing import Any, Optional
+from typing import Any, Optional, BinaryIO
 import aiohttp
 import anyio
 import anyio.abc
@@ -227,11 +228,8 @@ class DownloadManager:
         for _ in range(10):
             size = 0
             hash = utils.get_hash_obj(file.hash)
-            tmp_file = io.BytesIO()
             try:
-                async with session.get(
-                    file.path
-                ) as resp:
+                async with session.get(file.path) as resp, tempfile.TemporaryFile() as tmp_file:
                     while (data := await resp.content.read(1024 * 1024 * 16)):
                         tmp_file.write(data)
                         hash.update(data)
@@ -241,17 +239,18 @@ class DownloadManager:
                         pbar.update(inc)
                     if hash.hexdigest() != file.hash or size != file.size:
                         await anyio.sleep(50)
-                        raise Exception(f"hash mismatch, got {hash.hexdigest()} expected {file.hash}")
-                await self.upload_storage(file, tmp_file, size)
-                self.update_success()
+                        raise Exception(
+                            f"hash mismatch, got {hash.hexdigest()} expected {file.hash}"
+                        )
+                    tmp_file.seek(0)
+                    await self.upload_storage(file, tmp_file, size)
+                    self.update_success()
             except Exception as e:
                 last_error = e
                 self._pbar.update(-size)
                 pbar.update(-size)
                 self.update_failed()
                 continue
-            finally:
-                tmp_file.close()
             return None
         if last_error is not None:
             raise last_error
@@ -259,7 +258,7 @@ class DownloadManager:
     async def upload_storage(
         self,
         file: BMCLAPIFile,
-        data: io.BytesIO,
+        data: BinaryIO,
         size: int
     ):
         missing_storage = [
@@ -598,14 +597,21 @@ class Cluster:
                     if resp.status == 204: # no new files
                         #logger.tdebug("cluster.get_files.no_new_files", id=self.id)
                         return results
-                    reader = utils.AvroParser(zstd.decompress(await resp.read()))
-                    for _ in range(reader.read_long()):
-                        results.append(BMCLAPIFile(
-                            reader.read_string(),
-                            reader.read_string(),
-                            reader.read_long(),
-                            reader.read_long() / 1000.0,
-                        ))
+                    with tempfile.TemporaryFile() as tmp:
+                        async for chunk in resp.content.iter_chunked(1024 * 1024 * 4):
+                            tmp.write(chunk)
+                        tmp.seek(0)
+                        with zstd.open(tmp, 'rb') as zf:
+                            reader = utils.AvroParser(zf)
+                            for _ in range(reader.read_long()):
+                                results.append(
+                                    BMCLAPIFile(
+                                        reader.read_string(),
+                                        reader.read_string(),
+                                        reader.read_long(),
+                                        reader.read_long() / 1000.0,
+                                    )
+                                )
                     self._last_modified = max(results, key=lambda x: x.mtime).mtime
                     logger.tdebug("cluster.get_files", id=self.id, name=self.display_name, count=len(results), size=units.format_bytes(sum([f.size for f in results])), last_modified=units.format_datetime_from_timestamp(self._last_modified))
         except:
